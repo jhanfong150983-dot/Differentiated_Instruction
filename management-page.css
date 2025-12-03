@@ -1,0 +1,686 @@
+/* ==========================================
+   統一管理頁面樣式 - management-page.css
+   ==========================================
+   
+   適用於：
+   - 班級管理 (teacher.html)
+   - 課程管理 (course.html)
+   - 其他管理頁面
+   
+   提供：
+   - Tab 導航
+   - 統一的頁面結構
+   - 統一的卡片樣式
+   - 統一的按鈕樣式
+   - 統一的 Modal 樣式
+*/
+
+/* ==========================================
+   頁面容器
+   ========================================== */
+
+.management-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* 考慮導航列高度 */
+.management-page.with-navbar {
+    padding-top: 80px;
+}
+
+/* ==========================================
+   麵包屑導航
+   ========================================== */
+
+.breadcrumb {
+    color: #95A5A6;
+    margin-bottom: 20px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.breadcrumb a {
+    color: #2C5F7C;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.breadcrumb a:hover {
+    color: #1A3F52;
+    text-decoration: underline;
+}
+
+.breadcrumb-separator {
+    color: #CBD5E0;
+    user-select: none;
+}
+
+/* ==========================================
+   Tab 導航
+   ========================================== */
+
+.page-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid #E1E8ED;
+    margin-bottom: 30px;
+    overflow-x: auto;
+}
+
+/* 隱藏捲軸但保持可滾動（手機版）*/
+.page-tabs::-webkit-scrollbar {
+    height: 0;
+}
+
+.tab-item {
+    padding: 14px 28px;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    color: #95A5A6;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    white-space: nowrap;
+    position: relative;
+}
+
+.tab-item:hover {
+    color: #2C5F7C;
+    background: #F8F9FA;
+}
+
+.tab-item.active {
+    color: #2C5F7C;
+    border-bottom-color: #2C5F7C;
+}
+
+.tab-item .tab-icon {
+    margin-right: 8px;
+}
+
+/* ==========================================
+   頁面標題區
+   ========================================== */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.page-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #2C3E50;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-title-icon {
+    font-size: 32px;
+}
+
+/* ==========================================
+   統一按鈕樣式
+   ========================================== */
+
+.btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Primary 按鈕（主要操作）*/
+.btn-primary {
+    background: #2C5F7C;
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #1A3F52;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(44, 95, 124, 0.3);
+}
+
+/* Secondary 按鈕（次要操作）*/
+.btn-secondary {
+    background: #E8A87C;
+    color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: #D89566;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(232, 168, 124, 0.3);
+}
+
+/* Outline 按鈕（輕量操作）*/
+.btn-outline {
+    background: white;
+    color: #2C5F7C;
+    border: 1px solid #2C5F7C;
+}
+
+.btn-outline:hover:not(:disabled) {
+    background: #F8F9FA;
+}
+
+/* Danger 按鈕（危險操作）*/
+.btn-danger {
+    background: #EF4444;
+    color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: #DC2626;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* Success 按鈕（成功確認）*/
+.btn-success {
+    background: #10B981;
+    color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+/* 小按鈕 */
+.btn-sm {
+    padding: 8px 16px;
+    font-size: 13px;
+}
+
+/* 大按鈕 */
+.btn-lg {
+    padding: 16px 32px;
+    font-size: 16px;
+}
+
+/* ==========================================
+   卡片網格
+   ========================================== */
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 24px;
+    margin-top: 24px;
+}
+
+/* ==========================================
+   統一卡片樣式
+   ========================================== */
+
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: 1px solid #F1F3F5;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    border-color: #E1E8ED;
+}
+
+/* 卡片標題區 */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.card-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #2C3E50;
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+
+.card-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.card-badge.class {
+    background: #E8A87C;
+    color: white;
+}
+
+.card-badge.course {
+    background: #2C5F7C;
+    color: white;
+}
+
+/* 卡片描述 */
+.card-description {
+    color: #5A6C7D;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+    max-height: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+/* 卡片 Meta 資訊 */
+.card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 13px;
+    color: #95A5A6;
+    margin-bottom: 16px;
+}
+
+.card-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.card-meta-icon {
+    font-size: 14px;
+}
+
+/* 卡片操作區 */
+.card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #F1F3F5;
+}
+
+.card-actions .btn {
+    flex: 1;
+}
+
+/* ==========================================
+   空狀態
+   ========================================== */
+
+.empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: #95A5A6;
+}
+
+.empty-state-icon {
+    font-size: 72px;
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+.empty-state h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #5A6C7D;
+    margin-bottom: 12px;
+}
+
+.empty-state p {
+    font-size: 15px;
+    color: #95A5A6;
+    margin-bottom: 24px;
+}
+
+.empty-state .btn {
+    margin-top: 8px;
+}
+
+/* ==========================================
+   載入動畫
+   ========================================== */
+
+.loading {
+    display: none;
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.loading.active {
+    display: block;
+}
+
+.spinner {
+    border: 3px solid #F3F3F3;
+    border-top: 3px solid #2C5F7C;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: #95A5A6;
+    font-size: 15px;
+}
+
+/* ==========================================
+   統一 Modal 樣式
+   ========================================== */
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-overlay.active {
+    display: flex;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease;
+}
+
+.modal-header {
+    padding: 24px 32px;
+    border-bottom: 1px solid #E1E8ED;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #2C3E50;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #95A5A6;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.modal-close:hover {
+    background: #F8F9FA;
+    color: #2C3E50;
+}
+
+.modal-body {
+    padding: 32px;
+}
+
+.modal-footer {
+    padding: 20px 32px;
+    border-top: 1px solid #E1E8ED;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    background: #F8F9FA;
+}
+
+/* ==========================================
+   表單元素
+   ========================================== */
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+.form-label {
+    display: block;
+    font-weight: 600;
+    color: #2C3E50;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.form-label.required::after {
+    content: ' *';
+    color: #EF4444;
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #E1E8ED;
+    border-radius: 8px;
+    font-size: 15px;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+    outline: none;
+    border-color: #2C5F7C;
+    box-shadow: 0 0 0 3px rgba(44, 95, 124, 0.1);
+}
+
+.form-textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.form-hint {
+    font-size: 13px;
+    color: #95A5A6;
+    margin-top: 6px;
+}
+
+.form-error {
+    font-size: 13px;
+    color: #EF4444;
+    margin-top: 6px;
+}
+
+/* ==========================================
+   Toast 通知
+   ========================================== */
+
+.toast {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    min-width: 300px;
+    max-width: 500px;
+    padding: 16px 24px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 10000;
+    animation: slideInRight 0.3s ease;
+}
+
+.toast.success {
+    border-left: 4px solid #10B981;
+}
+
+.toast.error {
+    border-left: 4px solid #EF4444;
+}
+
+.toast.info {
+    border-left: 4px solid #2C5F7C;
+}
+
+.toast.warning {
+    border-left: 4px solid #F59E0B;
+}
+
+.toast-icon {
+    font-size: 24px;
+}
+
+.toast-message {
+    flex: 1;
+    color: #2C3E50;
+    font-size: 15px;
+}
+
+/* ==========================================
+   響應式設計
+   ========================================== */
+
+@media (max-width: 768px) {
+    .management-page {
+        padding: 15px;
+    }
+    
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    
+    .page-title {
+        font-size: 24px;
+    }
+    
+    .card-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    
+    .card-actions {
+        flex-direction: column;
+    }
+    
+    .modal-content {
+        width: 95%;
+        max-height: 95vh;
+    }
+    
+    .modal-header,
+    .modal-body,
+    .modal-footer {
+        padding: 20px;
+    }
+    
+    .page-tabs {
+        gap: 0;
+    }
+    
+    .tab-item {
+        padding: 12px 20px;
+        font-size: 14px;
+    }
+}
+
+/* ==========================================
+   動畫定義
+   ========================================== */
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* ==========================================
+   工具類別
+   ========================================== */
+
+.mt-4 { margin-top: 16px; }
+.mt-6 { margin-top: 24px; }
+.mb-4 { margin-bottom: 16px; }
+.mb-6 { margin-bottom: 24px; }
+
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+
+.flex { display: flex; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.gap-2 { gap: 8px; }
+.gap-4 { gap: 16px; }

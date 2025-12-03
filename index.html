@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <!-- 網頁基本設定 -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分層教學平台 - 首頁</title>
+    
+    <!-- 引入外部 CSS 樣式表 -->
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- 引入 Google Fonts 字體 - 使用 Noto Sans TC 中文字體 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- 整個頁面的容器 -->
+    <div class="container">
+        
+        <!-- 導覽列區域 -->
+        <nav class="navbar">
+            <!-- 左側：網站 Logo 和名稱 -->
+            <div class="nav-left">
+                <div class="logo">📚</div>
+                <h1 class="site-title">分層教學平台</h1>
+            </div>
+            
+            <!-- 右側：登入按鈕 -->
+            <div class="nav-right">
+                <!-- 點擊後會導向登入頁面 -->
+                <a href="login.html" class="btn-login">登入 / 註冊</a>
+            </div>
+        </nav>
+
+        <!-- 主要內容區域 -->
+        <main class="main-content">
+            
+            <!-- 英雄區塊（Hero Section）- 頁面的主要視覺焦點 -->
+            <section class="hero-section">
+                <div class="hero-content">
+                    <!-- 主標題 -->
+                    <h2 class="hero-title">
+                        個人化學習旅程
+                        <span class="title-accent">從基礎到精通</span>
+                    </h2>
+                    
+                    <!-- 副標題說明 -->
+                    <p class="hero-description">
+                        根據您的程度，提供最適合的學習內容。<br>
+                        一步步建立扎實的知識基礎，突破學習瓶頸。
+                    </p>
+                    
+                    <!-- 行動呼籲按鈕 -->
+                    <div class="hero-actions">
+                        <a href="login.html" class="btn-primary">開始學習</a>
+                        <a href="#features" class="btn-secondary">了解更多</a>
+                    </div>
+                </div>
+                
+                <!-- 右側裝飾圖形 -->
+                <div class="hero-visual">
+                    <div class="visual-circle"></div>
+                    <div class="visual-dots"></div>
+                </div>
+            </section>
+
+            <!-- 特色功能區塊 -->
+            <section id="features" class="features-section">
+                <h3 class="section-title">平台特色</h3>
+                
+                <!-- 特色卡片容器 -->
+                <div class="features-grid">
+                    
+                    <!-- 特色 1：分層學習 -->
+                    <div class="feature-card">
+                        <div class="feature-icon">🎯</div>
+                        <h4 class="feature-title">分層學習系統</h4>
+                        <p class="feature-text">
+                            依據學習者程度分為基礎層、進階層、精通層，
+                            確保每個階段都能穩固掌握。
+                        </p>
+                    </div>
+                    
+                    <!-- 特色 2：個人化追蹤 -->
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h4 class="feature-title">學習進度追蹤</h4>
+                        <p class="feature-text">
+                            即時記錄您的學習狀況，清楚看見自己的成長軌跡，
+                            掌握每個里程碑。
+                        </p>
+                    </div>
+                    
+                    <!-- 特色 3：Google 快速登入 -->
+                    <div class="feature-card">
+                        <div class="feature-icon">🔐</div>
+                        <h4 class="feature-title">安全便捷登入</h4>
+                        <p class="feature-text">
+                            使用 Google 帳號一鍵登入，無需記憶密碼，
+                            資料安全有保障。
+                        </p>
+                    </div>
+                    
+                </div>
+            </section>
+
+            <!-- 學習層級介紹區塊 -->
+            <section class="tiers-section">
+                <h3 class="section-title">學習層級</h3>
+                
+                <div class="tiers-container">
+                    
+                    <!-- 層級 1：基礎層 -->
+                    <div class="tier-card tier-basic">
+                        <div class="tier-badge">Tier 1</div>
+                        <h4 class="tier-name">基礎層</h4>
+                        <p class="tier-description">
+                            建立核心概念，掌握基本原理，
+                            為後續學習打下穩固基礎。
+                        </p>
+                        <ul class="tier-features">
+                            <li>✓ 基礎概念教學</li>
+                            <li>✓ 互動式練習</li>
+                            <li>✓ 即時回饋</li>
+                        </ul>
+                    </div>
+                    
+                    <!-- 層級 2：進階層 -->
+                    <div class="tier-card tier-intermediate">
+                        <div class="tier-badge">Tier 2</div>
+                        <h4 class="tier-name">進階層</h4>
+                        <p class="tier-description">
+                            深入理解原理，培養實際應用能力，
+                            解決複雜問題。
+                        </p>
+                        <ul class="tier-features">
+                            <li>✓ 進階主題探討</li>
+                            <li>✓ 實戰案例分析</li>
+                            <li>✓ 專題練習</li>
+                        </ul>
+                    </div>
+                    
+                    <!-- 層級 3：精通層 -->
+                    <div class="tier-card tier-advanced">
+                        <div class="tier-badge">Tier 3</div>
+                        <h4 class="tier-name">精通層</h4>
+                        <p class="tier-description">
+                            達到專家級水準，能夠獨立創新，
+                            引領知識前沿。
+                        </p>
+                        <ul class="tier-features">
+                            <li>✓ 專家級內容</li>
+                            <li>✓ 創新專案</li>
+                            <li>✓ 深度研究</li>
+                        </ul>
+                    </div>
+                    
+                </div>
+            </section>
+
+        </main>
+
+        <!-- 頁尾區域 -->
+        <footer class="footer">
+            <p>&copy; 2024 分層教學平台 - 讓學習更有層次</p>
+        </footer>
+
+    </div>
+
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+    
+</body>
+</html>

@@ -1,0 +1,1113 @@
+/* ==========================================
+   任務審核儀表板 - review.js（階段 2 - 課堂控制）
+   ========================================== */
+
+// 使用立即執行函數避免全域變數污染
+(function() {
+    'use strict';
+
+    // 模組內部變數
+    let reviewUser = null;
+    let reviewClasses = [];
+    let allTasks = [];
+    let filteredTasks = [];
+    let currentQuickFilter = 'all';
+    let autoRefreshInterval = null;
+    let countdownInterval = null;
+    let refreshCountdown = 30;
+
+    // 階段 2：課堂控制相關變數
+    let currentSession = null;
+    let selectedClassId = null;
+    let timeUpdateInterval = null;
+    let taskTimeUpdateInterval = null; // 任務時間更新 interval
+
+    // ==========================================
+    // 初始化
+    // ==========================================
+
+    document.addEventListener('DOMContentLoaded', function() {
+        APP_CONFIG.log('📊 任務審核模組載入完成');
+    });
+
+    /**
+     * 載入任務審核頁面（由 switchTab 調用）
+     */
+    window.loadReview = function() {
+        APP_CONFIG.log('📊 載入任務審核頁面...');
+
+        // 檢查登入狀態
+        const userJson = localStorage.getItem('user');
+        if (!userJson) {
+            showToast('請先登入', 'warning');
+            setTimeout(() => {
+                window.location.href = 'login.html';
+            }, 1000);
+            return;
+        }
+
+        try {
+            reviewUser = JSON.parse(userJson);
+
+            // 檢查權限
+            if (reviewUser.role !== 'teacher' && reviewUser.role !== 'admin') {
+                showToast('您沒有權限訪問此頁面', 'error');
+                return;
+            }
+
+            // 初始化頁面
+            initializeReviewPage();
+
+        } catch (error) {
+            console.error('解析使用者資料失敗:', error);
+            showToast('登入資料有誤，請重新登入', 'error');
+        }
+    };
+
+    // ==========================================
+    // 初始化頁面
+    // ==========================================
+
+    function initializeReviewPage() {
+        // 階段 2：初始載入只取得班級列表，不載入任務
+        // 使用者必須自己選擇班級
+        loadClassList();
+
+        // 階段 2：不在初始化時啟動自動刷新
+        // 只在開始上課後才啟動自動刷新
+    }
+
+    /**
+     * 載入班級列表（階段 2：初始化專用）
+     */
+    function loadClassList() {
+        // 初始化班級選擇器狀態（禁用 + 顯示提示文字）
+        const select = document.getElementById('reviewClassSelect');
+        if (select) {
+            select.innerHTML = '<option value="" disabled selected>請選擇班級...</option>';
+            select.disabled = true; // 禁用直到 API 完成
+        }
+
+        showLoading('reviewLoading');
+
+        const params = new URLSearchParams({
+            action: 'getTeacherTaskMonitor',
+            teacherEmail: reviewUser.email
+        });
+
+        APP_CONFIG.log('📤 載入班級列表...', {
+            teacherEmail: reviewUser.email
+        });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(response) {
+                hideLoading('reviewLoading');
+
+                APP_CONFIG.log('📥 班級列表回應:', response);
+
+                if (response.success) {
+                    reviewClasses = response.classes || [];
+                    allTasks = []; // 初始化時不載入任務
+                    filteredTasks = [];
+
+                    // 填充班級選擇器
+                    populateClassSelector();
+
+                    // 啟用班級選擇器
+                    if (select) {
+                        select.disabled = false;
+                    }
+
+                    // 更新計數為 0
+                    updateCounts();
+
+                    // 顯示初始提示
+                    showInitialState();
+
+                } else {
+                    showToast(response.message || '載入失敗', 'error');
+                    showEmptyState();
+                    // 載入失敗時也要解除禁用
+                    if (select) {
+                        select.disabled = false;
+                    }
+                }
+            })
+            .catch(function(error) {
+                hideLoading('reviewLoading');
+                APP_CONFIG.error('載入班級列表失敗', error);
+                showToast('載入失敗：' + error.message, 'error');
+                showEmptyState();
+            });
+    }
+
+    /**
+     * 顯示初始提示（階段 2：請選擇班級）
+     */
+    function showInitialState() {
+        const emptyState = document.getElementById('reviewEmptyState');
+        if (emptyState) {
+            emptyState.innerHTML = `
+                <div class="empty-state-icon">👆</div>
+                <h3>請選擇班級開始監控</h3>
+                <p>請從上方選擇器選擇一個班級<br>系統將顯示該班級的任務狀態</p>
+            `;
+        }
+        document.getElementById('reviewTableContainer').style.display = 'none';
+        document.getElementById('reviewEmptyState').style.display = 'block';
+    }
+
+    // ==========================================
+    // 載入任務資料
+    // ==========================================
+
+    /**
+     * 載入任務監控資料（階段 2：優化自動刷新體驗）
+     */
+    window.loadReviewTasks = function(isAutoRefresh) {
+        // 只在非自動刷新時顯示 loading 和隱藏表格
+        if (!isAutoRefresh) {
+            showLoading('reviewLoading');
+            document.getElementById('reviewTableContainer').style.display = 'none';
+            document.getElementById('reviewEmptyState').style.display = 'none';
+        }
+
+        // 鎖定班級選擇器
+        const classSelect = document.getElementById('reviewClassSelect');
+        if (classSelect) {
+            classSelect.disabled = true;
+        }
+
+        const selectedClassId = document.getElementById('reviewClassSelect').value;
+
+        const params = new URLSearchParams({
+            action: 'getTeacherTaskMonitor',
+            teacherEmail: reviewUser.email
+        });
+
+        if (selectedClassId) {
+            params.append('classId', selectedClassId);
+        }
+
+        APP_CONFIG.log('📤 載入任務監控資料...', {
+            teacherEmail: reviewUser.email,
+            classId: selectedClassId || '未選擇',
+            isAutoRefresh: isAutoRefresh || false
+        });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(response) {
+                hideLoading('reviewLoading');
+
+                // 解鎖班級選擇器
+                if (classSelect) {
+                    classSelect.disabled = false;
+                }
+
+                APP_CONFIG.log('📥 任務監控資料回應:', response);
+
+                if (response.success) {
+                    allTasks = response.tasks || [];
+                    reviewClasses = response.classes || [];
+
+                    // 只在首次載入時填充班級選擇器
+                    if (!isAutoRefresh) {
+                        populateClassSelector();
+                    }
+
+                    // 填充進階篩選選項
+                    populateAdvancedFilters();
+
+                    // 應用篩選並顯示
+                    applyFilters();
+
+                    // 重置刷新倒數
+                    refreshCountdown = 30;
+
+                } else {
+                    showToast(response.message || '載入失敗', 'error');
+                    if (!isAutoRefresh) {
+                        showEmptyState();
+                    }
+                }
+            })
+            .catch(function(error) {
+                hideLoading('reviewLoading');
+
+                // 解鎖班級選擇器
+                if (classSelect) {
+                    classSelect.disabled = false;
+                }
+
+                APP_CONFIG.error('載入任務監控資料失敗', error);
+                if (!isAutoRefresh) {
+                    showToast('載入失敗：' + error.message, 'error');
+                    showEmptyState();
+                }
+            });
+    };
+
+    /**
+     * 填充班級選擇器
+     */
+    function populateClassSelector() {
+        const select = document.getElementById('reviewClassSelect');
+        if (!select) return;
+
+        const currentValue = select.value;
+
+        // 階段 2：移除全部班級選項，不自動選擇
+        select.innerHTML = '<option value="" disabled selected>請選擇班級...</option>';
+
+        reviewClasses.forEach(function(classData) {
+            const option = document.createElement('option');
+            option.value = classData.classId;
+            option.textContent = classData.className;
+            select.appendChild(option);
+        });
+
+        // 只在有當前選擇時恢復選擇
+        if (currentValue) {
+            select.value = currentValue;
+        }
+    }
+
+    /**
+     * 填充進階篩選選項
+     */
+    function populateAdvancedFilters() {
+        // 取得所有獨特的層級
+        const tiers = [...new Set(allTasks.map(task => task.tier).filter(Boolean))];
+        const tierSelect = document.getElementById('filterTier');
+        if (tierSelect) {
+            const currentValue = tierSelect.value;
+            tierSelect.innerHTML = '<option value="">全部層級</option>';
+            tiers.forEach(function(tier) {
+                const option = document.createElement('option');
+                option.value = tier;
+                let tierDisplay = tier;
+                if (tier === 'tutorial') tierDisplay = '基礎層';
+                else if (tier === 'adventure') tierDisplay = '挑戰層';
+                else if (tier === 'hardcore') tierDisplay = '困難層';
+                option.textContent = tierDisplay;
+                tierSelect.appendChild(option);
+            });
+            if (currentValue) tierSelect.value = currentValue;
+        }
+
+        // 取得所有獨特的任務
+        const tasks = [...new Set(allTasks.map(task => task.taskName).filter(Boolean))];
+        const taskSelect = document.getElementById('filterTask');
+        if (taskSelect) {
+            const currentValue = taskSelect.value;
+            taskSelect.innerHTML = '<option value="">全部任務</option>';
+            tasks.forEach(function(taskName) {
+                const option = document.createElement('option');
+                option.value = taskName;
+                option.textContent = taskName;
+                taskSelect.appendChild(option);
+            });
+            if (currentValue) taskSelect.value = currentValue;
+        }
+    }
+
+    // ==========================================
+    // 課堂控制系統（階段 2）
+    // ==========================================
+
+    /**
+     * 處理班級選擇變更（階段 2：檢查 session 狀態）
+     */
+    window.handleClassChange = function() {
+        const select = document.getElementById('reviewClassSelect');
+        selectedClassId = select.value;
+
+        APP_CONFIG.log('📚 選擇班級:', selectedClassId);
+
+        // 階段 2：必須選擇班級
+        if (!selectedClassId) {
+            return;
+        }
+
+        // 性能優化：顯示 loading 避免用戶誤以為當機
+        showLoading('reviewLoading');
+
+        // 檢查班級的 session 狀態
+        checkSessionStatus(selectedClassId);
+
+        // 載入任務（會在完成後隱藏 loading）
+        loadReviewTasks();
+    };
+
+    /**
+     * 檢查班級的課堂狀態
+     */
+    function checkSessionStatus(classId) {
+        const params = new URLSearchParams({
+            action: 'getCurrentSession',
+            classId: classId
+        });
+
+        APP_CONFIG.log('📤 檢查課堂狀態...', { classId });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(response) {
+                APP_CONFIG.log('📥 課堂狀態回應:', response);
+
+                if (response.success) {
+                    if (response.isActive && response.session) {
+                        // 有進行中的課堂
+                        currentSession = response.session;
+                        updateSessionDisplay(true);
+                        startTimeUpdate();
+                    } else {
+                        // 沒有進行中的課堂
+                        currentSession = null;
+                        updateSessionDisplay(false);
+                        stopTimeUpdate();
+                    }
+                } else {
+                    APP_CONFIG.error('檢查課堂狀態失敗', response.message);
+                    currentSession = null;
+                    updateSessionDisplay(false);
+                }
+            })
+            .catch(function(error) {
+                APP_CONFIG.error('檢查課堂狀態失敗', error);
+                currentSession = null;
+                updateSessionDisplay(false);
+            });
+    }
+
+    /**
+     * 更新課堂狀態顯示（階段 2：控制自動刷新和任務時間更新）
+     */
+    function updateSessionDisplay(isActive) {
+        const statusDiv = document.getElementById('sessionStatus');
+        const controlsDiv = document.getElementById('sessionControls');
+        const indicator = document.getElementById('sessionIndicator');
+        const timeElement = document.getElementById('sessionTime');
+        const startBtn = document.getElementById('btnStartClass');
+        const endBtn = document.getElementById('btnEndClass');
+
+        if (isActive && currentSession) {
+            // 上課中：只顯示時間，不顯示文字
+            statusDiv.style.display = 'flex';
+            controlsDiv.style.display = 'flex';
+
+            // 隱藏狀態文字
+            if (indicator) {
+                indicator.style.display = 'none';
+            }
+
+            // 顯示時間元素（直接顯示，不需要分隔線）
+            if (timeElement) {
+                timeElement.style.display = 'inline';
+                timeElement.style.borderLeft = 'none';
+                timeElement.style.paddingLeft = '0';
+                timeElement.style.marginLeft = '0';
+            }
+
+            startBtn.style.display = 'none';
+            endBtn.style.display = 'inline-block';
+
+            // 更新時間顯示
+            updateSessionTime();
+
+            // 啟動自動刷新（階段 2）
+            startAutoRefresh();
+            APP_CONFIG.log('✅ 上課中，啟動自動刷新');
+
+        } else {
+            // 未上課：隱藏整個狀態區域
+            statusDiv.style.display = 'none';
+            controlsDiv.style.display = 'flex';
+
+            startBtn.style.display = 'inline-block';
+            endBtn.style.display = 'none';
+
+            // 停止自動刷新（階段 2）
+            stopAutoRefresh();
+
+            // 停止任務時間更新（階段 2）
+            stopTaskTimeUpdate();
+
+            APP_CONFIG.log('⏸️ 未上課，停止自動刷新和任務時間更新');
+        }
+    }
+
+    /**
+     * 更新課堂時間顯示
+     */
+    function updateSessionTime() {
+        if (!currentSession || !currentSession.startTime) return;
+
+        const now = new Date();
+        const start = new Date(currentSession.startTime);
+        const elapsed = Math.floor((now.getTime() - start.getTime()) / 1000); // 秒數
+
+        const hours = Math.floor(elapsed / 3600);
+        const minutes = Math.floor((elapsed % 3600) / 60);
+        const seconds = elapsed % 60;
+
+        let timeStr = '';
+        if (hours > 0) {
+            timeStr = `⏱️ ${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        } else {
+            timeStr = `⏱️ ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        document.getElementById('sessionTime').textContent = timeStr;
+    }
+
+    /**
+     * 啟動即時時間更新（每秒）
+     */
+    function startTimeUpdate() {
+        stopTimeUpdate(); // 清除舊的
+
+        timeUpdateInterval = setInterval(function() {
+            updateSessionTime();
+        }, 1000);
+
+        APP_CONFIG.log('⏱️ 啟動即時時間更新');
+    }
+
+    /**
+     * 停止即時時間更新
+     */
+    function stopTimeUpdate() {
+        if (timeUpdateInterval) {
+            clearInterval(timeUpdateInterval);
+            timeUpdateInterval = null;
+            APP_CONFIG.log('⏸️ 停止即時時間更新');
+        }
+    }
+
+    /**
+     * 處理開始上課
+     */
+    window.handleStartClass = function() {
+        if (!selectedClassId) {
+            showToast('請先選擇班級', 'warning');
+            return;
+        }
+
+        if (!confirm('確定要開始上課嗎？\n學生將可以開始執行任務。')) {
+            return;
+        }
+
+        const params = new URLSearchParams({
+            action: 'startClassSession',
+            teacherEmail: reviewUser.email,
+            classId: selectedClassId
+        });
+
+        APP_CONFIG.log('📤 開始上課...', { classId: selectedClassId });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(response) {
+                APP_CONFIG.log('📥 開始上課回應:', response);
+
+                if (response.success) {
+                    showToast('✅ ' + response.message, 'success');
+                    currentSession = response.session;
+                    updateSessionDisplay(true);
+                    startTimeUpdate();
+
+                    // 重新載入任務（會顯示執行中的任務）
+                    setTimeout(() => loadReviewTasks(), 500);
+                } else {
+                    showToast(response.message || '開始上課失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                APP_CONFIG.error('開始上課失敗', error);
+                showToast('開始上課失敗：' + error.message, 'error');
+            });
+    };
+
+    /**
+     * 處理結束上課
+     */
+    window.handleEndClass = function() {
+        if (!currentSession) {
+            showToast('目前沒有進行中的課堂', 'warning');
+            return;
+        }
+
+        if (!confirm('確定要結束上課嗎？\n所有執行中的任務計時將凍結。')) {
+            return;
+        }
+
+        const params = new URLSearchParams({
+            action: 'endClassSession',
+            teacherEmail: reviewUser.email,
+            sessionId: currentSession.sessionId
+        });
+
+        APP_CONFIG.log('📤 結束上課...', { sessionId: currentSession.sessionId });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(response) {
+                APP_CONFIG.log('📥 結束上課回應:', response);
+
+                if (response.success) {
+                    showToast('✅ ' + response.message, 'success');
+                    currentSession = null;
+                    updateSessionDisplay(false);
+                    stopTimeUpdate();
+
+                    // 重新載入任務
+                    setTimeout(() => loadReviewTasks(), 500);
+                } else {
+                    showToast(response.message || '結束上課失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                APP_CONFIG.error('結束上課失敗', error);
+                showToast('結束上課失敗：' + error.message, 'error');
+            });
+    };
+
+    // ==========================================
+    // 任務時間即時更新（階段 2）
+    // ==========================================
+
+    /**
+     * 啟動任務時間即時更新（每秒更新 in_progress 任務時間）
+     */
+    function startTaskTimeUpdate() {
+        stopTaskTimeUpdate(); // 清除舊的
+
+        taskTimeUpdateInterval = setInterval(function() {
+            updateAllTaskTimes();
+        }, 1000);
+
+        APP_CONFIG.log('⏱️ 啟動任務時間即時更新');
+    }
+
+    /**
+     * 停止任務時間即時更新
+     */
+    function stopTaskTimeUpdate() {
+        if (taskTimeUpdateInterval) {
+            clearInterval(taskTimeUpdateInterval);
+            taskTimeUpdateInterval = null;
+            APP_CONFIG.log('⏸️ 停止任務時間即時更新');
+        }
+    }
+
+    /**
+     * 更新所有 in_progress 任務的時間顯示（階段 2：同步更新數據）
+     */
+    function updateAllTaskTimes() {
+        const tbody = document.getElementById('reviewTableBody');
+        if (!tbody) return;
+
+        const now = new Date().getTime();
+        let hasOvertimeChange = false; // 追蹤是否有超時狀態變化
+
+        // 找到所有有 data-start-time 的行（in_progress 任務）
+        const rows = tbody.querySelectorAll('tr[data-start-time]');
+
+        rows.forEach(function(row) {
+            const taskProgressId = row.getAttribute('data-task-id');
+            const startTime = row.getAttribute('data-start-time');
+            const timeLimit = parseInt(row.getAttribute('data-time-limit')) || 0;
+            const accumulatedTime = parseInt(row.getAttribute('data-accumulated-time')) || 0;  // 累積時間（秒）
+
+            if (!startTime) return;
+
+            // 計算經過時間（秒）：累積時間 + (現在 - 開始時間)
+            const start = new Date(startTime).getTime();
+            const currentSessionElapsed = Math.floor((now - start) / 1000);
+            const totalElapsed = accumulatedTime + currentSessionElapsed;
+
+            // 格式化時間（HH:MM:SS 或 MM:SS）
+            let timeStr = '';
+            const hours = Math.floor(totalElapsed / 3600);
+            const minutes = Math.floor((totalElapsed % 3600) / 60);
+            const seconds = totalElapsed % 60;
+
+            if (hours > 0) {
+                timeStr = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            } else {
+                timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+
+            // 檢查是否超時
+            const isOvertime = timeLimit > 0 && totalElapsed > timeLimit;
+
+            // 同步更新 allTasks 數組中的數據
+            const taskInArray = allTasks.find(t => t.taskProgressId === taskProgressId);
+            if (taskInArray) {
+                const wasOvertime = taskInArray.isOvertime;
+                taskInArray.executionTime = totalElapsed;
+                taskInArray.isOvertime = isOvertime;
+
+                // 檢測超時狀態變化
+                if (wasOvertime !== isOvertime) {
+                    hasOvertimeChange = true;
+                }
+            }
+
+            // 更新時間顯示
+            const timeCell = row.querySelector('[data-time-cell]');
+            if (timeCell) {
+                timeCell.textContent = timeStr;
+
+                // 更新 overtime 樣式
+                if (isOvertime) {
+                    timeCell.classList.add('overtime');
+                    row.classList.add('overtime');
+                } else {
+                    timeCell.classList.remove('overtime');
+                    row.classList.remove('overtime');
+                }
+            }
+
+            // 更新燈號（綠燈 → 紅燈）
+            const lightElement = row.querySelector('.status-light');
+            if (lightElement) {
+                if (isOvertime) {
+                    lightElement.classList.remove('green');
+                    lightElement.classList.add('red');
+                } else {
+                    lightElement.classList.remove('red');
+                    lightElement.classList.add('green');
+                }
+            }
+        });
+
+        // 如果有超時狀態變化，更新計數
+        if (hasOvertimeChange) {
+            updateCounts();
+        }
+    }
+
+    // ==========================================
+    // 篩選功能
+    // ==========================================
+
+    /**
+     * 應用快速篩選
+     */
+    window.applyQuickFilter = function(filterType) {
+        currentQuickFilter = filterType;
+
+        // 更新按鈕狀態
+        document.querySelectorAll('.filter-tag').forEach(function(tag) {
+            tag.classList.remove('active');
+            if (tag.getAttribute('data-filter') === filterType) {
+                tag.classList.add('active');
+            }
+        });
+
+        applyFilters();
+    };
+
+    /**
+     * 應用所有篩選條件（階段 2：紅燈只篩選執行中超時）
+     */
+    window.applyFilters = function() {
+        let tasks = [...allTasks];
+
+        // 1. 快速篩選
+        if (currentQuickFilter === 'pending') {
+            tasks = tasks.filter(task => task.status === 'pending_review');
+        } else if (currentQuickFilter === 'overtime') {
+            // 紅燈只篩選執行中且超時的任務
+            tasks = tasks.filter(task => task.status === 'in_progress' && task.isOvertime);
+        }
+        // 'all' 不過濾
+
+        // 2. 層級篩選
+        const filterTier = document.getElementById('filterTier').value;
+        if (filterTier) {
+            tasks = tasks.filter(task => task.tier === filterTier);
+        }
+
+        // 3. 任務篩選
+        const filterTask = document.getElementById('filterTask').value;
+        if (filterTask) {
+            tasks = tasks.filter(task => task.taskName === filterTask);
+        }
+
+        // 4. 搜尋篩選
+        const filterSearch = document.getElementById('filterSearch').value.trim().toLowerCase();
+        if (filterSearch) {
+            tasks = tasks.filter(task =>
+                task.studentName.toLowerCase().includes(filterSearch) ||
+                (task.studentNumber && task.studentNumber.toString().includes(filterSearch))
+            );
+        }
+
+        // 5. 排序
+        const filterSort = document.getElementById('filterSort').value;
+        if (filterSort === 'time-desc') {
+            tasks.sort((a, b) => b.executionTime - a.executionTime);
+        } else if (filterSort === 'time-asc') {
+            tasks.sort((a, b) => a.executionTime - b.executionTime);
+        } else if (filterSort === 'seat') {
+            tasks.sort((a, b) => {
+                const seatA = parseInt(a.studentNumber) || 0;
+                const seatB = parseInt(b.studentNumber) || 0;
+                return seatA - seatB;
+            });
+        }
+
+        filteredTasks = tasks;
+
+        // 更新計數
+        updateCounts();
+
+        // 顯示結果
+        displayTaskTable();
+    };
+
+    /**
+     * 更新計數（階段 2：紅燈只統計執行中超時）
+     */
+    function updateCounts() {
+        const countAll = allTasks.length;
+        const countPending = allTasks.filter(task => task.status === 'pending_review').length;
+        // 紅燈只統計執行中且超時的任務
+        const countOvertime = allTasks.filter(task => task.status === 'in_progress' && task.isOvertime).length;
+
+        document.getElementById('countAll').textContent = countAll;
+        document.getElementById('countPending').textContent = countPending;
+        document.getElementById('countOvertime').textContent = countOvertime;
+    }
+
+    // ==========================================
+    // 顯示任務表格
+    // ==========================================
+
+    /**
+     * 顯示任務表格
+     */
+    function displayTaskTable() {
+        const tbody = document.getElementById('reviewTableBody');
+        const tableContainer = document.getElementById('reviewTableContainer');
+        const emptyState = document.getElementById('reviewEmptyState');
+
+        if (!tbody) return;
+
+        if (filteredTasks.length === 0) {
+            tableContainer.style.display = 'none';
+            emptyState.style.display = 'block';
+            stopTaskTimeUpdate(); // 沒有任務時停止更新
+            return;
+        }
+
+        tableContainer.style.display = 'block';
+        emptyState.style.display = 'none';
+
+        tbody.innerHTML = '';
+
+        filteredTasks.forEach(function(task) {
+            const row = createTaskRow(task);
+            tbody.appendChild(row);
+        });
+
+        // 只在上課中才啟動任務時間即時更新（階段 2修正）
+        // 如果沒有 currentSession 或課堂已結束，不啟動時間更新
+        if (currentSession) {
+            startTaskTimeUpdate();
+            APP_CONFIG.log('✅ 上課中，啟動任務時間更新');
+        } else {
+            stopTaskTimeUpdate();
+            APP_CONFIG.log('⏸️ 未上課，不啟動任務時間更新');
+        }
+    }
+
+    /**
+     * 建立任務行（階段 2：支援執行中 + 待審核）
+     */
+    function createTaskRow(task) {
+        const tr = document.createElement('tr');
+
+        // 如果超時，添加 overtime 類別（會有閃爍動畫）
+        if (task.isOvertime) {
+            tr.classList.add('overtime');
+        }
+
+        // 燈號邏輯（階段 2）
+        let lightColor = 'yellow'; // 默認黃燈（待審核）
+        let statusBadge = '';
+        let showActions = true; // 是否顯示審核按鈕
+
+        if (task.status === 'in_progress') {
+            // 執行中：綠燈或紅燈
+            lightColor = task.isOvertime ? 'red' : 'green';
+            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⚡ 執行中</span>';
+            showActions = false; // 執行中不顯示審核按鈕
+        } else if (task.status === 'pending_review') {
+            // 待審核：黃燈
+            lightColor = 'yellow';
+            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⏱️ 待審核</span>';
+            showActions = true; // 待審核顯示審核按鈕
+        }
+
+        // 時間格式化（HH:MM:SS 或 MM:SS）
+        let timeStr = '';
+        const hours = Math.floor(task.executionTime / 3600);
+        const minutes = Math.floor((task.executionTime % 3600) / 60);
+        const seconds = task.executionTime % 60;
+
+        if (hours > 0) {
+            timeStr = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        } else {
+            timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        const timeClass = task.isOvertime ? 'overtime' : '';
+
+        // 審核按鈕（根據狀態決定是否顯示）
+        let actionsHtml = '';
+        if (showActions) {
+            actionsHtml = `
+                <button class="btn-approve" onclick="handleApproveTask('${task.taskProgressId}')">
+                    ✅ 通過
+                </button>
+                <button class="btn-reject" onclick="handleRejectTask('${task.taskProgressId}')">
+                    ❌ 退回
+                </button>
+            `;
+        } else {
+            actionsHtml = '<span style="color: var(--text-muted); font-size: 14px;">進行中...</span>';
+        }
+
+        // 為 in_progress 任務添加 data 屬性，用於前端即時更新
+        if (task.status === 'in_progress' && task.startTime) {
+            tr.setAttribute('data-task-id', task.taskProgressId);
+            tr.setAttribute('data-start-time', task.startTime);
+            tr.setAttribute('data-time-limit', task.timeLimit || 0);
+            tr.setAttribute('data-accumulated-time', task.timeSpent || 0);  // 累積時間
+        }
+
+        tr.innerHTML = `
+            <td style="text-align: center;">
+                <span class="status-light ${lightColor}"></span>
+            </td>
+            <td style="text-align: center; font-weight: 700;">
+                ${escapeHtml(task.studentNumber)}
+            </td>
+            <td style="font-weight: 600;">
+                ${escapeHtml(task.studentName)}
+            </td>
+            <td style="color: var(--text-medium);">
+                ${escapeHtml(task.className)}
+            </td>
+            <td style="font-weight: 600;">
+                ${escapeHtml(task.taskName)}
+            </td>
+            <td>
+                <span style="display: inline-block; padding: 4px 12px; background: rgba(59, 130, 246, 0.1); color: #3498db; border-radius: 12px; font-size: 12px; font-weight: 600;">
+                    ${escapeHtml(task.tierDisplay)}
+                </span>
+            </td>
+            <td>
+                <span class="task-time ${timeClass}" data-time-cell="true">${timeStr}</span>
+                ${statusBadge}
+            </td>
+            <td>
+                <div class="review-actions">
+                    ${actionsHtml}
+                </div>
+            </td>
+        `;
+
+        return tr;
+    }
+
+    /**
+     * 顯示空狀態（階段 2：恢復預設訊息）
+     */
+    function showEmptyState() {
+        const emptyState = document.getElementById('reviewEmptyState');
+        if (emptyState) {
+            emptyState.innerHTML = `
+                <div class="empty-state-icon">📊</div>
+                <h3>暫無任務</h3>
+                <p>當學生開始執行或提交任務後，將會顯示在此處<br>您可以即時監控執行中的任務，並審核待審核的任務</p>
+            `;
+        }
+        document.getElementById('reviewTableContainer').style.display = 'none';
+        document.getElementById('reviewEmptyState').style.display = 'block';
+    }
+
+    // ==========================================
+    // 審核操作
+    // ==========================================
+
+    /**
+     * 審核通過
+     */
+    window.handleApproveTask = function(taskProgressId) {
+        if (!confirm('確定要通過此任務嗎？\n學生將獲得代幣獎勵。')) {
+            return;
+        }
+
+        const params = new URLSearchParams({
+            action: 'approveTask',
+            teacherEmail: reviewUser.email,
+            taskProgressId: taskProgressId
+        });
+
+        APP_CONFIG.log('📤 審核通過任務...', { taskProgressId });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(response) {
+                APP_CONFIG.log('📥 審核通過回應:', response);
+
+                if (response.success) {
+                    showToast('✅ 審核通過！學生已獲得代幣', 'success');
+
+                    // 重新載入資料
+                    loadReviewTasks();
+                } else {
+                    showToast(response.message || '審核失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                APP_CONFIG.error('審核通過失敗', error);
+                showToast('審核失敗：' + error.message, 'error');
+            });
+    };
+
+    /**
+     * 退回任務
+     */
+    window.handleRejectTask = function(taskProgressId) {
+        if (!confirm('確定要退回此任務嗎？\n任務將回到執行中狀態，學生可以重新提交。')) {
+            return;
+        }
+
+        const params = new URLSearchParams({
+            action: 'rejectTask',
+            teacherEmail: reviewUser.email,
+            taskProgressId: taskProgressId
+        });
+
+        APP_CONFIG.log('📤 退回任務...', { taskProgressId });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(response) {
+                APP_CONFIG.log('📥 退回任務回應:', response);
+
+                if (response.success) {
+                    showToast('✅ 任務已退回，學生可重新提交', 'success');
+
+                    // 重新載入資料
+                    loadReviewTasks();
+                } else {
+                    showToast(response.message || '退回失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                APP_CONFIG.error('退回任務失敗', error);
+                showToast('退回失敗：' + error.message, 'error');
+            });
+    };
+
+    // ==========================================
+    // 自動刷新
+    // ==========================================
+
+    /**
+     * 啟動自動刷新（階段 2：只在上課時啟動）
+     */
+    function startAutoRefresh() {
+        // 清除舊的計時器
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+        }
+
+        // 性能優化：改為 60 秒自動刷新（原本 30 秒太頻繁）
+        // 原因：前端已經有即時更新執行中任務的時間（每 1 秒）
+        // 自動刷新主要用於檢測新提交的任務或退回的任務
+        autoRefreshInterval = setInterval(function() {
+            // 智能刷新：如果有待審核或執行中的任務才刷新
+            const hasPendingOrInProgress = allTasks.some(task =>
+                task.status === 'pending_review' || task.status === 'in_progress'
+            );
+
+            if (hasPendingOrInProgress) {
+                APP_CONFIG.log('🔄 自動刷新任務資料...（有待處理任務）');
+                loadReviewTasks(true); // 傳入 true 表示是自動刷新
+            } else {
+                APP_CONFIG.log('⏸️ 無待處理任務，跳過本次刷新（節省資源）');
+                refreshCountdown = 60; // 重置倒數
+            }
+        }, 60000); // 改為 60 秒
+
+        // 倒數計時（每秒更新）
+        refreshCountdown = 60; // 改為 60 秒
+        countdownInterval = setInterval(function() {
+            refreshCountdown--;
+            if (refreshCountdown <= 0) {
+                refreshCountdown = 60; // 改為 60 秒
+            }
+            const countdownElement = document.getElementById('refreshCountdown');
+            if (countdownElement) {
+                countdownElement.textContent = refreshCountdown;
+            }
+        }, 1000);
+
+        APP_CONFIG.log('✅ 智能自動刷新已啟動（每 60 秒，無任務時跳過）');
+    }
+
+    /**
+     * 停止自動刷新
+     */
+    function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+        APP_CONFIG.log('⏸️ 自動刷新已停止');
+    }
+
+    // 當離開頁面時停止所有計時器
+    window.addEventListener('beforeunload', function() {
+        stopAutoRefresh();
+        stopTimeUpdate(); // 停止 session 時間更新
+        stopTaskTimeUpdate(); // 停止任務時間更新（階段 2）
+    });
+
+    // ==========================================
+    // 工具函數
+    // ==========================================
+
+    /**
+     * HTML 轉義（防止 XSS）
+     */
+    function escapeHtml(text) {
+        if (!text && text !== 0 && text !== false) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
+})(); // IIFE 結尾
