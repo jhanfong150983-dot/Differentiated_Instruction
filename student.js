@@ -290,8 +290,8 @@
             })
             .then(function(resumed) {
                 if (resumed) {
-                    // 已經直接進入任務列表，不需要顯示層級選擇
-                    hideLoading('mainLoading');
+                    // ✓ 修正：已經直接進入任務列表，loadTierTasks 會負責 hideLoading
+                    // 不在這裡 hideLoading，避免畫面還沒準備好就隱藏 loading
                 } else {
                     // 沒有未完成任務，顯示層級選擇
                     hideLoading('mainLoading');
@@ -360,8 +360,8 @@
                                 selectedTier = tier;
                                 // 記錄自動恢復難度
                                 recordTierChange('', tier, 'auto_resume', taskId, 0);
-                                // 直接載入該層級的任務（使用緩存數據）
-                                loadTierTasks(true); // 傳遞 true 表示使用緩存
+                                // ✓ 修正：直接載入該層級的任務（使用緩存數據，跳過 showLoading）
+                                loadTierTasks(true, true); // useCache=true, skipShowLoading=true
                                 return true;
                             }
                         }
@@ -379,8 +379,8 @@
                     if (tierInfo) {
                         selectedTier = tier;
                         // 不記錄難度變更（這是從記錄恢復，不是新的變更）
-                        // 直接載入該層級的任務（使用緩存數據）
-                        loadTierTasks(true); // 傳遞 true 表示使用緩存
+                        // ✓ 修正：直接載入該層級的任務（使用緩存數據，跳過 showLoading）
+                        loadTierTasks(true, true); // useCache=true, skipShowLoading=true
                         return true;
                     }
                 }
@@ -1010,9 +1010,13 @@
     /**
      * 載入選定層級的任務（階段 2：檢查 session 狀態）
      * @param {boolean} useCache - 是否使用緩存數據（避免重複 API 調用）
+     * @param {boolean} skipShowLoading - 是否跳過 showLoading（當已經在顯示 loading 時）
      */
-    function loadTierTasks(useCache = false) {
-        showLoading('mainLoading');
+    function loadTierTasks(useCache = false, skipShowLoading = false) {
+        // ✓ 修正：只在需要時顯示 loading，避免重複調用
+        if (!skipShowLoading) {
+            showLoading('mainLoading');
+        }
 
         // 階段 2：先檢查班級是否有進行中的課堂 session
         if (!selectedClass || !selectedClass.classId) {
@@ -1111,53 +1115,23 @@
                 if (response.success) {
                     const allTasks = response.tasks || [];
 
-                    // 🔍 調試：打印所有任務的結構
-                    if (allTasks.length > 0) {
-                        APP_CONFIG.log('🔍 調試：第一個任務結構:', allTasks[0]);
-                        APP_CONFIG.log('🔍 調試：所有任務的 tier:', allTasks.map(t => ({ id: t.taskId, tier: t.tier })));
-                    }
-
                     // 篩選出選定層級的任務
                     currentTasks = allTasks.filter(task => {
-                        // 🔍 調試：打印每個任務的篩選結果
-                        const isMixed = task.tier === 'mixed';
-                        let matched = false;
-
                         // 新結構：直接比對 tier
-                        if (!isMixed) {
-                            matched = task.tier === selectedTier;
-                            APP_CONFIG.log('🔍 新結構任務:', { taskId: task.taskId, tier: task.tier, selectedTier, matched });
-                            return matched;
+                        if (task.tier !== 'mixed') {
+                            return task.tier === selectedTier;
                         }
 
                         // 舊結構（tier === 'mixed'）：根據選擇的難度檢查對應欄位是否有內容
                         if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
-                            matched = !!(task.tutorialDesc || task.tutorialLink);
-                            APP_CONFIG.log('🔍 舊結構任務 (tutorial):', {
-                                taskId: task.taskId,
-                                tutorialDesc: task.tutorialDesc ? '有' : '無',
-                                tutorialLink: task.tutorialLink ? '有' : '無',
-                                matched
-                            });
+                            return !!(task.tutorialDesc || task.tutorialLink);
                         } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
-                            matched = !!(task.adventureDesc || task.adventureLink);
-                            APP_CONFIG.log('🔍 舊結構任務 (adventure):', {
-                                taskId: task.taskId,
-                                adventureDesc: task.adventureDesc ? '有' : '無',
-                                adventureLink: task.adventureLink ? '有' : '無',
-                                matched
-                            });
+                            return !!(task.adventureDesc || task.adventureLink);
                         } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
-                            matched = !!(task.hardcoreDesc || task.hardcoreLink);
-                            APP_CONFIG.log('🔍 舊結構任務 (hardcore):', {
-                                taskId: task.taskId,
-                                hardcoreDesc: task.hardcoreDesc ? '有' : '無',
-                                hardcoreLink: task.hardcoreLink ? '有' : '無',
-                                matched
-                            });
+                            return !!(task.hardcoreDesc || task.hardcoreLink);
                         }
 
-                        return matched;
+                        return false;
                     });
 
                     // 按 sequence 排序
@@ -1172,13 +1146,11 @@
                 }
             })
             .then(function(progressResult) {
-                APP_CONFIG.log('✅ 任務進度已載入');
                 hideLoading('mainLoading');
-                
+
                 // 確保 displayQuestBoard 被調用
                 try {
                     displayQuestBoard();
-                    APP_CONFIG.log('✅ 任務畫面已顯示');
                 } catch (error) {
                     APP_CONFIG.error('顯示任務畫面時出錯:', error);
                     showToast('顯示任務畫面失敗：' + error.message, 'error');

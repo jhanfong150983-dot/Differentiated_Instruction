@@ -21,7 +21,7 @@ if (document.readyState === 'loading') {
 }
 
 function initializeCourseModule() {
-    console.log('📚 課程管理模組初始化');
+    APP_CONFIG.log('📚 課程管理模組初始化');
     // 在整合版本中，課程載入由 switchTab 觸發
 }
 
@@ -42,13 +42,13 @@ function loadCourses() {
         action: 'getTeacherCourses',
         teacherEmail: email
     });
-    
-    console.log('📤 載入課程列表...');
-    
+
+    APP_CONFIG.log('📤 載入課程列表...');
+
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
         .then(function(response) {
-            console.log('📥 課程列表回應:', response);
+            APP_CONFIG.log('📥 課程列表回應:', response);
 
             if (response.success && response.courses) {
                 displayCourses(response.courses);
@@ -184,15 +184,15 @@ function handleCreateCourse() {
         teacherEmail: email
     });
     
-    console.log('📤 建立課程...');
-    
+    APP_CONFIG.log('📤 建立課程...');
+
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
         .then(function(response) {
             btn.disabled = false;
             btn.textContent = '建立課程';
-            
-            console.log('📥 建立課程回應:', response);
+
+            APP_CONFIG.log('📥 建立課程回應:', response);
             
             if (response.success) {
                 showToast(`課程「${name}」建立成功！`, 'success');
@@ -271,14 +271,14 @@ function loadCourseTasks(courseId) {
         courseId: courseId
     });
     
-    console.log('📤 載入課程任務...');
-    
+    APP_CONFIG.log('📤 載入課程任務...');
+
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
         .then(function(response) {
             hideLoading('taskLoading');
 
-            console.log('📥 課程任務回應:', response);
+            APP_CONFIG.log('📥 課程任務回應:', response);
 
             if (response.success) {
                 currentCourse = response.courseInfo;
@@ -465,7 +465,7 @@ function handleAddTask() {
         taskData: JSON.stringify(taskData)
     });
     
-    console.log('📤 新增任務...');
+    APP_CONFIG.log('📤 新增任務...');
     
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
@@ -473,7 +473,7 @@ function handleAddTask() {
             btn.disabled = false;
             btn.textContent = '新增任務';
             
-            console.log('📥 新增任務回應:', response);
+            APP_CONFIG.log('📥 新增任務回應:', response);
             
             if (response.success) {
                 showToast(`任務「${name}」新增成功！`, 'success');
@@ -575,7 +575,7 @@ function handleUpdateTask(taskId) {
         taskData: JSON.stringify(taskData)
     });
 
-    console.log('📤 更新任務...');
+    APP_CONFIG.log('📤 更新任務...');
 
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
@@ -583,7 +583,7 @@ function handleUpdateTask(taskId) {
             btn.disabled = false;
             btn.textContent = '更新任務';
 
-            console.log('📥 更新任務回應:', response);
+            APP_CONFIG.log('📥 更新任務回應:', response);
 
             if (response.success) {
                 showToast('任務更新成功！', 'success');
@@ -624,12 +624,12 @@ function deleteTask(taskId, taskName) {
         courseId: currentCourseId
     });
 
-    console.log('📤 刪除任務...');
+    APP_CONFIG.log('📤 刪除任務...');
 
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
         .then(function(response) {
-            console.log('📥 刪除任務回應:', response);
+            APP_CONFIG.log('📥 刪除任務回應:', response);
 
             if (response.success) {
                 showToast('任務刪除成功！', 'success');
@@ -711,7 +711,7 @@ function handleUpdateCourse(courseId) {
         description: desc
     });
 
-    console.log('📤 更新課程...');
+    APP_CONFIG.log('📤 更新課程...');
 
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
@@ -719,7 +719,7 @@ function handleUpdateCourse(courseId) {
             btn.disabled = false;
             btn.textContent = '更新課程';
 
-            console.log('📥 更新課程回應:', response);
+            APP_CONFIG.log('📥 更新課程回應:', response);
 
             if (response.success) {
                 showToast('課程更新成功！', 'success');
@@ -759,12 +759,12 @@ function deleteCourse(courseId, courseName) {
         courseId: courseId
     });
 
-    console.log('📤 刪除課程...');
+    APP_CONFIG.log('📤 刪除課程...');
 
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
         .then(function(response) {
-            console.log('📥 刪除課程回應:', response);
+            APP_CONFIG.log('📥 刪除課程回應:', response);
 
             if (response.success) {
                 showToast('課程刪除成功！', 'success');
@@ -1005,7 +1005,7 @@ function saveTaskOrder() {
     fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
         .then(response => response.json())
         .then(function(response) {
-            console.log('📥 排序回應:', response);
+            APP_CONFIG.log('📥 排序回應:', response);
 
             if (response.success) {
                 showToast('任務排序已儲存！', 'success');
@@ -1025,4 +1025,4 @@ function saveTaskOrder() {
 }
 
 
-console.log('✅ course.js 載入完成');
+APP_CONFIG.log('✅ course.js 載入完成');
