@@ -323,17 +323,18 @@ function displayTasks(tasks) {
    tasks.forEach(function(task, index) {
        const item = document.createElement('div');
        item.className = 'task-item';
-       
+       item.dataset.taskId = task.taskId; // ✓ 新增：儲存 taskId
+
        // ✅ 新增：顯示任務包含哪些層級
        const hasTutorial = task.tutorialDesc || task.tutorialLink;
        const hasAdventure = task.adventureDesc || task.adventureLink;
        const hasHardcore = task.hardcoreDesc || task.hardcoreLink;
-       
+
        let tierBadges = '';
        if (hasTutorial) tierBadges += '<span style="background:#10B981;color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:4px;">📘 基礎</span>';
        if (hasAdventure) tierBadges += '<span style="background:#F59E0B;color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:4px;">📙 進階</span>';
        if (hasHardcore) tierBadges += '<span style="background:#EF4444;color:white;padding:2px 8px;border-radius:4px;font-size:12px;">📕 精通</span>';
-       
+
        item.innerHTML = `
            <div class="task-sequence">${index + 1}</div>
            <div class="task-info">
@@ -350,7 +351,7 @@ function displayTasks(tasks) {
                <button class="btn-icon" onclick="deleteTask('${task.taskId}', '${escapeHtml(task.taskName || task.name || '')}')">🗑️</button>
            </div>
        `;
-       
+
        container.appendChild(item);
    });
 }
@@ -370,6 +371,7 @@ function openAddTaskModal() {
 
     // 重置表單
     document.getElementById('newTaskName').value = '';
+    document.getElementById('newTaskSequence').value = ''; // ✓ 新增：重置排序
     document.getElementById('newTaskTimeLimit').value = '0';
     document.getElementById('newTaskTokenReward').value = '100';
     document.getElementById('tutorialDesc').value = '';
@@ -508,6 +510,7 @@ function editTask(taskId) {
 
     // 填入表單
     document.getElementById('newTaskName').value = task.taskName || task.name || '';
+    document.getElementById('newTaskSequence').value = task.sequence || ''; // ✓ 新增：填入排序
     document.getElementById('newTaskTimeLimit').value = task.timeLimit || 0;
     document.getElementById('newTaskTokenReward').value = task.tokenReward || 100;
     document.getElementById('tutorialDesc').value = task.tutorialDesc || '';
@@ -536,6 +539,7 @@ function editTask(taskId) {
  */
 function handleUpdateTask(taskId) {
     const name = document.getElementById('newTaskName').value.trim();
+    const sequence = parseInt(document.getElementById('newTaskSequence').value); // ✓ 新增：讀取排序
     const timeLimit = parseInt(document.getElementById('newTaskTimeLimit').value) || 0;
     const tokenReward = parseInt(document.getElementById('newTaskTokenReward').value) || 100;
 
@@ -555,6 +559,11 @@ function handleUpdateTask(taskId) {
         hardcoreDesc: document.getElementById('hardcoreDesc').value.trim(),
         hardcoreLink: document.getElementById('hardcoreLink').value.trim()
     };
+
+    // ✓ 新增：如果有輸入排序，則加入 taskData
+    if (!isNaN(sequence) && sequence > 0) {
+        taskData.sequence = sequence;
+    }
 
     const btn = event.target;
     btn.disabled = true;
@@ -804,6 +813,215 @@ function formatDate(dateStr) {
     } catch (e) {
         return '(日期格式錯誤)';
     }
+}
+
+// ==========================================
+// 拖放排序功能
+// ==========================================
+
+let isReorderMode = false;
+let draggedElement = null;
+
+/**
+ * 切換重新排序模式
+ */
+function toggleReorderMode() {
+    isReorderMode = !isReorderMode;
+    const btn = document.getElementById('reorderModeBtn');
+    const container = document.getElementById('taskListContainer');
+
+    if (isReorderMode) {
+        btn.textContent = '💾 儲存排序';
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-primary');
+
+        // 啟用拖放
+        enableDragAndDrop(container);
+        showToast('拖放任務來調整順序，完成後點擊「儲存排序」', 'info');
+    } else {
+        btn.textContent = '📋 重新排序';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-secondary');
+
+        // 停用拖放
+        disableDragAndDrop(container);
+
+        // 儲存新順序
+        saveTaskOrder();
+    }
+}
+
+/**
+ * 啟用拖放功能
+ */
+function enableDragAndDrop(container) {
+    const taskItems = container.querySelectorAll('.task-item');
+
+    taskItems.forEach((item) => {
+        item.draggable = true;
+        item.classList.add('draggable');
+
+        // 拖放事件
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragover', handleDragOver);
+        item.addEventListener('drop', handleDrop);
+        item.addEventListener('dragend', handleDragEnd);
+        item.addEventListener('dragenter', handleDragEnter);
+        item.addEventListener('dragleave', handleDragLeave);
+    });
+}
+
+/**
+ * 停用拖放功能
+ */
+function disableDragAndDrop(container) {
+    const taskItems = container.querySelectorAll('.task-item');
+
+    taskItems.forEach((item) => {
+        item.draggable = false;
+        item.classList.remove('draggable');
+
+        // 移除事件監聽
+        item.removeEventListener('dragstart', handleDragStart);
+        item.removeEventListener('dragover', handleDragOver);
+        item.removeEventListener('drop', handleDrop);
+        item.removeEventListener('dragend', handleDragEnd);
+        item.removeEventListener('dragenter', handleDragEnter);
+        item.removeEventListener('dragleave', handleDragLeave);
+    });
+}
+
+/**
+ * 拖放事件處理
+ */
+function handleDragStart(e) {
+    draggedElement = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.innerHTML);
+}
+
+function handleDragOver(e) {
+    if (e.preventDefault) {
+        e.preventDefault();
+    }
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+}
+
+function handleDragEnter(e) {
+    if (this !== draggedElement) {
+        this.classList.add('drag-over');
+    }
+}
+
+function handleDragLeave(e) {
+    this.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+    if (e.stopPropagation) {
+        e.stopPropagation();
+    }
+
+    this.classList.remove('drag-over');
+
+    if (draggedElement !== this) {
+        // 交換位置
+        const container = document.getElementById('taskListContainer');
+        const allItems = [...container.children];
+        const draggedIndex = allItems.indexOf(draggedElement);
+        const targetIndex = allItems.indexOf(this);
+
+        if (draggedIndex < targetIndex) {
+            this.parentNode.insertBefore(draggedElement, this.nextSibling);
+        } else {
+            this.parentNode.insertBefore(draggedElement, this);
+        }
+
+        // 更新序號顯示
+        updateTaskSequenceNumbers();
+    }
+
+    return false;
+}
+
+function handleDragEnd(e) {
+    this.classList.remove('dragging');
+
+    // 移除所有 drag-over 類
+    const container = document.getElementById('taskListContainer');
+    const taskItems = container.querySelectorAll('.task-item');
+    taskItems.forEach((item) => {
+        item.classList.remove('drag-over');
+    });
+}
+
+/**
+ * 更新任務序號顯示
+ */
+function updateTaskSequenceNumbers() {
+    const container = document.getElementById('taskListContainer');
+    const taskItems = container.querySelectorAll('.task-item');
+
+    taskItems.forEach((item, index) => {
+        const sequenceEl = item.querySelector('.task-sequence');
+        if (sequenceEl) {
+            sequenceEl.textContent = index + 1;
+        }
+    });
+}
+
+/**
+ * 儲存任務順序
+ */
+function saveTaskOrder() {
+    const container = document.getElementById('taskListContainer');
+    const taskItems = container.querySelectorAll('.task-item');
+
+    // 收集新的任務順序（task IDs）
+    const taskOrder = [];
+    taskItems.forEach((item) => {
+        const taskId = item.dataset.taskId;
+        if (taskId) {
+            taskOrder.push(taskId);
+        }
+    });
+
+    if (taskOrder.length === 0) {
+        showToast('沒有任務需要排序', 'warning');
+        return;
+    }
+
+    // 呼叫後端 API
+    const params = new URLSearchParams({
+        action: 'reorderTasks',
+        courseId: currentCourseId,
+        taskOrder: JSON.stringify(taskOrder)
+    });
+
+    showToast('儲存中...', 'info');
+
+    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+        .then(response => response.json())
+        .then(function(response) {
+            console.log('📥 排序回應:', response);
+
+            if (response.success) {
+                showToast('任務排序已儲存！', 'success');
+
+                // 重新載入任務列表
+                setTimeout(() => {
+                    loadCourseTasks(currentCourseId);
+                }, 500);
+            } else {
+                showToast('儲存失敗：' + (response.message || '未知錯誤'), 'error');
+            }
+        })
+        .catch(function(error) {
+            console.error('儲存排序失敗:', error);
+            showToast('儲存失敗：' + error.message, 'error');
+        });
 }
 
 
