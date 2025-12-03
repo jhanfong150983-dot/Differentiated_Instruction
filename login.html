@@ -1,71 +1,47 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <!-- 網頁基本設定 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>登入 - 分層教學平台</title>
     
-    <!-- 引入外部 CSS 樣式表 -->
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="navbar.css">
     
-    <!-- 引入 Google Fonts 字體 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
     
-    <!-- 
-        引入 Google Identity Services (GIS) 程式庫
-        這是 Google 提供的新版登入 SDK
-        ⚠️ 重要：你需要將下面的 YOUR_CLIENT_ID 替換成你的實際 Client ID
-    -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-    <!-- 整個頁面的容器 -->
     <div class="container">
         
-        <!-- 簡化版導覽列 -->
-        <nav class="navbar">
-            <div class="nav-left">
-                <!-- 點擊 Logo 可以返回首頁 -->
-                <a href="index.html" class="nav-link">
-                    <div class="logo">📚</div>
-                    <h1 class="site-title">分層教學平台</h1>
-                </a>
-            </div>
-        </nav>
+        <!-- ✅ 方案 1：使用動態導覽列容器 -->
+        <div id="navbarContainer"></div>
+        
+        <!-- 移除原本的靜態導覽列 -->
+        <!-- <nav class="navbar">...</nav> -->
 
-        <!-- 登入頁面主要內容 -->
         <main class="login-main">
             
-            <!-- 登入卡片容器 -->
             <div class="login-container">
                 
-                <!-- 登入卡片 -->
                 <div class="login-card">
                     
-                    <!-- 卡片標題區域 -->
                     <div class="login-header">
                         <h2 class="login-title">歡迎回來</h2>
                         <p class="login-subtitle">使用 Google 帳號登入，開始您的學習之旅</p>
                     </div>
                     
-                    <!-- 登入表單區域 -->
                     <div class="login-body">
                         
-                        <!-- 
-                            Google 登入按鈕容器
-                            id="googleLoginButton" 讓 JavaScript 可以找到這個元素
-                        -->
                         <div id="googleLoginButton" class="google-login-wrapper">
                             <!-- Google 登入按鈕會由 JavaScript 自動插入這裡 -->
                         </div>
                         
                     </div>
                     
-                    <!-- 卡片底部說明 -->
                     <div class="login-footer">
                         <p class="privacy-text">
                             登入即表示您同意我們的<a href="#">服務條款</a>和<a href="#">隱私政策</a>
@@ -74,7 +50,6 @@
                     
                 </div>
                 
-                <!-- 登入頁面裝飾背景 -->
                 <div class="login-decoration">
                     <div class="deco-circle deco-circle-1"></div>
                     <div class="deco-circle deco-circle-2"></div>
@@ -85,15 +60,15 @@
             
         </main>
 
-        <!-- 頁尾 -->
         <footer class="footer">
             <p>&copy; 2024 分層教學平台</p>
         </footer>
 
     </div>
 
-    <script src="navbar.js"></script>
+    <!-- JavaScript 載入順序很重要 -->
     <script src="config.js"></script>
+    <script src="navbar.js"></script>
     <script src="login.js"></script>
 </body>
 </html>
