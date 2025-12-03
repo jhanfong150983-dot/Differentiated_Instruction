@@ -665,12 +665,17 @@
      * 載入或創建學習記錄
      */
     function loadOrCreateLearningRecord() {
+        // ✓ 修正：傳入 classId 參數，確保取得正確班級的學習記錄
         const params = new URLSearchParams({
             action: 'getStudentDashboard',
-            userEmail: currentStudent.email
+            userEmail: currentStudent.email,
+            classId: selectedClass.classId  // ✓ 新增：指定班級 ID
         });
 
-        APP_CONFIG.log('📤 載入學習記錄...', { userEmail: currentStudent.email });
+        APP_CONFIG.log('📤 載入學習記錄...', {
+            userEmail: currentStudent.email,
+            classId: selectedClass.classId
+        });
 
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
