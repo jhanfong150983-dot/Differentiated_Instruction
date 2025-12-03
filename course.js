@@ -320,27 +320,39 @@ function displayTasks(tasks) {
     container.innerHTML = '';
     
     // 生成任務列表
-    tasks.forEach(function(task, index) {
-        const item = document.createElement('div');
-        item.className = 'task-item';
-        
-        item.innerHTML = `
-            <div class="task-sequence">${index + 1}</div>
-            <div class="task-info">
-                <div class="task-name">${escapeHtml(task.taskName)}</div>
-                <div class="task-meta">
-                    💰 獎勵: ${task.tokenReward} 代幣
-                    ${task.timeLimit ? ` | ⏱️ 時限: ${task.timeLimit} 分鐘` : ' | ⏱️ 無時限'}
-                </div>
-            </div>
-            <div class="task-actions">
-                <button class="btn-icon" onclick="editTask('${task.taskId}')">✏️</button>
-                <button class="btn-icon" onclick="deleteTask('${task.taskId}', '${escapeHtml(task.taskName)}')">🗑️</button>
-            </div>
-        `;
-        
-        container.appendChild(item);
-    });
+   tasks.forEach(function(task, index) {
+       const item = document.createElement('div');
+       item.className = 'task-item';
+       
+       // ✅ 新增：顯示任務包含哪些層級
+       const hasTutorial = task.tutorialDesc || task.tutorialLink;
+       const hasAdventure = task.adventureDesc || task.adventureLink;
+       const hasHardcore = task.hardcoreDesc || task.hardcoreLink;
+       
+       let tierBadges = '';
+       if (hasTutorial) tierBadges += '<span style="background:#10B981;color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:4px;">📘 基礎</span>';
+       if (hasAdventure) tierBadges += '<span style="background:#F59E0B;color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:4px;">📙 進階</span>';
+       if (hasHardcore) tierBadges += '<span style="background:#EF4444;color:white;padding:2px 8px;border-radius:4px;font-size:12px;">📕 精通</span>';
+       
+       item.innerHTML = `
+           <div class="task-sequence">${index + 1}</div>
+           <div class="task-info">
+               <div class="task-name">${escapeHtml(task.taskName || task.name || '(無名稱)')}</div>
+               <div class="task-meta">
+                   ${tierBadges}
+                   <br>
+                   💰 獎勵: ${task.tokenReward || 100} 代幣
+                   ${task.timeLimit ? ` | ⏱️ 時限: ${task.timeLimit} 分鐘` : ' | ⏱️ 無時限'}
+               </div>
+           </div>
+           <div class="task-actions">
+               <button class="btn-icon" onclick="editTask('${task.taskId}')">✏️</button>
+               <button class="btn-icon" onclick="deleteTask('${task.taskId}', '${escapeHtml(task.taskName || task.name || '')}')">🗑️</button>
+           </div>
+       `;
+       
+       container.appendChild(item);
+   });
 }
 
 // ==========================================
@@ -495,7 +507,7 @@ function editTask(taskId) {
     }
 
     // 填入表單
-    document.getElementById('newTaskName').value = task.taskName || '';
+    document.getElementById('newTaskName').value = task.taskName || task.name || '';
     document.getElementById('newTaskTimeLimit').value = task.timeLimit || 0;
     document.getElementById('newTaskTokenReward').value = task.tokenReward || 100;
     document.getElementById('tutorialDesc').value = task.tutorialDesc || '';
@@ -793,5 +805,6 @@ function formatDate(dateStr) {
         return '(日期格式錯誤)';
     }
 }
+
 
 console.log('✅ course.js 載入完成');
