@@ -1112,7 +1112,23 @@
                     const allTasks = response.tasks || [];
 
                     // 篩選出選定層級的任務
-                    currentTasks = allTasks.filter(task => task.tier === selectedTier);
+                    currentTasks = allTasks.filter(task => {
+                        // 新結構：直接比對 tier
+                        if (task.tier !== 'mixed') {
+                            return task.tier === selectedTier;
+                        }
+
+                        // 舊結構（tier === 'mixed'）：根據選擇的難度檢查對應欄位是否有內容
+                        if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
+                            return task.tutorialDesc || task.tutorialLink;
+                        } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
+                            return task.adventureDesc || task.adventureLink;
+                        } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
+                            return task.hardcoreDesc || task.hardcoreLink;
+                        }
+
+                        return false;
+                    });
 
                     // 按 sequence 排序
                     currentTasks.sort((a, b) => a.sequence - b.sequence);
@@ -1838,27 +1854,59 @@
         if (!modal) return;
 
         // 填入任務資訊
-        document.getElementById('modalTaskName').textContent = task.name;
+        document.getElementById('modalTaskName').textContent = task.name || task.taskName;
 
         let taskTypeName = '教學';
         if (task.type === 'practice') taskTypeName = '練習';
         else if (task.type === 'assessment') taskTypeName = '評量';
 
         document.getElementById('modalTaskType').textContent = taskTypeName;
-        document.getElementById('modalTaskTier').textContent = task.tier;
+        document.getElementById('modalTaskTier').textContent = task.tier === 'mixed' ? selectedTier : task.tier;
         document.getElementById('modalTaskReward').textContent = `💰 ${task.tokenReward || 0} 代幣`;
 
+        // ✓ 修正：根據任務結構決定顯示內容
+        let taskContent = '';
+        let taskLink = '';
+
+        if (task.tier === 'mixed') {
+            // 舊結構：根據 selectedTier 選擇對應的描述和連結
+            if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
+                taskContent = task.tutorialDesc || '';
+                taskLink = task.tutorialLink || '';
+            } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
+                taskContent = task.adventureDesc || '';
+                taskLink = task.adventureLink || '';
+            } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
+                taskContent = task.hardcoreDesc || '';
+                taskLink = task.hardcoreLink || '';
+            }
+        } else {
+            // 新結構：直接使用 content 和 link
+            taskContent = task.content || '';
+            taskLink = task.link || '';
+        }
+
         // 顯示內容或連結
-        if (task.type === 'tutorial') {
+        if (taskContent && !taskLink) {
+            // 只有內容，沒有連結
             document.getElementById('modalContentSection').style.display = 'block';
             document.getElementById('modalLinkSection').style.display = 'none';
-            document.getElementById('modalTaskContent').textContent = task.content || '暫無內容';
-        } else {
-            document.getElementById('modalContentSection').style.display = 'none';
+            document.getElementById('modalTaskContent').textContent = taskContent || '暫無內容';
+        } else if (taskLink) {
+            // 有連結
+            document.getElementById('modalContentSection').style.display = taskContent ? 'block' : 'none';
             document.getElementById('modalLinkSection').style.display = 'block';
+            if (taskContent) {
+                document.getElementById('modalTaskContent').textContent = taskContent;
+            }
             const link = document.getElementById('modalTaskLink');
-            link.href = task.link || '#';
-            link.textContent = task.link ? '開啟任務連結 →' : '暫無連結';
+            link.href = taskLink;
+            link.textContent = '開啟任務連結 →';
+        } else {
+            // 都沒有
+            document.getElementById('modalContentSection').style.display = 'block';
+            document.getElementById('modalLinkSection').style.display = 'none';
+            document.getElementById('modalTaskContent').textContent = '暫無內容';
         }
 
         // 顯示按鈕
@@ -1870,7 +1918,7 @@
         // 有連結（教材）：顯示按钮
         // 無連結：不顯示
         if (reopenBtn) {
-            if (task.link && task.link.trim() !== '') {
+            if (taskLink && taskLink.trim() !== '') {
                 reopenBtn.style.display = 'inline-block';
             } else {
                 reopenBtn.style.display = 'none';
@@ -2027,13 +2075,35 @@
      * 重新打開任務教材
      */
     window.reopenTaskMaterial = function() {
-        if (!selectedTask || !selectedTask.link) {
+        if (!selectedTask) {
+            showToast('未選擇任務', 'warning');
+            return;
+        }
+
+        // ✓ 修正：根據任務結構取得正確的連結
+        let taskLink = '';
+
+        if (selectedTask.tier === 'mixed') {
+            // 舊結構：根據 selectedTier 選擇對應的連結
+            if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
+                taskLink = selectedTask.tutorialLink || '';
+            } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
+                taskLink = selectedTask.adventureLink || '';
+            } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
+                taskLink = selectedTask.hardcoreLink || '';
+            }
+        } else {
+            // 新結構：直接使用 link
+            taskLink = selectedTask.link || '';
+        }
+
+        if (!taskLink || taskLink.trim() === '') {
             showToast('此任務沒有教材連結', 'warning');
             return;
         }
 
         // 在新分頁打開教材
-        window.open(selectedTask.link, '_blank');
+        window.open(taskLink, '_blank');
         showToast('已在新分頁打開教材', 'success');
     };
 
@@ -2301,10 +2371,26 @@
                     // 更新進度狀態
                     currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
 
+                    // ✓ 修正：根據任務結構取得正確的連結
+                    let taskLink = '';
+                    if (selectedTask.tier === 'mixed') {
+                        // 舊結構：根據 selectedTier 選擇對應的連結
+                        if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
+                            taskLink = selectedTask.tutorialLink || '';
+                        } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
+                            taskLink = selectedTask.adventureLink || '';
+                        } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
+                            taskLink = selectedTask.hardcoreLink || '';
+                        }
+                    } else {
+                        // 新結構：直接使用 link
+                        taskLink = selectedTask.link || '';
+                    }
+
                     // 🔗 自動打開教材連結（如果有的話）
-                    if (selectedTask.link && selectedTask.link.trim() !== '') {
-                        APP_CONFIG.log('📖 打開教材連結:', selectedTask.link);
-                        window.open(selectedTask.link, '_blank');
+                    if (taskLink && taskLink.trim() !== '') {
+                        APP_CONFIG.log('📖 打開教材連結:', taskLink);
+                        window.open(taskLink, '_blank');
                     } else {
                         APP_CONFIG.log('ℹ️ 此任務沒有外部連結');
                     }
