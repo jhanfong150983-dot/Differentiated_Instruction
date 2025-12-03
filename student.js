@@ -1111,23 +1111,53 @@
                 if (response.success) {
                     const allTasks = response.tasks || [];
 
+                    // 🔍 調試：打印所有任務的結構
+                    if (allTasks.length > 0) {
+                        APP_CONFIG.log('🔍 調試：第一個任務結構:', allTasks[0]);
+                        APP_CONFIG.log('🔍 調試：所有任務的 tier:', allTasks.map(t => ({ id: t.taskId, tier: t.tier })));
+                    }
+
                     // 篩選出選定層級的任務
                     currentTasks = allTasks.filter(task => {
+                        // 🔍 調試：打印每個任務的篩選結果
+                        const isMixed = task.tier === 'mixed';
+                        let matched = false;
+
                         // 新結構：直接比對 tier
-                        if (task.tier !== 'mixed') {
-                            return task.tier === selectedTier;
+                        if (!isMixed) {
+                            matched = task.tier === selectedTier;
+                            APP_CONFIG.log('🔍 新結構任務:', { taskId: task.taskId, tier: task.tier, selectedTier, matched });
+                            return matched;
                         }
 
                         // 舊結構（tier === 'mixed'）：根據選擇的難度檢查對應欄位是否有內容
                         if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
-                            return task.tutorialDesc || task.tutorialLink;
+                            matched = !!(task.tutorialDesc || task.tutorialLink);
+                            APP_CONFIG.log('🔍 舊結構任務 (tutorial):', {
+                                taskId: task.taskId,
+                                tutorialDesc: task.tutorialDesc ? '有' : '無',
+                                tutorialLink: task.tutorialLink ? '有' : '無',
+                                matched
+                            });
                         } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
-                            return task.adventureDesc || task.adventureLink;
+                            matched = !!(task.adventureDesc || task.adventureLink);
+                            APP_CONFIG.log('🔍 舊結構任務 (adventure):', {
+                                taskId: task.taskId,
+                                adventureDesc: task.adventureDesc ? '有' : '無',
+                                adventureLink: task.adventureLink ? '有' : '無',
+                                matched
+                            });
                         } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
-                            return task.hardcoreDesc || task.hardcoreLink;
+                            matched = !!(task.hardcoreDesc || task.hardcoreLink);
+                            APP_CONFIG.log('🔍 舊結構任務 (hardcore):', {
+                                taskId: task.taskId,
+                                hardcoreDesc: task.hardcoreDesc ? '有' : '無',
+                                hardcoreLink: task.hardcoreLink ? '有' : '無',
+                                matched
+                            });
                         }
 
-                        return false;
+                        return matched;
                     });
 
                     // 按 sequence 排序
