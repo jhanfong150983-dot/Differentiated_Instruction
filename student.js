@@ -2442,7 +2442,10 @@
     window.handleCompleteTask = function() {
         if (!selectedTask) return;
 
-        if (!confirm('確定要提交此任務嗎？\n提交後將由教師審核，通過後才會獲得 ' + (selectedTask.tokenReward || 0) + ' 個代幣！')) {
+        // ✅ 保存任務資訊到局部變數，避免被 closeTaskModal() 清空
+        const taskToSubmit = selectedTask;
+
+        if (!confirm('確定要提交此任務嗎？\n提交後將由教師審核，通過後才會獲得 ' + (taskToSubmit.tokenReward || 0) + ' 個代幣！')) {
             return;
         }
 
@@ -2453,10 +2456,10 @@
         const params = new URLSearchParams({
             action: 'submitTask',
             userEmail: currentStudent.email,
-            taskId: selectedTask.taskId
+            taskId: taskToSubmit.taskId
         });
 
-        APP_CONFIG.log('📤 提交任務...', { taskId: selectedTask.taskId });
+        APP_CONFIG.log('📤 提交任務...', { taskId: taskToSubmit.taskId });
 
         // 使用重試機制（解決 CORS 間歇性錯誤）
         fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
@@ -2481,7 +2484,7 @@
                         showToast(response.message || '✅ 任務已提交，正在尋找同學協助審核...', 'success');
 
                         // 更新進度狀態為等待互評
-                        currentTasksProgress[selectedTask.taskId] = { status: 'waiting_peer_review' };
+                        currentTasksProgress[taskToSubmit.taskId] = { status: 'waiting_peer_review' };
 
                         // 顯示等待審核 Modal
                         const waitingModal = document.getElementById('waitingReviewModal');
@@ -2524,7 +2527,7 @@
                         showToast(response.message || '✅ 任務已提交，等待教師審核中...', 'success');
 
                         // 更新進度狀態為待審核
-                        currentTasksProgress[selectedTask.taskId] = { status: 'pending_review' };
+                        currentTasksProgress[taskToSubmit.taskId] = { status: 'pending_review' };
                     }
 
                     // 重新顯示任務列表
@@ -2545,7 +2548,7 @@
 
                     // 太快的学生：在提交时建议提高难度
                     try {
-                        checkAndSuggestDifficultyChange(selectedTask, 'fast');
+                        checkAndSuggestDifficultyChange(taskToSubmit, 'fast');
                     } catch (error) {
                         APP_CONFIG.error('檢查難度建議失敗', error);
                     }
