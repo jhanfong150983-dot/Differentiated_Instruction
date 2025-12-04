@@ -1107,6 +1107,12 @@
 
                     // 篩選出選定層級的任務
                     currentTasks = allTasks.filter(task => {
+                        // ✅ 防禦性檢查：過濾掉 null、undefined 或無效的任務
+                        if (!task || typeof task !== 'object' || !task.taskId) {
+                            APP_CONFIG.error('發現無效任務（載入時）', { task });
+                            return false;
+                        }
+
                         // 新結構：直接比對 tier
                         if (task.tier !== 'mixed') {
                             return task.tier === selectedTier;
@@ -1127,7 +1133,15 @@
                     // 按 sequence 排序
                     currentTasks.sort((a, b) => a.sequence - b.sequence);
 
-                    APP_CONFIG.log('✅ 篩選後的任務:', { count: currentTasks.length, selectedTier });
+                    // ✅ 驗證：檢查排序後是否有無效任務
+                    const invalidTaskCount = currentTasks.filter(t => !t || !t.taskId).length;
+                    if (invalidTaskCount > 0) {
+                        APP_CONFIG.error(`⚠️ 發現 ${invalidTaskCount} 個無效任務`, currentTasks);
+                        // 再次過濾確保清除無效任務
+                        currentTasks = currentTasks.filter(t => t && t.taskId);
+                    }
+
+                    APP_CONFIG.log('✅ 篩選後的任務:', { count: currentTasks.length, selectedTier, invalidTaskCount });
 
                     // 載入任務進度
                     return loadTaskProgress(learningRecord.recordId);
@@ -1718,6 +1732,11 @@
         let lastCompletedIndex = -1;
         for (let i = 0; i < currentTasks.length; i++) {
             const task = currentTasks[i];
+            // ✅ 防禦性檢查：跳過 null 或 undefined 的任務
+            if (!task || !task.taskId) {
+                APP_CONFIG.error('發現無效任務', { index: i, task });
+                continue;
+            }
             const progress = currentTasksProgress[task.taskId] || { status: 'not_started' };
             if (progress.status === 'completed') {
                 lastCompletedIndex = i;
@@ -1726,6 +1745,12 @@
 
         // 渲染任務卡片
         currentTasks.forEach((task, index) => {
+            // ✅ 防禦性檢查：跳過 null 或 undefined 的任務
+            if (!task || !task.taskId) {
+                APP_CONFIG.error('發現無效任務（渲染時）', { index, task });
+                return;
+            }
+
             const progress = currentTasksProgress[task.taskId] || { status: 'not_started' };
 
             // 逐個解鎖邏輯：只有當前一個任務完成後，才能開始下一個任務
@@ -2503,10 +2528,27 @@
                     }
 
                     // 重新顯示任務列表
-                    displayQuestList();
+                    try {
+                        displayQuestList();
+                    } catch (error) {
+                        APP_CONFIG.error('顯示任務列表失敗', error);
+
+                        // 關閉等待審核 Modal 以便用戶看到錯誤訊息
+                        const waitingModal = document.getElementById('waitingReviewModal');
+                        if (waitingModal && waitingModal.style.display === 'flex') {
+                            waitingModal.style.display = 'none';
+                            APP_CONFIG.log('❌ 因錯誤關閉等待審核 Modal');
+                        }
+
+                        showToast('顯示任務列表失敗：' + error.message, 'error');
+                    }
 
                     // 太快的学生：在提交时建议提高难度
-                    checkAndSuggestDifficultyChange(selectedTask, 'fast');
+                    try {
+                        checkAndSuggestDifficultyChange(selectedTask, 'fast');
+                    } catch (error) {
+                        APP_CONFIG.error('檢查難度建議失敗', error);
+                    }
                 } else {
                     showToast(response.message || '提交失敗', 'error');
                 }
