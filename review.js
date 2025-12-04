@@ -833,6 +833,15 @@
     function createTaskRow(task) {
         const tr = document.createElement('tr');
 
+        // 🔍 調試：檢查任務數據
+        if (task.status === 'pending_review') {
+            APP_CONFIG.log('🔍 創建待審核任務行:', {
+                taskId: task.taskProgressId,
+                submitTime: task.submitTime,
+                waitingTime: task.waitingTime
+            });
+        }
+
         // 如果超時，添加 overtime 類別（會有閃爍動畫）
         if (task.isOvertime) {
             tr.classList.add('overtime');

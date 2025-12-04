@@ -2440,7 +2440,8 @@
 
         APP_CONFIG.log('📤 提交任務...', { taskId: selectedTask.taskId });
 
-        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+        // 使用重試機制（解決 CORS 間歇性錯誤）
+        fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
             .then(response => response.json())
             .then(function(response) {
                 btn.disabled = false;
@@ -2475,13 +2476,42 @@
                 btn.textContent = '提交完成';
 
                 APP_CONFIG.error('提交任務失敗', error);
-                showToast('提交失敗：' + error.message, 'error');
+                showToast('提交失敗，請重試：' + error.message, 'error');
             });
     };
 
     // ==========================================
     // 工具函數
     // ==========================================
+
+    /**
+     * 帶重試機制的 fetch（解決 CORS 間歇性錯誤）
+     */
+    function fetchWithRetry(url, maxRetries = 3, delay = 1000) {
+        return new Promise((resolve, reject) => {
+            const attemptFetch = (retriesLeft) => {
+                fetch(url)
+                    .then(response => {
+                        if (response.ok) {
+                            resolve(response);
+                        } else {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                    })
+                    .catch(error => {
+                        if (retriesLeft > 0) {
+                            APP_CONFIG.log(`⚠️ 請求失敗，${delay}ms 後重試... (剩餘 ${retriesLeft} 次)`);
+                            setTimeout(() => {
+                                attemptFetch(retriesLeft - 1);
+                            }, delay);
+                        } else {
+                            reject(error);
+                        }
+                    });
+            };
+            attemptFetch(maxRetries);
+        });
+    }
 
     /**
      * 顯示載入動畫（遮罩式）

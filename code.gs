@@ -4323,6 +4323,10 @@ function getTeacherTaskMonitor(params) {
           formatted: formattedWaitingTime,
           priority: priority
         };
+
+        Logger.log(`⏰ 計算等待時間: taskProgressId=${progressId}, 等待=${waitingSeconds}秒 (${formattedWaitingTime})`);
+      } else if (status === 'pending_review') {
+        Logger.log(`⚠️ 待審核任務沒有 completeTime: taskProgressId=${progressId}, completeTime=${completeTime}`);
       }
 
       // 13. 組裝監控資料
