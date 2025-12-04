@@ -1083,6 +1083,78 @@
         </div>
     </div>
 
+    <!-- 互評通知 Modal -->
+    <div class="modal" id="peerReviewNotificationModal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px; text-align: center;">
+            <div style="font-size: 64px; margin-bottom: 20px;">👀</div>
+            <h2 style="color: var(--game-primary); font-size: 28px; margin-bottom: 16px;">需要你的協助！</h2>
+            <p style="color: var(--game-text-medium); font-size: 18px; margin-bottom: 12px;">
+                同學 <strong id="peerRevieweeNameNotif" style="color: var(--game-accent);"></strong> 剛剛完成了任務
+            </p>
+            <p style="color: var(--game-text-light); font-size: 16px; margin-bottom: 24px;">
+                需要你前往審核，協助確認任務完成狀況
+            </p>
+            <div id="peerReviewTimer" style="font-size: 48px; font-weight: 900; color: var(--game-danger); margin-bottom: 24px;">30</div>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                <button class="btn btn-secondary" onclick="declinePeerReview()">我沒空</button>
+                <button class="btn btn-primary" onclick="acceptPeerReviewNotification()">前往審核</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 審核界面 Modal -->
+    <div class="modal" id="peerReviewModal" style="display: none;">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3 class="modal-title">審核同學任務</h3>
+                <div id="reviewTimer" style="font-size: 20px; font-weight: 700; color: var(--game-accent);">
+                    剩餘時間: <span id="reviewTimeRemaining">3:00</span>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="task-detail-section">
+                    <div class="task-detail-label">被審核者</div>
+                    <div class="task-detail-value" id="revieweeInfo">
+                        <strong id="revieweeName"></strong> (<span id="revieweeEmail"></span>)
+                    </div>
+                </div>
+                <div class="task-detail-section">
+                    <div class="task-detail-label">任務名稱</div>
+                    <div class="task-detail-value" id="reviewTaskName"></div>
+                </div>
+                <div class="task-detail-section">
+                    <div class="task-detail-label">審核說明</div>
+                    <div class="task-detail-value">
+                        請前往被審核者的座位，確認任務是否已完成。<br>
+                        如果任務符合要求，點擊「通過」；如果有問題，點擊「退回」並說明理由。
+                    </div>
+                </div>
+                <div class="task-detail-section" id="rejectReasonSection" style="display: none;">
+                    <div class="task-detail-label">退回理由</div>
+                    <textarea id="rejectReasonInput" rows="4" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--game-border); background: var(--game-bg-dark); color: var(--game-text-light); font-size: 14px;" placeholder="請說明為什麼要退回此任務..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="showRejectBtn" onclick="showRejectReason()">退回</button>
+                <button class="btn btn-success" id="passReviewBtn" onclick="submitPeerReview('pass')">通過</button>
+                <button class="btn btn-secondary" id="cancelRejectBtn" onclick="hideRejectReason()" style="display: none;">取消</button>
+                <button class="btn btn-danger" id="confirmRejectBtn" onclick="submitPeerReview('reject')" style="display: none;">確認退回</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 等待審核 Modal -->
+    <div class="modal" id="waitingReviewModal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px; text-align: center;">
+            <div style="font-size: 64px; margin-bottom: 20px;">⏳</div>
+            <h2 style="color: var(--game-primary); font-size: 28px; margin-bottom: 16px;">等待審核中</h2>
+            <p id="waitingReviewMessage" style="color: var(--game-text-medium); font-size: 18px; margin-bottom: 24px;">
+                正在尋找同學協助審核...
+            </p>
+            <div class="spinner" style="margin: 0 auto;"></div>
+        </div>
+    </div>
+
     <!-- 載入 JS -->
     <script src="config.js"></script>
     <script src="navbar.js"></script>
