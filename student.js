@@ -235,63 +235,67 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄（階段 2：檢查 session）
+     * 載入課程層級和學習記錄（優化版：使用整合 API）
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
 
-        // 階段 2：先檢查班級是否有進行中的課堂 session
-        if (!selectedClass || !selectedClass.classId) {
+        if (!selectedClass || !selectedClass.classId || !selectedCourse || !selectedCourse.courseId) {
             hideLoading('mainLoading');
-            showToast('無法取得班級資訊', 'error');
+            showToast('無法取得班級或課程資訊', 'error');
             return;
         }
 
-        const checkParams = new URLSearchParams({
-            action: 'getCurrentSession',
+        // 使用整合 API 一次性獲取所有數據（4次請求 → 1次請求）
+        const params = new URLSearchParams({
+            action: 'getStudentClassEntryData',
+            userEmail: currentStudent.email,
             classId: selectedClass.classId,
-            userEmail: currentStudent.email
+            courseId: selectedCourse.courseId
         });
 
-        APP_CONFIG.log('📤 檢查課堂狀態...', { classId: selectedClass.classId });
+        APP_CONFIG.log('🚀 使用整合API載入進入數據...', {
+            classId: selectedClass.classId,
+            courseId: selectedCourse.courseId
+        });
 
-        fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
+        fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
             .then(response => response.json())
-            .then(function(sessionResponse) {
-                APP_CONFIG.log('📥 課堂狀態回應:', sessionResponse);
+            .then(function(data) {
+                APP_CONFIG.log('📥 整合API回應:', data);
 
-                if (!sessionResponse.success) {
-                    throw new Error('無法檢查課堂狀態');
+                if (!data.success) {
+                    throw new Error(data.message || '載入失敗');
                 }
 
-                // 緩存課堂狀態，避免重複調用（5秒內有效）
-                cachedSessionStatus = sessionResponse.isActive;
+                // 緩存課堂狀態
+                cachedSessionStatus = data.isActive;
                 sessionCheckTime = Date.now();
 
                 // 檢查是否有進行中的課堂
-                if (!sessionResponse.isActive) {
+                if (!data.isActive) {
                     hideLoading('mainLoading');
                     displayCourseWaitingScreen();
-                    // 返回一個 rejected promise，中斷 Promise 鏈
                     return Promise.reject('waiting_for_class');
                 }
 
-                // 有進行中的課堂，繼續載入課程資料
-                return Promise.all([
-                    loadCourseTiers(),
-                    loadOrCreateLearningRecord()
-                ]);
-            })
-            .then(function(results) {
-                if (!results) return; // session 檢查失敗時已處理
+                // 保存數據到全局變量
+                courseTiers = data.tiers || [];
+                learningRecord = data.learningRecord;
+                cachedProgressData = data.progress;
+
+                APP_CONFIG.log('✅ 數據載入完成', {
+                    tiersCount: courseTiers.length,
+                    recordId: learningRecord ? learningRecord.recordId : null,
+                    progressCount: Object.keys(cachedProgressData).length
+                });
 
                 // 檢查是否有未完成的任務，如果有則直接進入該層級
                 return checkAndResumeTier();
             })
             .then(function(resumed) {
                 if (resumed) {
-                    // ✓ 修正：已經直接進入任務列表，loadTierTasks 會負責 hideLoading
-                    // 不在這裡 hideLoading，避免畫面還沒準備好就隱藏 loading
+                    // 已經直接進入任務列表，loadTierTasks 會負責 hideLoading
                 } else {
                     // 沒有未完成任務，顯示層級選擇
                     hideLoading('mainLoading');
@@ -311,86 +315,68 @@
     }
 
     /**
-     * 檢查並恢復上次的層級（如果有未完成任務）
+     * 檢查並恢復上次的層級（優化版：使用緩存數據）
      */
     function checkAndResumeTier() {
         if (!learningRecord || !learningRecord.recordId) {
             return Promise.resolve(false);
         }
 
-        const params = new URLSearchParams({
-            action: 'getTaskProgress',
-            recordId: learningRecord.recordId
-        });
+        // 已經從整合API獲得進度數據，直接使用緩存
+        if (!cachedProgressData || Object.keys(cachedProgressData).length === 0) {
+            APP_CONFIG.log('⚠️ 無緩存進度數據');
+            return Promise.resolve(false);
+        }
 
-        APP_CONFIG.log('📤 檢查未完成任務...', { recordId: learningRecord.recordId });
+        APP_CONFIG.log('📊 使用緩存數據檢查未完成任務...');
 
-        return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-            .then(response => response.json())
-            .then(function(response) {
-                APP_CONFIG.log('📥 任務進度回應:', response);
-
-                if (!response.success || !response.progress) {
-                    return false;
+        // 找到第一個未完成的任務（in_progress 或 pending_review）
+        const progressEntries = Object.entries(cachedProgressData);
+        for (let i = 0; i < progressEntries.length; i++) {
+            const [taskId, progress] = progressEntries[i];
+            if (progress.status === 'in_progress' || progress.status === 'pending_review') {
+                // 從 taskId 提取 tier
+                let tier = null;
+                if (taskId.includes('_tutorial')) {
+                    tier = 'tutorial';
+                } else if (taskId.includes('_adventure')) {
+                    tier = 'adventure';
+                } else if (taskId.includes('_hardcore')) {
+                    tier = 'hardcore';
                 }
 
-                // 緩存進度數據，避免 loadTierTasks 重複調用
-                cachedProgressData = response.progress;
-
-                // 找到第一個未完成的任務（in_progress 或 pending_review）
-                const progressEntries = Object.entries(response.progress);
-                for (let i = 0; i < progressEntries.length; i++) {
-                    const [taskId, progress] = progressEntries[i];
-                    if (progress.status === 'in_progress' || progress.status === 'pending_review') {
-                        // 從 taskId 提取 tier
-                        let tier = null;
-                        if (taskId.includes('_tutorial')) {
-                            tier = 'tutorial';
-                        } else if (taskId.includes('_adventure')) {
-                            tier = 'adventure';
-                        } else if (taskId.includes('_hardcore')) {
-                            tier = 'hardcore';
-                        }
-
-                        if (tier) {
-                            APP_CONFIG.log('✅ 發現未完成任務，恢復層級:', tier);
-                            // 找到對應的 tier 資訊
-                            const tierInfo = courseTiers.find(t => t.tier === tier);
-                            if (tierInfo) {
-                                selectedTier = tier;
-                                // 記錄自動恢復難度
-                                recordTierChange('', tier, 'auto_resume', taskId, 0);
-                                // ✓ 修正：直接載入該層級的任務（使用緩存數據，跳過 showLoading）
-                                loadTierTasks(true, true); // useCache=true, skipShowLoading=true
-                                return true;
-                            }
-                        }
-                    }
-                }
-
-                // 沒有找到未完成任務，檢查學習記錄中的 current_tier
-                // 這種情況發生在：學生已完成所有任務，或者重新登入時
-                if (learningRecord.currentTier) {
-                    const tier = learningRecord.currentTier;
-                    APP_CONFIG.log('✅ 從學習記錄恢復層級:', tier);
-
+                if (tier) {
+                    APP_CONFIG.log('✅ 發現未完成任務，恢復層級:', tier);
                     // 找到對應的 tier 資訊
                     const tierInfo = courseTiers.find(t => t.tier === tier);
                     if (tierInfo) {
                         selectedTier = tier;
-                        // 不記錄難度變更（這是從記錄恢復，不是新的變更）
-                        // ✓ 修正：直接載入該層級的任務（使用緩存數據，跳過 showLoading）
+                        // 記錄自動恢復難度
+                        recordTierChange('', tier, 'auto_resume', taskId, 0);
+                        // 直接載入該層級的任務（使用緩存數據，跳過 showLoading）
                         loadTierTasks(true, true); // useCache=true, skipShowLoading=true
-                        return true;
+                        return Promise.resolve(true);
                     }
                 }
+            }
+        }
 
-                return false;
-            })
-            .catch(function(error) {
-                APP_CONFIG.error('檢查未完成任務失敗', error);
-                return false;
-            });
+        // 沒有找到未完成任務，檢查學習記錄中的 current_tier
+        if (learningRecord.currentTier) {
+            const tier = learningRecord.currentTier;
+            APP_CONFIG.log('✅ 從學習記錄恢復層級:', tier);
+
+            // 找到對應的 tier 資訊
+            const tierInfo = courseTiers.find(t => t.tier === tier);
+            if (tierInfo) {
+                selectedTier = tier;
+                // 直接載入該層級的任務（使用緩存數據，跳過 showLoading）
+                loadTierTasks(true, true); // useCache=true, skipShowLoading=true
+                return Promise.resolve(true);
+            }
+        }
+
+        return Promise.resolve(false);
     }
 
     /**
