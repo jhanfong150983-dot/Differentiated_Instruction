@@ -849,9 +849,16 @@
             statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⚡ 執行中</span>';
             showActions = false; // 執行中不顯示審核按鈕
         } else if (task.status === 'pending_review') {
-            // 待審核：黃燈
-            lightColor = 'yellow';
-            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⏱️ 待審核</span>';
+            // 待審核：黃燈（超過5分鐘變紅燈）
+            const isLongWait = task.waitingTime && task.waitingTime.priority === 'high';
+            lightColor = isLongWait ? 'red' : 'yellow';
+
+            // 等待時間顯示
+            const waitingTimeDisplay = task.waitingTime
+                ? `<span style="margin-left: 8px; color: ${isLongWait ? '#ef4444' : '#f59e0b'}; font-weight: 700;">⏰ ${task.waitingTime.formatted}</span>`
+                : '';
+
+            statusBadge = `<span style="display: inline-block; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⏱️ 待審核</span>${waitingTimeDisplay}`;
             showActions = true; // 待審核顯示審核按鈕
         }
 
@@ -971,8 +978,8 @@
                 if (response.success) {
                     showToast('✅ 審核通過！學生已獲得代幣', 'success');
 
-                    // 重新載入資料
-                    loadReviewTasks();
+                    // 樂觀更新：立即從 UI 移除該任務（不重新載入）
+                    removeTaskFromUI(taskProgressId);
                 } else {
                     showToast(response.message || '審核失敗', 'error');
                 }
@@ -982,6 +989,52 @@
                 showToast('審核失敗：' + error.message, 'error');
             });
     };
+
+    /**
+     * 從 UI 移除任務（樂觀更新）
+     */
+    function removeTaskFromUI(taskProgressId) {
+        // 從陣列中移除
+        const taskIndex = allTasks.findIndex(t => t.taskProgressId === taskProgressId);
+        if (taskIndex !== -1) {
+            allTasks.splice(taskIndex, 1);
+        }
+
+        const filteredIndex = filteredTasks.findIndex(t => t.taskProgressId === taskProgressId);
+        if (filteredIndex !== -1) {
+            filteredTasks.splice(filteredIndex, 1);
+        }
+
+        // 從 DOM 移除
+        const tbody = document.getElementById('reviewTableBody');
+        if (tbody) {
+            const rows = tbody.getElementsByTagName('tr');
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                // 檢查該行是否包含此 taskProgressId
+                const approveBtn = row.querySelector(`button[onclick*="${taskProgressId}"]`);
+                if (approveBtn) {
+                    // 添加淡出動畫
+                    row.style.transition = 'opacity 0.3s ease-out';
+                    row.style.opacity = '0';
+                    setTimeout(() => {
+                        row.remove();
+
+                        // 更新計數
+                        updateCounts();
+
+                        // 如果沒有任務了，顯示空狀態
+                        if (filteredTasks.length === 0) {
+                            showEmptyState();
+                        }
+                    }, 300);
+                    break;
+                }
+            }
+        }
+
+        APP_CONFIG.log('✅ 已從 UI 移除任務:', taskProgressId);
+    }
 
     /**
      * 退回任務
@@ -1007,8 +1060,8 @@
                 if (response.success) {
                     showToast('✅ 任務已退回，學生可重新提交', 'success');
 
-                    // 重新載入資料
-                    loadReviewTasks();
+                    // 樂觀更新：立即從 UI 移除該任務（不重新載入）
+                    removeTaskFromUI(taskProgressId);
                 } else {
                     showToast(response.message || '退回失敗', 'error');
                 }
