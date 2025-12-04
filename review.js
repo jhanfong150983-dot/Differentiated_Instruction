@@ -580,16 +580,30 @@
     // ==========================================
 
     /**
-     * 啟動任務時間即時更新（每秒更新 in_progress 任務時間）
+     * 啟動任務時間即時更新（每秒更新 in_progress 和 pending_review 任務時間）
      */
     function startTaskTimeUpdate() {
         stopTaskTimeUpdate(); // 清除舊的
 
         taskTimeUpdateInterval = setInterval(function() {
             updateAllTaskTimes();
+            updateAllWaitingTimes(); // 同時更新等待時間
         }, 1000);
 
-        APP_CONFIG.log('⏱️ 啟動任務時間即時更新');
+        APP_CONFIG.log('⏱️ 啟動任務時間即時更新（含等待時間）');
+    }
+
+    /**
+     * 只啟動等待時間更新（未上課時使用）
+     */
+    function startWaitingTimeUpdateOnly() {
+        stopTaskTimeUpdate(); // 清除舊的
+
+        taskTimeUpdateInterval = setInterval(function() {
+            updateAllWaitingTimes(); // 只更新等待時間
+        }, 1000);
+
+        APP_CONFIG.log('⏱️ 啟動等待時間更新');
     }
 
     /**
@@ -689,6 +703,80 @@
         if (hasOvertimeChange) {
             updateCounts();
         }
+    }
+
+    /**
+     * 更新所有待審核任務的等待時間顯示
+     */
+    function updateAllWaitingTimes() {
+        const tbody = document.getElementById('reviewTableBody');
+        if (!tbody) return;
+
+        const now = new Date().getTime();
+
+        // 找到所有 pending_review 任務（通過 data-status）
+        const rows = tbody.querySelectorAll('tr[data-status="pending_review"]');
+
+        rows.forEach(function(row) {
+            const taskProgressId = row.getAttribute('data-task-id');
+            const submitTime = row.getAttribute('data-submit-time');
+
+            if (!submitTime) return;
+
+            // 計算等待時間（秒）
+            const submit = new Date(submitTime).getTime();
+            const waitingSeconds = Math.floor((now - submit) / 1000);
+
+            // 格式化等待時間
+            const waitingMinutes = Math.floor(waitingSeconds / 60);
+            const waitingSecs = waitingSeconds % 60;
+            const formattedWaitingTime = waitingMinutes > 0
+                ? `${waitingMinutes}分${waitingSecs}秒`
+                : `${waitingSecs}秒`;
+
+            // 判斷是否超過 5 分鐘（高優先級）
+            const isLongWait = waitingSeconds > 300;
+
+            // 更新 allTasks 數組中的數據
+            const taskInArray = allTasks.find(t => t.taskProgressId === taskProgressId);
+            if (taskInArray && taskInArray.waitingTime) {
+                taskInArray.waitingTime.seconds = waitingSeconds;
+                taskInArray.waitingTime.formatted = formattedWaitingTime;
+                taskInArray.waitingTime.priority = isLongWait ? 'high' : 'normal';
+            }
+
+            // 更新時間顯示（找到狀態標籤內的時間顯示）
+            const statusBadge = row.querySelector('td:nth-child(7)'); // 第7列是狀態列
+            if (statusBadge) {
+                // 找到或創建等待時間 span
+                let waitingSpan = statusBadge.querySelector('.waiting-time-display');
+
+                if (!waitingSpan) {
+                    // 如果不存在，創建一個
+                    waitingSpan = document.createElement('span');
+                    waitingSpan.className = 'waiting-time-display';
+                    waitingSpan.style.marginLeft = '8px';
+                    waitingSpan.style.fontWeight = '700';
+                    statusBadge.appendChild(waitingSpan);
+                }
+
+                // 更新內容和顏色
+                waitingSpan.textContent = `⏰ ${formattedWaitingTime}`;
+                waitingSpan.style.color = isLongWait ? '#ef4444' : '#f59e0b';
+
+                // 更新燈號（超過 5 分鐘變紅燈）
+                const lightElement = row.querySelector('.status-light');
+                if (lightElement) {
+                    if (isLongWait) {
+                        lightElement.classList.remove('yellow');
+                        lightElement.classList.add('red');
+                    } else {
+                        lightElement.classList.remove('red');
+                        lightElement.classList.add('yellow');
+                    }
+                }
+            }
+        });
     }
 
     // ==========================================
@@ -816,14 +904,23 @@
             tbody.appendChild(row);
         });
 
-        // 只在上課中才啟動任務時間即時更新（階段 2修正）
-        // 如果沒有 currentSession 或課堂已結束，不啟動時間更新
-        if (currentSession) {
+        // 啟動任務時間即時更新
+        // - 執行中任務：只在上課時更新
+        // - 待審核任務：一直更新等待時間
+        const hasPendingReview = filteredTasks.some(t => t.status === 'pending_review');
+        const hasInProgress = filteredTasks.some(t => t.status === 'in_progress');
+
+        if (currentSession && (hasPendingReview || hasInProgress)) {
+            // 上課中：更新所有任務時間
             startTaskTimeUpdate();
-            APP_CONFIG.log('✅ 上課中，啟動任務時間更新');
+            APP_CONFIG.log('✅ 上課中，啟動任務時間更新（執行中+待審核）');
+        } else if (!currentSession && hasPendingReview) {
+            // 未上課但有待審核：只更新等待時間
+            startWaitingTimeUpdateOnly();
+            APP_CONFIG.log('✅ 未上課，僅啟動等待時間更新');
         } else {
             stopTaskTimeUpdate();
-            APP_CONFIG.log('⏸️ 未上課，不啟動任務時間更新');
+            APP_CONFIG.log('⏸️ 無需更新時間');
         }
     }
 
@@ -862,9 +959,9 @@
             const isLongWait = task.waitingTime && task.waitingTime.priority === 'high';
             lightColor = isLongWait ? 'red' : 'yellow';
 
-            // 等待時間顯示
+            // 等待時間顯示（添加 class 以便前端更新）
             const waitingTimeDisplay = task.waitingTime
-                ? `<span style="margin-left: 8px; color: ${isLongWait ? '#ef4444' : '#f59e0b'}; font-weight: 700;">⏰ ${task.waitingTime.formatted}</span>`
+                ? `<span class="waiting-time-display" style="margin-left: 8px; color: ${isLongWait ? '#ef4444' : '#f59e0b'}; font-weight: 700;">⏰ ${task.waitingTime.formatted}</span>`
                 : '';
 
             statusBadge = `<span style="display: inline-block; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⏱️ 待審核</span>${waitingTimeDisplay}`;
@@ -906,6 +1003,13 @@
             tr.setAttribute('data-start-time', task.startTime);
             tr.setAttribute('data-time-limit', task.timeLimit || 0);
             tr.setAttribute('data-accumulated-time', task.timeSpent || 0);  // 累積時間
+        }
+
+        // 為 pending_review 任務添加 data 屬性，用於前端即時更新等待時間
+        if (task.status === 'pending_review' && task.submitTime) {
+            tr.setAttribute('data-task-id', task.taskProgressId);
+            tr.setAttribute('data-submit-time', task.submitTime);
+            tr.setAttribute('data-status', 'pending_review');
         }
 
         tr.innerHTML = `
