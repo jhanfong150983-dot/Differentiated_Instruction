@@ -2502,7 +2502,7 @@
 
                         // 開始輪詢檢查審核狀態
                         let checkCount = 0;
-                        const maxChecks = 10; // 最多檢查 10 次（30 秒）
+                        const maxChecks = 60; // 最多檢查 60 次（3 分鐘）
 
                         // 重置狀態標記，允許處理新的審核流程
                         lastProcessedReviewStatus = null;
@@ -2523,19 +2523,27 @@
                             if (checkCount >= maxChecks) {
                                 clearInterval(waitingReviewCheckInterval);
                                 waitingReviewCheckInterval = null;
-                                APP_CONFIG.log('⏰ 停止輪詢檢查審核狀態');
+                                APP_CONFIG.log('⏰ 停止輪詢檢查審核狀態（已達最大次數）');
                             }
                         }, 3000);
 
-                        // 30秒後停止輪詢並關閉 Modal
+                        // 30秒後如果還沒被接受，則超時並改為教師審核
                         waitingReviewTimeout = setTimeout(function() {
+                            // 檢查是否已被接受（如果已接受就不處理超時）
+                            if (lastProcessedReviewStatus === 'accepted' || lastProcessedReviewStatus === 'completed') {
+                                APP_CONFIG.log('✅ 審核已被接受或完成，忽略30秒超時');
+                                waitingReviewTimeout = null;
+                                return;
+                            }
+
+                            // 30秒內沒人接受，停止輪詢並提示超時
                             if (waitingReviewCheckInterval) {
                                 clearInterval(waitingReviewCheckInterval);
                                 waitingReviewCheckInterval = null;
                             }
                             if (waitingModal && waitingModal.style.display === 'flex') {
                                 waitingModal.style.display = 'none';
-                                showToast('審核請求已超時，改為教師審核', 'info');
+                                showToast('30秒內無人接受審核，已改為教師審核', 'info');
                             }
                             waitingReviewTimeout = null;
                         }, 30000);
@@ -2781,6 +2789,13 @@
             APP_CONFIG.log('✅ 已清除等待審核超時計時器');
         }
 
+        // 清除舊的審核計時器（防止誤報超時）
+        if (reviewTimer) {
+            clearInterval(reviewTimer);
+            reviewTimer = null;
+            APP_CONFIG.log('✅ 已清除舊的審核計時器');
+        }
+
         const params = new URLSearchParams({
             action: 'acceptPeerReview',
             reviewId: currentReviewData.reviewId,
@@ -2817,27 +2832,47 @@
      * 拒絕審核
      */
     window.declinePeerReview = function() {
+        if (!currentReviewData) return;
+
         // 清除通知倒數計時器
         if (reviewNotificationTimer) {
             clearInterval(reviewNotificationTimer);
             reviewNotificationTimer = null;
         }
 
-        // 清除30秒等待審核的計時器（防止其他學生也被詢問後觸發超時）
-        if (waitingReviewCheckInterval) {
-            clearInterval(waitingReviewCheckInterval);
-            waitingReviewCheckInterval = null;
-            APP_CONFIG.log('✅ 已清除等待審核輪詢計時器');
-        }
-        if (waitingReviewTimeout) {
-            clearTimeout(waitingReviewTimeout);
-            waitingReviewTimeout = null;
-            APP_CONFIG.log('✅ 已清除等待審核超時計時器');
-        }
+        const params = new URLSearchParams({
+            action: 'declinePeerReview',
+            reviewId: currentReviewData.reviewId,
+            reviewerEmail: currentStudent.email
+        });
 
-        document.getElementById('peerReviewNotificationModal').style.display = 'none';
-        currentReviewData = null;
-        showToast('已拒絕審核請求', 'info');
+        showLoading('mainLoading');
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(data) {
+                hideLoading('mainLoading');
+
+                document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                currentReviewData = null;
+
+                if (data.success) {
+                    if (data.reassigned) {
+                        showToast(`已拒絕，改為 ${data.newReviewerName} 審核`, 'info');
+                    } else {
+                        showToast(data.message || '已拒絕，改為教師審核', 'info');
+                    }
+                } else {
+                    showToast(data.message || '拒絕失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                hideLoading('mainLoading');
+                APP_CONFIG.error('拒絕審核失敗', error);
+                document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                currentReviewData = null;
+                showToast('拒絕失敗：' + error.message, 'error');
+            });
     };
 
     /**
@@ -2849,7 +2884,7 @@
         const modal = document.getElementById('peerReviewModal');
         document.getElementById('revieweeName').textContent = reviewData.revieweeName;
         document.getElementById('revieweeEmail').textContent = reviewData.revieweeEmail;
-        document.getElementById('reviewTaskName').textContent = reviewData.taskId;
+        document.getElementById('reviewTaskName').textContent = reviewData.taskName || reviewData.taskId;
 
         modal.style.display = 'flex';
 
@@ -2999,11 +3034,17 @@
         }
 
         if (review.status === 'assigned') {
+            // 更新訊息（可能是新的審核者）
             messageElement.textContent = `正在等待 ${review.reviewerName} 接受審核...`;
             if (waitingModal) {
                 waitingModal.style.display = 'flex';
             }
-            APP_CONFIG.log('⏳ 狀態：assigned - 等待接受');
+            APP_CONFIG.log('⏳ 狀態：assigned - 等待接受', review.reviewerName);
+
+            // 如果是重新分配，顯示提示（只有在 reviewerName 改變時）
+            if (review.reassigned) {
+                showToast(`正在尋找下一位審核者：${review.reviewerName}`, 'info');
+            }
         } else if (review.status === 'accepted') {
             // 檢查是否已處理過此狀態
             if (lastProcessedReviewStatus === 'accepted') {
@@ -3012,28 +3053,26 @@
             }
             lastProcessedReviewStatus = 'accepted';
 
-            // 審核者已接受，停止輪詢並關閉視窗
-            APP_CONFIG.log('👀 狀態：accepted - 審核者已接受，停止輪詢');
+            // 審核者已接受，停止30秒超時計時器，但繼續輪詢等待結果
+            APP_CONFIG.log('👀 狀態：accepted - 審核者已接受，繼續等待審核結果');
 
-            // 立即停止輪詢計時器
-            if (waitingReviewCheckInterval) {
-                clearInterval(waitingReviewCheckInterval);
-                waitingReviewCheckInterval = null;
-                APP_CONFIG.log('✅ 已停止輪詢計時器（審核者已接受）');
-            }
+            // 停止30秒超時計時器（不再需要等待接受）
             if (waitingReviewTimeout) {
                 clearTimeout(waitingReviewTimeout);
                 waitingReviewTimeout = null;
                 APP_CONFIG.log('✅ 已停止超時計時器（審核者已接受）');
             }
 
-            // 關閉等待視窗
+            // 保持視窗開啟，但更新訊息
+            messageElement.textContent = `${review.reviewerName} 將進行審核，請稍候...`;
             if (waitingModal) {
-                waitingModal.style.display = 'none';
+                waitingModal.style.display = 'flex';
             }
 
-            // 提示用戶
-            showToast(`✅ ${review.reviewerName} 已接受審核，請耐心等待結果`, 'success');
+            // 提示用戶（僅一次）
+            showToast(`✅ ${review.reviewerName} 已接受審核，正在審核中...`, 'success');
+
+            // 繼續輪詢檢查，等待 completed 狀態（不停止 waitingReviewCheckInterval）
         } else if (review.status === 'completed') {
             // 檢查是否已處理過此狀態
             if (lastProcessedReviewStatus === 'completed') {
