@@ -25,9 +25,9 @@
     let taskTimeLimitCheckInterval = null; // 任務時間限制檢查計時器（檢查是否超時）
     let currentTaskStartTime = null; // 当前任务开始时间
     let hasShownSlowSuggestion = false; // 是否已显示过太慢建议
-    let currentTaskProgressInReview = null; // ✅ 記住當前正在審核的任務進度ID
-    let lastShownReviewForTask = {}; // ✅ 記住每個任務已顯示過的 reviewId
+
     let shownReviewTasks = new Set();
+    let isCheckingPeerReview = false;
 
     // 性能優化：緩存數據避免重複 API 調用
     let cachedSessionStatus = null; // 緩存課堂狀態
@@ -2755,7 +2755,16 @@
      * 檢查是否有待審核的任務
      */
     function checkPendingPeerReview() {
+        // ✅ 新增：防止重複調用
+        if (isCheckingPeerReview) {
+            APP_CONFIG.log('⚠️ checkPendingPeerReview 正在執行中，跳過');
+            return;
+        }
+        
         if (!currentStudent || !currentStudent.email) return;
+
+        // ✅ 新增：設置鎖
+        isCheckingPeerReview = true;
 
         const params = new URLSearchParams({
             action: 'getPendingReview',
@@ -2771,19 +2780,12 @@
                     if (review.status === 'assigned') {
                         const taskProgressId = review.taskProgressId;
                         
-                        // ✅ 只檢查任務 ID，避免重複通知
                         if (shownReviewTasks.has(taskProgressId)) {
-                            APP_CONFIG.log('⚠️ 此任務已顯示過審核請求，跳過:', {
-                                taskProgressId,
-                                reviewId: review.reviewId
-                            });
+                            APP_CONFIG.log('⚠️ 此任務已顯示過審核請求，跳過');
                             return;
                         }
                         
-                        // ✅ 記住這個任務
                         shownReviewTasks.add(taskProgressId);
-                        
-                        // 顯示通知Modal
                         showPeerReviewNotification(review);
                     } else if (review.status === 'accepted') {
                         showPeerReviewInterface(review);
@@ -2792,6 +2794,10 @@
             })
             .catch(function(error) {
                 APP_CONFIG.error('檢查待審核任務失敗', error);
+            })
+            .finally(function() {
+                // ✅ 新增：釋放鎖
+                isCheckingPeerReview = false;
             });
     }
 
@@ -2825,12 +2831,6 @@
                 modal.style.display = 'none';
 
                 shownReviewTasks.delete(currentReviewData.taskProgressId);
-
-                // ✅ 清除當前任務的記錄（超時時）
-                if (currentTaskProgressInReview) {
-                    delete lastShownReviewForTask[currentTaskProgressInReview];
-                    currentTaskProgressInReview = null;
-                }
 
                 const timeoutParams = new URLSearchParams({
                     action: 'handleAcceptTimeout',
@@ -2870,12 +2870,6 @@
         if (reviewNotificationTimer) {
             clearInterval(reviewNotificationTimer);
             reviewNotificationTimer = null;
-        }
-
-        // ✅ 接受後也要清除記錄，避免記憶體累積
-        if (currentTaskProgressInReview) {
-            delete lastShownReviewForTask[currentTaskProgressInReview];
-            currentTaskProgressInReview = null;
         }
 
         // 清除30秒等待審核的計時器（這是關鍵修復）
@@ -2957,12 +2951,6 @@
                 hideLoading('mainLoading');
 
                 document.getElementById('peerReviewNotificationModal').style.display = 'none';
-                
-                // ✅ 只清除當前任務的記錄（不是全部清除）
-                if (currentTaskProgressInReview) {
-                    delete lastShownReviewForTask[currentTaskProgressInReview];
-                    currentTaskProgressInReview = null;
-                }
                 currentReviewData = null;
 
                 if (data.success) {
