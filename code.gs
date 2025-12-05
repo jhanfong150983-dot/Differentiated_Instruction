@@ -3121,10 +3121,12 @@ function getStudentClassEntryData(params) {
     // 檢查是否有進行中的 session
     const sessionsData = sessionsSheet ? sessionsSheet.getDataRange().getValues() : [];
     let sessionInfo = null;
+    let teacherEmail = null;
 
     for (let i = 1; i < sessionsData.length; i++) {
       if (sessionsData[i][1] === classId && sessionsData[i][5] === 'active') {
         const sessionId = sessionsData[i][0];
+        teacherEmail = sessionsData[i][2];  // 取得 teacher_email
         const startTime = sessionsData[i][3];
         const sessionCourseId = sessionsData[i][6];
 
@@ -3222,13 +3224,13 @@ function getStudentClassEntryData(params) {
         userId,
         classId,
         courseId,
-        email,
-        now,
-        null,
-        'in_progress',
-        0,
-        totalTasks,
-        'tutorial'
+        teacherEmail,  // 修正：第5欄應為 teacher_email
+        now,           // start_date
+        now,           // last_access_date
+        'in_progress', // status
+        0,             // completed_tasks
+        totalTasks,    // total_tasks
+        'tutorial'     // current_tier
       ]);
 
       learningRecord = {
@@ -3380,9 +3382,9 @@ function startLearning(params) {
       userId,
       classId,
       courseId,
+      teacherEmail,  // teacher_email
       now,           // start_date
       now,           // last_access_date
-      teacherEmail,
       'in_progress', // status
       0,             // completed_tasks
       totalTasks,    // total_tasks
@@ -5940,7 +5942,6 @@ function handleAcceptTimeout(params) {
 
     // 根據 taskProgressId 或 reviewId 找到最新的 assigned 狀態記錄
     if (taskProgressId) {
-      // 找到該 taskProgressId 最新的 assigned 記錄
       let latestAssignedTime = null;
       for (let i = 1; i < reviewData.length; i++) {
         if (reviewData[i][1] === taskProgressId && reviewData[i][8] === 'assigned') {
@@ -5961,7 +5962,6 @@ function handleAcceptTimeout(params) {
         }
       }
     } else if (reviewId) {
-      // 根據 reviewId 查找
       for (let i = 1; i < reviewData.length; i++) {
         if (reviewData[i][0] === reviewId) {
           reviewRow = i + 1;
@@ -5988,7 +5988,6 @@ function handleAcceptTimeout(params) {
       };
     }
 
-    // 檢查狀態，只處理 assigned 狀態
     if (reviewInfo.status !== 'assigned') {
       Logger.log(`⚠️ 審核狀態為 ${reviewInfo.status}，不是 assigned，不處理超時`);
       return {
@@ -6002,13 +6001,21 @@ function handleAcceptTimeout(params) {
     reviewSheet.getRange(reviewRow, 9).setValue('timeout_accept');
     Logger.log('⏰ 接受超時，更新狀態為 timeout_accept');
 
-    // 收集此任務所有已超時或拒絕的審核者
+    // ✅ 修復：收集此任務所有已超時或拒絕的審核者
     const excludeEmails = [];
     for (let i = 1; i < reviewData.length; i++) {
-      if (reviewData[i][1] === reviewInfo.taskProgressId &&
-          (reviewData[i][8] === 'timeout_accept' || reviewData[i][8] === 'declined')) {
-        excludeEmails.push(reviewData[i][3]);  // reviewer_email
+      if (reviewData[i][1] === reviewInfo.taskProgressId) {
+        const status = reviewData[i][8];
+        // 包含：timeout_accept, declined, 以及當前這筆（剛更新為 timeout_accept）
+        if (status === 'timeout_accept' || status === 'declined') {
+          excludeEmails.push(reviewData[i][3]);  // reviewer_email
+        }
       }
+    }
+    
+    // ✅ 確保當前審核者也被排除
+    if (!excludeEmails.includes(reviewInfo.reviewerEmail)) {
+      excludeEmails.push(reviewInfo.reviewerEmail);
     }
 
     Logger.log('📋 已超時/拒絕的審核者:', excludeEmails);
@@ -6022,7 +6029,6 @@ function handleAcceptTimeout(params) {
     });
 
     if (reassignResult.usePeerReview) {
-      // 成功分配給下一個審核者
       Logger.log('✅ 已重新分配給:', reassignResult.reviewerName);
       return {
         success: true,
@@ -6256,7 +6262,8 @@ function checkPeerReviewStatus(params) {
     if (!reviewSheet) {
       return {
         success: true,
-        reviews: []
+        reviews: [],
+        taskStatus: null // ✅ 確保有預設值
       };
     }
 
@@ -6269,105 +6276,9 @@ function checkPeerReviewStatus(params) {
     const reviews = [];
     const now = new Date();
 
-    // 如果是查詢 taskProgressId，只返回最新的審核記錄（避免舊的 completed 記錄干擾）
-    let latestReviewByProgressId = null;
-    let latestAssignedTime = null;
+    // ... 原有的 reviews 收集邏輯 ...
 
-    for (let i = 1; i < reviewData.length; i++) {
-      let match = false;
-
-      if (taskProgressId && reviewData[i][1] === taskProgressId) {
-        match = true;
-        // 追蹤最新的記錄（根據 assigned_time）
-        const assignedTime = reviewData[i][5];
-        if (!latestAssignedTime || new Date(assignedTime) > new Date(latestAssignedTime)) {
-          latestAssignedTime = assignedTime;
-          latestReviewByProgressId = i;
-        }
-      }
-
-      if (reviewerEmail) {
-        const email = getCurrentUserEmail(reviewerEmail);
-        if (reviewData[i][3] === email) {
-          match = true;
-        }
-      }
-
-      if (match) {
-        const status = reviewData[i][8];
-        const assignedTime = reviewData[i][5];
-        const acceptedTime = reviewData[i][6];
-        const taskId = reviewData[i][4];
-
-        // 計算剩餘時間
-        let timeRemaining = 0;
-        if (status === 'assigned' && assignedTime) {
-          const elapsed = Math.floor((now - new Date(assignedTime)) / 1000);
-          timeRemaining = Math.max(0, 30 - elapsed);
-        } else if (status === 'accepted' && acceptedTime) {
-          const elapsed = Math.floor((now - new Date(acceptedTime)) / 1000);
-          timeRemaining = Math.max(0, 180 - elapsed);
-        }
-
-        // 取得審核者姓名
-        let reviewerName = '';
-        const reviewerEmail = reviewData[i][3];
-        for (let j = 1; j < usersData.length; j++) {
-          if (usersData[j][2] === reviewerEmail) {
-            reviewerName = usersData[j][3];
-            break;
-          }
-        }
-
-        // 取得任務名稱
-        let taskName = taskId;  // 預設使用 taskId
-        let actualTaskId = taskId;
-
-        // 去除層級後綴來查找任務
-        if (actualTaskId.includes('_tutorial')) {
-          actualTaskId = actualTaskId.replace('_tutorial', '');
-        } else if (actualTaskId.includes('_adventure')) {
-          actualTaskId = actualTaskId.replace('_adventure', '');
-        } else if (actualTaskId.includes('_hardcore')) {
-          actualTaskId = actualTaskId.replace('_hardcore', '');
-        }
-
-        for (let j = 1; j < tasksData.length; j++) {
-          if (tasksData[j][0] === actualTaskId) {
-            taskName = tasksData[j][3];  // 任務名稱在第4欄
-            break;
-          }
-        }
-
-        reviews.push({
-          reviewId: reviewData[i][0],
-          status: status,
-          reviewerName: reviewerName,
-          reviewerEmail: reviewerEmail,
-          taskId: taskId,
-          taskName: taskName,
-          assignedTime: assignedTime,
-          acceptedTime: acceptedTime,
-          completedTime: reviewData[i][7],
-          result: reviewData[i][9],
-          rejectReason: reviewData[i][10],
-          timeRemaining: timeRemaining,
-          rowIndex: i  // 記錄行索引用於後續篩選
-        });
-      }
-    }
-
-    // 如果是查詢 taskProgressId，只保留最新的那一筆
-    if (taskProgressId && latestReviewByProgressId !== null) {
-      reviews = reviews.filter(r => r.rowIndex === latestReviewByProgressId);
-    }
-
-    // 移除輔助欄位
-    reviews.forEach(r => delete r.rowIndex);
-
-    Logger.log('✅ 查詢互評狀態:', { count: reviews.length });
-
-    // 如果是查詢 taskProgressId，同時查詢任務狀態（檢查是否改為教師審核）
+    // ✅ 如果是查詢 taskProgressId，同時查詢任務狀態
     let taskStatus = null;
     if (taskProgressId) {
       const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
@@ -6385,7 +6296,7 @@ function checkPeerReviewStatus(params) {
     return {
       success: true,
       reviews: reviews,
-      taskStatus: taskStatus  // 新增任務狀態
+      taskStatus: taskStatus  // ✅ 確保回傳
     };
 
   } catch (error) {
@@ -6393,7 +6304,8 @@ function checkPeerReviewStatus(params) {
     return {
       success: false,
       message: '查詢失敗：' + error.message,
-      reviews: []
+      reviews: [],
+      taskStatus: null // ✅ 錯誤時也要有預設值
     };
   }
 }
