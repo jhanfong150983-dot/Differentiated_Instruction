@@ -2527,7 +2527,7 @@
                             }
                         }, 3000);
 
-                        // 30秒後如果還沒被接受，則超時並改為教師審核
+                        // 30秒後如果還沒被接受，則超時並呼叫後端處理
                         waitingReviewTimeout = setTimeout(function() {
                             // 檢查是否已被接受（如果已接受就不處理超時）
                             if (lastProcessedReviewStatus === 'accepted' || lastProcessedReviewStatus === 'completed') {
@@ -2536,15 +2536,39 @@
                                 return;
                             }
 
-                            // 30秒內沒人接受，停止輪詢並提示超時
-                            if (waitingReviewCheckInterval) {
-                                clearInterval(waitingReviewCheckInterval);
-                                waitingReviewCheckInterval = null;
-                            }
-                            if (waitingModal && waitingModal.style.display === 'flex') {
-                                waitingModal.style.display = 'none';
-                                showToast('30秒內無人接受審核，已改為教師審核', 'info');
-                            }
+                            APP_CONFIG.log('⏰ 30秒超時，呼叫後端處理');
+
+                            // 呼叫後端API處理超時（reassign或改教師審核）
+                            const timeoutParams = new URLSearchParams({
+                                action: 'handleAcceptTimeout',
+                                taskProgressId: response.taskProgressId
+                            });
+
+                            fetch(`${APP_CONFIG.API_URL}?${timeoutParams.toString()}`)
+                                .then(response => response.json())
+                                .then(function(data) {
+                                    if (data.success) {
+                                        if (data.reassigned) {
+                                            // 改派給其他人，繼續等待
+                                            showToast(`30秒內無人接受，已改為 ${data.newReviewerName} 審核`, 'info');
+                                            // 不關閉視窗，繼續輪詢
+                                        } else {
+                                            // 改為教師審核，關閉視窗
+                                            if (waitingReviewCheckInterval) {
+                                                clearInterval(waitingReviewCheckInterval);
+                                                waitingReviewCheckInterval = null;
+                                            }
+                                            if (waitingModal && waitingModal.style.display === 'flex') {
+                                                waitingModal.style.display = 'none';
+                                            }
+                                            showToast('所有同學都無法審核，已改為教師審核', 'info');
+                                        }
+                                    }
+                                })
+                                .catch(function(error) {
+                                    APP_CONFIG.error('處理接受超時失敗', error);
+                                });
+
                             waitingReviewTimeout = null;
                         }, 30000);
                     } else {
@@ -2758,7 +2782,30 @@
 
             if (remaining <= 0) {
                 clearInterval(reviewNotificationTimer);
+                reviewNotificationTimer = null;
                 modal.style.display = 'none';
+
+                // 呼叫後端API處理超時
+                const timeoutParams = new URLSearchParams({
+                    action: 'handleAcceptTimeout',
+                    reviewId: currentReviewData.reviewId
+                });
+
+                fetch(`${APP_CONFIG.API_URL}?${timeoutParams.toString()}`)
+                    .then(response => response.json())
+                    .then(function(data) {
+                        if (data.success && !data.alreadyProcessed) {
+                            if (data.reassigned) {
+                                APP_CONFIG.log(`✅ 超時已處理，改為 ${data.newReviewerName} 審核`);
+                            } else {
+                                APP_CONFIG.log('✅ 超時已處理，改為教師審核');
+                            }
+                        }
+                    })
+                    .catch(function(error) {
+                        APP_CONFIG.error('處理接受超時失敗', error);
+                    });
+
                 currentReviewData = null;
                 showToast('審核請求已超時', 'warning');
             }
