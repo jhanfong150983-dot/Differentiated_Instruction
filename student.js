@@ -3001,21 +3001,54 @@
             }
             APP_CONFIG.log('⏳ 狀態：assigned - 等待接受');
         } else if (review.status === 'accepted') {
-            messageElement.textContent = `${review.reviewerName} 即將前來審核，請稍候...`;
-            if (waitingModal) {
-                waitingModal.style.display = 'flex';
+            // 審核者已接受，停止輪詢並關閉視窗
+            APP_CONFIG.log('👀 狀態：accepted - 審核者已接受，停止輪詢');
+
+            // 立即停止輪詢計時器
+            if (waitingReviewCheckInterval) {
+                clearInterval(waitingReviewCheckInterval);
+                waitingReviewCheckInterval = null;
+                APP_CONFIG.log('✅ 已停止輪詢計時器（審核者已接受）');
             }
-            APP_CONFIG.log('👀 狀態：accepted - 審核者已接受');
-        } else if (review.status === 'completed') {
+            if (waitingReviewTimeout) {
+                clearTimeout(waitingReviewTimeout);
+                waitingReviewTimeout = null;
+                APP_CONFIG.log('✅ 已停止超時計時器（審核者已接受）');
+            }
+
+            // 關閉等待視窗
             if (waitingModal) {
                 waitingModal.style.display = 'none';
             }
+
+            // 提示用戶
+            showToast(`✅ ${review.reviewerName} 已接受審核，請耐心等待結果`, 'success');
+        } else if (review.status === 'completed') {
+            // 審核完成，停止輪詢並關閉視窗
+            APP_CONFIG.log('✅ 狀態：completed - 審核完成', { result: review.result });
+
+            // 停止輪詢計時器
+            if (waitingReviewCheckInterval) {
+                clearInterval(waitingReviewCheckInterval);
+                waitingReviewCheckInterval = null;
+            }
+            if (waitingReviewTimeout) {
+                clearTimeout(waitingReviewTimeout);
+                waitingReviewTimeout = null;
+            }
+
+            // 關閉等待視窗
+            if (waitingModal) {
+                waitingModal.style.display = 'none';
+            }
+
+            // 顯示審核結果
             if (review.result === 'pass') {
                 showToast('✅ 任務審核通過！你也獲得了 50 金幣', 'success');
             } else {
                 showToast(`❌ 任務被退回：${review.rejectReason}`, 'warning');
             }
-            APP_CONFIG.log('✅ 狀態：completed - 審核完成', { result: review.result });
+
             // 重新載入任務列表
             if (selectedTier) {
                 loadTierTasks(true);
