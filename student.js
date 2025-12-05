@@ -2503,24 +2503,38 @@
                         // 開始輪詢檢查審核狀態
                         let checkCount = 0;
                         const maxChecks = 10; // 最多檢查 10 次（30 秒）
-                        const checkInterval = setInterval(function() {
+
+                        // 清除舊的計時器（如果存在）
+                        if (waitingReviewCheckInterval) {
+                            clearInterval(waitingReviewCheckInterval);
+                        }
+                        if (waitingReviewTimeout) {
+                            clearTimeout(waitingReviewTimeout);
+                        }
+
+                        waitingReviewCheckInterval = setInterval(function() {
                             checkCount++;
                             APP_CONFIG.log(`🔍 檢查審核狀態 (${checkCount}/${maxChecks})`);
                             checkMyTaskReviewStatus(response.taskProgressId);
 
                             if (checkCount >= maxChecks) {
-                                clearInterval(checkInterval);
+                                clearInterval(waitingReviewCheckInterval);
+                                waitingReviewCheckInterval = null;
                                 APP_CONFIG.log('⏰ 停止輪詢檢查審核狀態');
                             }
                         }, 3000);
 
                         // 30秒後停止輪詢並關閉 Modal
-                        setTimeout(function() {
-                            clearInterval(checkInterval);
+                        waitingReviewTimeout = setTimeout(function() {
+                            if (waitingReviewCheckInterval) {
+                                clearInterval(waitingReviewCheckInterval);
+                                waitingReviewCheckInterval = null;
+                            }
                             if (waitingModal && waitingModal.style.display === 'flex') {
                                 waitingModal.style.display = 'none';
                                 showToast('審核請求已超時，改為教師審核', 'info');
                             }
+                            waitingReviewTimeout = null;
                         }, 30000);
                     } else {
                         // 教師審核模式
@@ -2648,6 +2662,8 @@
     let peerReviewCheckInterval = null;
     let reviewNotificationTimer = null;
     let reviewTimer = null;
+    let waitingReviewCheckInterval = null;  // 30秒輪詢檢查的計時器
+    let waitingReviewTimeout = null;  // 30秒超時的計時器
 
     /**
      * 開始輪詢檢查是否有待審核的任務
@@ -2743,8 +2759,22 @@
     window.acceptPeerReviewNotification = function() {
         if (!currentReviewData) return;
 
+        // 清除通知倒數計時器
         if (reviewNotificationTimer) {
             clearInterval(reviewNotificationTimer);
+            reviewNotificationTimer = null;
+        }
+
+        // 清除30秒等待審核的計時器（這是關鍵修復）
+        if (waitingReviewCheckInterval) {
+            clearInterval(waitingReviewCheckInterval);
+            waitingReviewCheckInterval = null;
+            APP_CONFIG.log('✅ 已清除等待審核輪詢計時器');
+        }
+        if (waitingReviewTimeout) {
+            clearTimeout(waitingReviewTimeout);
+            waitingReviewTimeout = null;
+            APP_CONFIG.log('✅ 已清除等待審核超時計時器');
         }
 
         const params = new URLSearchParams({
@@ -2783,8 +2813,22 @@
      * 拒絕審核
      */
     window.declinePeerReview = function() {
+        // 清除通知倒數計時器
         if (reviewNotificationTimer) {
             clearInterval(reviewNotificationTimer);
+            reviewNotificationTimer = null;
+        }
+
+        // 清除30秒等待審核的計時器（防止其他學生也被詢問後觸發超時）
+        if (waitingReviewCheckInterval) {
+            clearInterval(waitingReviewCheckInterval);
+            waitingReviewCheckInterval = null;
+            APP_CONFIG.log('✅ 已清除等待審核輪詢計時器');
+        }
+        if (waitingReviewTimeout) {
+            clearTimeout(waitingReviewTimeout);
+            waitingReviewTimeout = null;
+            APP_CONFIG.log('✅ 已清除等待審核超時計時器');
         }
 
         document.getElementById('peerReviewNotificationModal').style.display = 'none';
