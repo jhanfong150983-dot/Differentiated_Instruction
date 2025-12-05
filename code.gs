@@ -1,27 +1,3 @@
-/* ==========================================
-   分層教學管理系統 - 整合版後端程式碼
-   ==========================================
-   
-   功能包含：
-   A. 登入系統 (原有功能)
-      - Google 登入處理
-      - 使用者資料管理
-      - 權限驗證
-      - 登入歷史記錄
-   
-   B. 班級管理系統 (新增功能)
-      - 建立班級
-      - 匯入學生名單
-      - 查看班級列表
-      - 查看班級成員
-   
-   ⚠️ 部署步驟：
-   1. 開啟你的 Google Sheets
-   2. 點選「擴充功能」→「Apps Script」
-   3. 將這個檔案的內容貼上
-   4. 部署為網路應用程式
-*/
-
 // ==========================================
 // 設定區
 // ==========================================
@@ -30,7 +6,7 @@ const SHEET_CONFIG = {
   // ⚠️ 重要：將這裡改成你的 Google Sheets ID
   SPREADSHEET_ID: '14SuT1RwetyXMNBU1SeEUA0wZxZXCt7tVM5I0RcVL1As',
   
-  // 各個工作表的名稱
+  // 定義各個工作表的名稱
   SHEETS: {
     // 登入系統相關
     USERS: '使用者資料',
@@ -91,7 +67,6 @@ function jsonResponse(success, message, data = null) {
  * 2. 處理 JSONP 請求 (有參數時)
  */
 function doGet(e) {
-  
   try {
     const params = e.parameter;
     
@@ -117,10 +92,11 @@ function doGet(e) {
     }
     
     let response;
-    
+
+   //如果有action，執行對應的API，傳回對應資料JSON
     switch(params.action) {
       
-      // ===== 登入系統 =====
+      // ===== 1.登入系統 =====
       case 'login':
         const userData = {
           google_id: params.google_id,
@@ -130,11 +106,13 @@ function doGet(e) {
         };
         response = handleLogin(userData, params.timestamp);
         break;
-        
+
+      //==== 1-1.使用者資料====
       case 'getUserData':
         response = getUserData(params.user_id);
         break;
-        
+
+      //==== 1-2.使用者權限====
       case 'checkPermission':
         response = checkPermission(params.user_id, params.permission);
         break;
@@ -6545,4 +6523,5 @@ function checkReviewTimeouts() {
   } finally {
     lock.releaseLock();
   }
+
 }
