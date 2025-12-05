@@ -27,6 +27,7 @@
     let hasShownSlowSuggestion = false; // 是否已显示过太慢建议
     let currentTaskProgressInReview = null; // ✅ 記住當前正在審核的任務進度ID
     let lastShownReviewForTask = {}; // ✅ 記住每個任務已顯示過的 reviewId
+    let shownReviewTasks = new Set();
 
     // 性能優化：緩存數據避免重複 API 調用
     let cachedSessionStatus = null; // 緩存課堂狀態
@@ -2768,25 +2769,23 @@
                     const review = data.review;
 
                     if (review.status === 'assigned') {
-                        // ✅ 檢查「這個任務」是否已經顯示過「這個 reviewId」
                         const taskProgressId = review.taskProgressId;
                         
-                        if (lastShownReviewForTask[taskProgressId] === review.reviewId) {
-                            APP_CONFIG.log('⚠️ 此任務已顯示過此審核請求，跳過:', {
+                        // ✅ 只檢查任務 ID，避免重複通知
+                        if (shownReviewTasks.has(taskProgressId)) {
+                            APP_CONFIG.log('⚠️ 此任務已顯示過審核請求，跳過:', {
                                 taskProgressId,
                                 reviewId: review.reviewId
                             });
                             return;
                         }
                         
-                        // ✅ 記住這個任務的這個 reviewId
-                        lastShownReviewForTask[taskProgressId] = review.reviewId;
-                        currentTaskProgressInReview = taskProgressId;
+                        // ✅ 記住這個任務
+                        shownReviewTasks.add(taskProgressId);
                         
                         // 顯示通知Modal
                         showPeerReviewNotification(review);
                     } else if (review.status === 'accepted') {
-                        // 已接受，顯示審核界面
                         showPeerReviewInterface(review);
                     }
                 }
@@ -2825,6 +2824,8 @@
                 reviewNotificationTimer = null;
                 modal.style.display = 'none';
 
+                shownReviewTasks.delete(currentReviewData.taskProgressId);
+
                 // ✅ 清除當前任務的記錄（超時時）
                 if (currentTaskProgressInReview) {
                     delete lastShownReviewForTask[currentTaskProgressInReview];
@@ -2862,6 +2863,8 @@
      */
     window.acceptPeerReviewNotification = function() {
         if (!currentReviewData) return;
+
+        shownReviewTasks.delete(currentReviewData.taskProgressId);
 
         // 清除通知倒數計時器
         if (reviewNotificationTimer) {
@@ -2931,6 +2934,8 @@
      */
     window.declinePeerReview = function() {
         if (!currentReviewData) return;
+        
+        shownReviewTasks.delete(currentReviewData.taskProgressId);
 
         // 清除通知倒數計時器
         if (reviewNotificationTimer) {
