@@ -2863,6 +2863,25 @@
      */
     window.acceptPeerReviewNotification = function() {
         if (!currentReviewData) return;
+        
+        //按鈕鎖定，防止重複點擊
+        const acceptButton = document.getElementById('acceptReviewButton');
+        const declineButton = document.getElementById('declineReviewButton');
+        
+        if (acceptButton) {
+            acceptButton.disabled = true;
+            acceptButton.textContent = processingText; 
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定接受按鈕，請檢查 HTML 中 ID 是否為 acceptReviewButton！');
+        }
+
+        
+        if (declineButton) {
+            declineButton.disabled = true;
+            declineButton.textContent = processingText;
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定拒絕按鈕，請檢查 HTML 中 ID 是否為 declineReviewButton！');
+        }
 
         shownReviewTasks.delete(currentReviewData.taskProgressId);
 
@@ -2929,6 +2948,24 @@
     window.declinePeerReview = function() {
         if (!currentReviewData) return;
         
+        //按鈕鎖定，防止重複點擊
+        const acceptButton = document.getElementById('acceptReviewButton');
+        const declineButton = document.getElementById('declineReviewButton');
+        
+        if (acceptButton) {
+            acceptButton.disabled = true;
+            acceptButton.textContent = processingText; 
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定接受按鈕，請檢查 HTML 中 ID 是否為 acceptReviewButton！');
+        }
+
+        
+        if (declineButton) {
+            declineButton.disabled = true;
+            declineButton.textContent = processingText;
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定拒絕按鈕，請檢查 HTML 中 ID 是否為 declineReviewButton！');
+        }
         shownReviewTasks.delete(currentReviewData.taskProgressId);
 
         // 清除通知倒數計時器
