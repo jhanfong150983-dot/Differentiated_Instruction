@@ -2443,6 +2443,7 @@
         if (!selectedTask) return;
 
         // ✅ 保存任務資訊到局部變數，避免被 closeTaskModal() 清空
+        let isHandlingTimeout = false;
         const taskToSubmit = selectedTask;
 
         if (!confirm('確定要提交此任務嗎？\n提交後將由教師審核，通過後才會獲得 ' + (taskToSubmit.tokenReward || 0) + ' 個代幣！')) {
@@ -2528,7 +2529,15 @@
                         }, 3000);
 
                         // 30秒後如果還沒被接受，則超時並呼叫後端處理
+                        // 在檔案開頭的變數區加入
+                        // 然後修改 handleCompleteTask 函數中的 30 秒超時部分
                         waitingReviewTimeout = setTimeout(function() {
+                            // ✅ 檢查是否已在處理中
+                            if (isHandlingTimeout) {
+                                APP_CONFIG.log('⚠️ 超時處理已在執行中，跳過');
+                                return;
+                            }
+                            
                             // 檢查是否已被接受（如果已接受就不處理超時）
                             if (lastProcessedReviewStatus === 'accepted' || lastProcessedReviewStatus === 'completed') {
                                 APP_CONFIG.log('✅ 審核已被接受或完成，忽略30秒超時');
@@ -2536,6 +2545,8 @@
                                 return;
                             }
 
+                            // ✅ 設定處理中標記
+                            isHandlingTimeout = true;
                             APP_CONFIG.log('⏰ 30秒超時，呼叫後端處理');
 
                             // 呼叫後端API處理超時（reassign或改教師審核）
@@ -2547,6 +2558,9 @@
                             fetch(`${APP_CONFIG.API_URL}?${timeoutParams.toString()}`)
                                 .then(response => response.json())
                                 .then(function(data) {
+                                    // ✅ 處理完成後解鎖
+                                    isHandlingTimeout = false;
+                                    
                                     if (data.success) {
                                         if (data.reassigned) {
                                             // 改派給其他人，繼續等待
@@ -2558,14 +2572,24 @@
                                                 clearInterval(waitingReviewCheckInterval);
                                                 waitingReviewCheckInterval = null;
                                             }
+                                            const waitingModal = document.getElementById('waitingReviewModal');
                                             if (waitingModal && waitingModal.style.display === 'flex') {
                                                 waitingModal.style.display = 'none';
                                             }
                                             showToast('所有同學都無法審核，已改為教師審核', 'info');
+                                            
+                                            // ✅ 重新載入任務列表
+                                            if (selectedTier) {
+                                                setTimeout(() => {
+                                                    loadTierTasks(true);
+                                                }, 1000);
+                                            }
                                         }
                                     }
                                 })
                                 .catch(function(error) {
+                                    // ✅ 發生錯誤也要解鎖
+                                    isHandlingTimeout = false;
                                     APP_CONFIG.error('處理接受超時失敗', error);
                                 });
 
@@ -3048,57 +3072,75 @@
      * 檢查自己提交的任務的審核狀態
      */
     function checkMyTaskReviewStatus(taskProgressId) {
-        const params = new URLSearchParams({
-            action: 'getReviewStatus',
-            taskProgressId: taskProgressId
-        });
+    const params = new URLSearchParams({
+        action: 'getReviewStatus',
+        taskProgressId: taskProgressId
+    });
 
-        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-            .then(response => response.json())
-            .then(function(data) {
-                if (data.success) {
-                    // ✅ 修復：優先檢查任務狀態
-                    if (data.taskStatus === 'pending_review') {
-                        // 任務已改為教師審核，關閉等待視窗
-                        APP_CONFIG.log('📝 任務狀態變為 pending_review（教師審核）');
+    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+        .then(response => response.json())
+        .then(function(data) {
+            APP_CONFIG.log('📥 審核狀態回應:', data); // ✅ 加入除錯日誌
+            
+            if (!data.success) {
+                APP_CONFIG.error('查詢審核狀態失敗:', data.message);
+                return;
+            }
 
-                        // 停止所有計時器
-                        if (waitingReviewCheckInterval) {
-                            clearInterval(waitingReviewCheckInterval);
-                            waitingReviewCheckInterval = null;
-                        }
-                        if (waitingReviewTimeout) {
-                            clearTimeout(waitingReviewTimeout);
-                            waitingReviewTimeout = null;
-                        }
+            // ✅ 檢查任務狀態（包含所有可能改為教師審核的狀態）
+            const teacherReviewStatuses = ['pending_review', 'completed'];
+            if (data.taskStatus && teacherReviewStatuses.includes(data.taskStatus)) {
+                APP_CONFIG.log('📝 任務狀態變為教師審核或已完成:', data.taskStatus);
 
-                        // 關閉等待視窗
-                        const waitingModal = document.getElementById('waitingReviewModal');
-                        if (waitingModal && waitingModal.style.display === 'flex') {
-                            waitingModal.style.display = 'none';
-                        }
-
-                        showToast('所有同學都無法審核，已改為教師審核', 'info');
-
-                        // 重新載入任務列表
-                        if (selectedTier) {
-                            loadTierTasks(true);
-                        }
-                        
-                        return; // ✅ 停止後續處理
-                    }
-                    
-                    // 檢查審核記錄
-                    if (data.reviews && data.reviews.length > 0) {
-                        const review = data.reviews[0];
-                        updateWaitingReviewUI(review);
-                    }
+                // 停止所有計時器
+                if (waitingReviewCheckInterval) {
+                    clearInterval(waitingReviewCheckInterval);
+                    waitingReviewCheckInterval = null;
+                    APP_CONFIG.log('✅ 已停止輪詢計時器');
                 }
-            })
-            .catch(function(error) {
-                APP_CONFIG.error('檢查審核狀態失敗', error);
-            });
-    }
+                if (waitingReviewTimeout) {
+                    clearTimeout(waitingReviewTimeout);
+                    waitingReviewTimeout = null;
+                    APP_CONFIG.log('✅ 已停止超時計時器');
+                }
+
+                // 關閉等待視窗
+                const waitingModal = document.getElementById('waitingReviewModal');
+                if (waitingModal && waitingModal.style.display === 'flex') {
+                    waitingModal.style.display = 'none';
+                    APP_CONFIG.log('✅ 已關閉等待視窗');
+                }
+
+                // 顯示提示訊息
+                if (data.taskStatus === 'pending_review') {
+                    showToast('所有同學都無法審核，已改為教師審核', 'info');
+                } else if (data.taskStatus === 'completed') {
+                    showToast('✅ 任務已通過審核！', 'success');
+                }
+
+                // 重新載入任務列表
+                if (selectedTier) {
+                    setTimeout(() => {
+                        APP_CONFIG.log('🔄 重新載入任務列表');
+                        loadTierTasks(true);
+                    }, 1000);
+                }
+                
+                return; // ✅ 停止後續處理
+            }
+            
+            // 檢查審核記錄
+            if (data.reviews && data.reviews.length > 0) {
+                const review = data.reviews[0];
+                updateWaitingReviewUI(review);
+            } else {
+                APP_CONFIG.log('ℹ️ 沒有審核記錄');
+            }
+        })
+        .catch(function(error) {
+            APP_CONFIG.error('檢查審核狀態失敗', error);
+        });
+}
 
     /**
      * 更新等待審核的UI
