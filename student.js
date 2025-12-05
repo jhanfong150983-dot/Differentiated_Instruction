@@ -25,6 +25,8 @@
     let taskTimeLimitCheckInterval = null; // 任務時間限制檢查計時器（檢查是否超時）
     let currentTaskStartTime = null; // 当前任务开始时间
     let hasShownSlowSuggestion = false; // 是否已显示过太慢建议
+    let currentTaskProgressInReview = null; // ✅ 記住當前正在審核的任務進度ID
+    let lastShownReviewForTask = {}; // ✅ 記住每個任務已顯示過的 reviewId
 
     // 性能優化：緩存數據避免重複 API 調用
     let cachedSessionStatus = null; // 緩存課堂狀態
@@ -2766,6 +2768,21 @@
                     const review = data.review;
 
                     if (review.status === 'assigned') {
+                        // ✅ 檢查「這個任務」是否已經顯示過「這個 reviewId」
+                        const taskProgressId = review.taskProgressId;
+                        
+                        if (lastShownReviewForTask[taskProgressId] === review.reviewId) {
+                            APP_CONFIG.log('⚠️ 此任務已顯示過此審核請求，跳過:', {
+                                taskProgressId,
+                                reviewId: review.reviewId
+                            });
+                            return;
+                        }
+                        
+                        // ✅ 記住這個任務的這個 reviewId
+                        lastShownReviewForTask[taskProgressId] = review.reviewId;
+                        currentTaskProgressInReview = taskProgressId;
+                        
                         // 顯示通知Modal
                         showPeerReviewNotification(review);
                     } else if (review.status === 'accepted') {
@@ -2792,7 +2809,6 @@
         nameElement.textContent = review.revieweeName;
         modal.style.display = 'flex';
 
-        // 開始倒數計時
         let remaining = review.timeRemaining || 30;
         timerElement.textContent = remaining;
 
@@ -2809,7 +2825,12 @@
                 reviewNotificationTimer = null;
                 modal.style.display = 'none';
 
-                // 呼叫後端API處理超時
+                // ✅ 清除當前任務的記錄（超時時）
+                if (currentTaskProgressInReview) {
+                    delete lastShownReviewForTask[currentTaskProgressInReview];
+                    currentTaskProgressInReview = null;
+                }
+
                 const timeoutParams = new URLSearchParams({
                     action: 'handleAcceptTimeout',
                     reviewId: currentReviewData.reviewId
@@ -2846,6 +2867,12 @@
         if (reviewNotificationTimer) {
             clearInterval(reviewNotificationTimer);
             reviewNotificationTimer = null;
+        }
+
+        // ✅ 接受後也要清除記錄，避免記憶體累積
+        if (currentTaskProgressInReview) {
+            delete lastShownReviewForTask[currentTaskProgressInReview];
+            currentTaskProgressInReview = null;
         }
 
         // 清除30秒等待審核的計時器（這是關鍵修復）
@@ -2925,6 +2952,12 @@
                 hideLoading('mainLoading');
 
                 document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                
+                // ✅ 只清除當前任務的記錄（不是全部清除）
+                if (currentTaskProgressInReview) {
+                    delete lastShownReviewForTask[currentTaskProgressInReview];
+                    currentTaskProgressInReview = null;
+                }
                 currentReviewData = null;
 
                 if (data.success) {
@@ -2941,7 +2974,14 @@
                 hideLoading('mainLoading');
                 APP_CONFIG.error('拒絕審核失敗', error);
                 document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                
+                // ✅ 清除當前任務的記錄
+                if (currentTaskProgressInReview) {
+                    delete lastShownReviewForTask[currentTaskProgressInReview];
+                    currentTaskProgressInReview = null;
+                }
                 currentReviewData = null;
+                
                 showToast('拒絕失敗：' + error.message, 'error');
             });
     };
