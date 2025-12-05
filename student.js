@@ -3056,9 +3056,39 @@
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(data) {
-                if (data.success && data.reviews && data.reviews.length > 0) {
-                    const review = data.reviews[0];
-                    updateWaitingReviewUI(review);
+                if (data.success) {
+                    // 優先檢查任務狀態
+                    if (data.taskStatus === 'pending_review') {
+                        // 任務已改為教師審核，關閉等待視窗
+                        APP_CONFIG.log('📝 任務狀態變為 pending_review（教師審核）');
+
+                        // 停止所有計時器
+                        if (waitingReviewCheckInterval) {
+                            clearInterval(waitingReviewCheckInterval);
+                            waitingReviewCheckInterval = null;
+                        }
+                        if (waitingReviewTimeout) {
+                            clearTimeout(waitingReviewTimeout);
+                            waitingReviewTimeout = null;
+                        }
+
+                        // 關閉等待視窗
+                        const waitingModal = document.getElementById('waitingReviewModal');
+                        if (waitingModal && waitingModal.style.display === 'flex') {
+                            waitingModal.style.display = 'none';
+                        }
+
+                        showToast('所有同學都無法審核，已改為教師審核', 'info');
+
+                        // 重新載入任務列表
+                        if (selectedTier) {
+                            loadTierTasks(true);
+                        }
+                    } else if (data.reviews && data.reviews.length > 0) {
+                        // 有審核記錄，更新UI
+                        const review = data.reviews[0];
+                        updateWaitingReviewUI(review);
+                    }
                 }
             })
             .catch(function(error) {

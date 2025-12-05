@@ -6367,9 +6367,25 @@ function checkPeerReviewStatus(params) {
 
     Logger.log('✅ 查詢互評狀態:', { count: reviews.length });
 
+    // 如果是查詢 taskProgressId，同時查詢任務狀態（檢查是否改為教師審核）
+    let taskStatus = null;
+    if (taskProgressId) {
+      const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+      const progressData = progressSheet.getDataRange().getValues();
+
+      for (let i = 1; i < progressData.length; i++) {
+        if (progressData[i][0] === taskProgressId) {
+          taskStatus = progressData[i][3];  // status 在第4欄
+          Logger.log('📊 任務狀態:', taskStatus);
+          break;
+        }
+      }
+    }
+
     return {
       success: true,
-      reviews: reviews
+      reviews: reviews,
+      taskStatus: taskStatus  // 新增任務狀態
     };
 
   } catch (error) {
