@@ -2504,6 +2504,9 @@
                         let checkCount = 0;
                         const maxChecks = 10; // 最多檢查 10 次（30 秒）
 
+                        // 重置狀態標記，允許處理新的審核流程
+                        lastProcessedReviewStatus = null;
+
                         // 清除舊的計時器（如果存在）
                         if (waitingReviewCheckInterval) {
                             clearInterval(waitingReviewCheckInterval);
@@ -2664,6 +2667,7 @@
     let reviewTimer = null;
     let waitingReviewCheckInterval = null;  // 30秒輪詢檢查的計時器
     let waitingReviewTimeout = null;  // 30秒超時的計時器
+    let lastProcessedReviewStatus = null;  // 記錄已處理過的審核狀態，防止重複處理
 
     /**
      * 開始輪詢檢查是否有待審核的任務
@@ -3001,6 +3005,13 @@
             }
             APP_CONFIG.log('⏳ 狀態：assigned - 等待接受');
         } else if (review.status === 'accepted') {
+            // 檢查是否已處理過此狀態
+            if (lastProcessedReviewStatus === 'accepted') {
+                APP_CONFIG.log('⚠️ 已處理過 accepted 狀態，跳過');
+                return;
+            }
+            lastProcessedReviewStatus = 'accepted';
+
             // 審核者已接受，停止輪詢並關閉視窗
             APP_CONFIG.log('👀 狀態：accepted - 審核者已接受，停止輪詢');
 
@@ -3024,6 +3035,13 @@
             // 提示用戶
             showToast(`✅ ${review.reviewerName} 已接受審核，請耐心等待結果`, 'success');
         } else if (review.status === 'completed') {
+            // 檢查是否已處理過此狀態
+            if (lastProcessedReviewStatus === 'completed') {
+                APP_CONFIG.log('⚠️ 已處理過 completed 狀態，跳過');
+                return;
+            }
+            lastProcessedReviewStatus = 'completed';
+
             // 審核完成，停止輪詢並關閉視窗
             APP_CONFIG.log('✅ 狀態：completed - 審核完成', { result: review.result });
 
