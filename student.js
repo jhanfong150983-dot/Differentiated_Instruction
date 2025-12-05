@@ -3057,7 +3057,7 @@
             .then(response => response.json())
             .then(function(data) {
                 if (data.success) {
-                    // 優先檢查任務狀態
+                    // ✅ 修復：優先檢查任務狀態
                     if (data.taskStatus === 'pending_review') {
                         // 任務已改為教師審核，關閉等待視窗
                         APP_CONFIG.log('📝 任務狀態變為 pending_review（教師審核）');
@@ -3084,8 +3084,12 @@
                         if (selectedTier) {
                             loadTierTasks(true);
                         }
-                    } else if (data.reviews && data.reviews.length > 0) {
-                        // 有審核記錄，更新UI
+                        
+                        return; // ✅ 停止後續處理
+                    }
+                    
+                    // 檢查審核記錄
+                    if (data.reviews && data.reviews.length > 0) {
                         const review = data.reviews[0];
                         updateWaitingReviewUI(review);
                     }
