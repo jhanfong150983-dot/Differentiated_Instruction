@@ -5640,8 +5640,8 @@ function assignPeerReview(params) {
       'assigned',
       '',  // result
       '',  // reject_reason
-      50,  // reviewer_reward
-      50   // reviewee_reward
+      50,  // reviewer_reward（審核者：無論通過或退回都給50金幣）
+      0    // reviewee_reward（被審核者：通過任務本身就有金幣，不額外給）
     ]);
 
     // 更新任務進度狀態為 pending_peer_review
@@ -6095,17 +6095,20 @@ function submitPeerReview(params) {
       }
     }
 
-    // 更新金幣（假設 tokens 在 CLASS_MEMBERS 表的某一欄）
-    // 注意：這裡需要根據實際的表結構調整
+    // 發放金幣
+    // 審核者：無論通過或退回都給50金幣（因為有審核工作）
+    // 被審核者：不給金幣（通過任務本身就有金幣）
     for (let i = 1; i < tokensData.length; i++) {
-      const userId = tokensData[i][5];  // 假設 user_id 在第6欄
+      const userId = tokensData[i][5];  // user_id 在第6欄
 
+      // 審核者獲得金幣（無論通過或退回）
       if (userId === reviewerUserId) {
-        const currentTokens = tokensData[i][6] || 0;  // 假設 tokens 在第7欄
+        const currentTokens = tokensData[i][6] || 0;  // tokens 在第7欄
         tokensSheet.getRange(i + 1, 7).setValue(currentTokens + reviewInfo.reviewerReward);
         Logger.log('💰 審核者獲得金幣:', reviewInfo.reviewerReward);
       }
 
+      // 被審核者：revieweeReward 已設為 0，所以這裡即使執行也不會加金幣
       if (userId === revieweeUserId && result === 'pass') {
         const currentTokens = tokensData[i][6] || 0;
         tokensSheet.getRange(i + 1, 7).setValue(currentTokens + reviewInfo.revieweeReward);
@@ -6166,11 +6169,21 @@ function checkPeerReviewStatus(params) {
     const reviews = [];
     const now = new Date();
 
+    // 如果是查詢 taskProgressId，只返回最新的審核記錄（避免舊的 completed 記錄干擾）
+    let latestReviewByProgressId = null;
+    let latestAssignedTime = null;
+
     for (let i = 1; i < reviewData.length; i++) {
       let match = false;
 
       if (taskProgressId && reviewData[i][1] === taskProgressId) {
         match = true;
+        // 追蹤最新的記錄（根據 assigned_time）
+        const assignedTime = reviewData[i][5];
+        if (!latestAssignedTime || new Date(assignedTime) > new Date(latestAssignedTime)) {
+          latestAssignedTime = assignedTime;
+          latestReviewByProgressId = i;
+        }
       }
 
       if (reviewerEmail) {
@@ -6238,10 +6251,19 @@ function checkPeerReviewStatus(params) {
           completedTime: reviewData[i][7],
           result: reviewData[i][9],
           rejectReason: reviewData[i][10],
-          timeRemaining: timeRemaining
+          timeRemaining: timeRemaining,
+          rowIndex: i  // 記錄行索引用於後續篩選
         });
       }
     }
+
+    // 如果是查詢 taskProgressId，只保留最新的那一筆
+    if (taskProgressId && latestReviewByProgressId !== null) {
+      reviews = reviews.filter(r => r.rowIndex === latestReviewByProgressId);
+    }
+
+    // 移除輔助欄位
+    reviews.forEach(r => delete r.rowIndex);
 
     Logger.log('✅ 查詢互評狀態:', { count: reviews.length });
 
