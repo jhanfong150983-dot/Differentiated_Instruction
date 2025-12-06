@@ -235,7 +235,7 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄（強制依順序補全圖示與顏色）
+     * 載入課程層級和學習記錄（強制展開混合層級，確保三色書本顯示）
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
@@ -253,24 +253,17 @@
             courseId: selectedCourse.courseId
         });
 
-        APP_CONFIG.log('🚀 載入課程資料...', {
-            classId: selectedClass.classId,
-            courseId: selectedCourse.courseId
-        });
+        APP_CONFIG.log('🚀 載入課程資料...', { classId: selectedClass.classId });
 
         fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
             .then(response => response.json())
             .then(function(data) {
                 
-                if (!data.success) {
-                    throw new Error(data.message || '載入失敗');
-                }
+                if (!data.success) throw new Error(data.message || '載入失敗');
 
-                // 緩存課堂狀態
                 cachedSessionStatus = data.isActive;
                 sessionCheckTime = Date.now();
 
-                // 如果課堂未開始，顯示等待畫面
                 if (!data.isActive) {
                     hideLoading('mainLoading');
                     displayCourseWaitingScreen();
@@ -278,53 +271,60 @@
                 }
 
                 // ============================================================
-                // 🔥 核心修復：使用「關鍵字」+「排列順序」雙重判斷
+                // 🔥 核心修復：檢測並強制展開資料
                 // ============================================================
                 
-                const UI_CONFIG = {
-                    'tutorial':  { icon: '📗', color: '#27AE60' }, // 基礎
-                    'adventure': { icon: '📘', color: '#2980B9' }, // 進階
-                    'hardcore':  { icon: '📕', color: '#C0392B' }  // 精通
-                };
-
                 let rawTiers = data.tiers || [];
+                
+                // Debug: 讓你知道後端到底傳了幾筆資料回來 (請按 F12 看 Console)
+                console.log('🔍 後端回傳層級數量:', rawTiers.length);
 
-                // 重新組裝 courseTiers (加入 index 參數)
-                courseTiers = rawTiers.map((tier, index) => {
-                    // 1. 先嘗試用名字判斷
-                    const tId = (tier.tierId || tier.id || '').toLowerCase();
-                    const tName = (tier.name || '').toLowerCase();
+                // 定義樣式
+                const STYLES = [
+                    { id: 'tutorial',  name: '基礎層', icon: '📗', color: '#27AE60' },
+                    { id: 'adventure', name: '進階層', icon: '📘', color: '#2980B9' },
+                    { id: 'hardcore',  name: '精通層', icon: '📕', color: '#C0392B' }
+                ];
+
+                // 🛑 情況 A：如果後端只回傳 1 筆資料 (混合模式)，我們手動變成 3 筆
+                if (rawTiers.length === 1) {
+                    const baseTier = rawTiers[0]; // 拿原本那筆資料當基底
                     
-                    let styleKey = 'tutorial'; // 預設值
+                    // 強制產生 3 個新的物件
+                    courseTiers = STYLES.map(style => {
+                        return {
+                            ...baseTier,          // 繼承原始資料 (如 description)
+                            tierId: style.id,     // 覆寫 ID (tutorial/adventure/hardcore)
+                            name: style.name,     // 覆寫名稱
+                            icon: style.icon,     // 強制設定圖示
+                            color: style.color,   // 強制設定顏色
+                            // 如果原始資料有分層描述，也可以在這裡對應 (視後端欄位而定)
+                            // description: baseTier[style.id + 'Desc'] || baseTier.description
+                        };
+                    });
+                    
+                    console.log('✅ 偵測到單一層級，已強制展開為 3 筆:', courseTiers);
 
-                    // 2. 判斷邏輯：名字對了 OR 順序對了
-                    // 如果是陣列中的第 2 個 (index === 1)，或是名字含 adventure/進階 -> 藍色
-                    if (tId.includes('adventure') || tName.includes('進階') || index === 1) {
-                        styleKey = 'adventure';
-                    } 
-                    // 如果是陣列中的第 3 個 (index === 2)，或是名字含 hardcore/精通 -> 紅色
-                    else if (tId.includes('hardcore') || tName.includes('精通') || index === 2) {
-                        styleKey = 'hardcore';
-                    }
-                    // 其他情況 (包含 index === 0) -> 綠色
-                    else {
-                        styleKey = 'tutorial';
-                    }
+                } 
+                // 🛑 情況 B：如果後端確實回傳了 3 筆 (或多筆) 資料
+                else {
+                    courseTiers = rawTiers.map((tier, index) => {
+                        // 依據順序強制分配樣式 (0=綠, 1=藍, 2=紅)
+                        // 如果資料超過 3 筆，後面重複使用最後一個樣式
+                        const styleIndex = Math.min(index, 2); 
+                        const style = STYLES[styleIndex];
 
-                    const style = UI_CONFIG[styleKey];
-
-                    return {
-                        ...tier,
-                        icon: style.icon,   
-                        color: style.color  
-                    };
-                });
+                        return {
+                            ...tier,
+                            icon: style.icon,
+                            color: style.color
+                        };
+                    });
+                }
                 // ============================================================
 
                 learningRecord = data.learningRecord;
                 cachedProgressData = data.progress;
-
-                APP_CONFIG.log('✅ 資料載入完成', { tiers: courseTiers.length });
 
                 return checkAndResumeTier();
             })
@@ -342,7 +342,7 @@
                 APP_CONFIG.error('載入失敗', error);
                 showToast('載入失敗：' + error.message, 'error');
             });
-    }
+    }   
 
     /**
      * 檢查並恢復上次的層級（優化版：使用緩存數據）
