@@ -235,8 +235,7 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄
-     * (修復：強制展開混合層級 + 自動補全圖示 + 自動對應說明文字)
+     * 載入課程層級和學習記錄 (完全前端主導 UI 版 - 含文字說明)
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
@@ -246,6 +245,35 @@
             showToast('無法取得班級或課程資訊', 'error');
             return;
         }
+
+        // ============================================================
+        // 🎨 UI 設定檔：這裡定義了介面的長相 (圖示、顏色、文字)
+        // 這樣可以確保無論後端資料缺什麼，畫面上看到的永遠是這三種完美的狀態
+        // ============================================================
+        const UI_DEFINITIONS = [
+            {
+                id: 'tutorial',
+                name: '基礎層',
+                icon: '📘',         // 藍色書本 Emoji
+                color: '#10B981',   // 綠色 (Emerald)
+                description: '適合初學者，循序漸進地學習基礎知識' // ✅ 補上正確說明
+            },
+            {
+                id: 'adventure',
+                name: '進階層',
+                icon: '📙',         // 橘色書本 Emoji
+                color: '#F59E0B',   // 橘色 (Amber)
+                description: '適合具備基礎能力者，挑戰更深入的內容' // ✅ 補上正確說明
+            },
+            {
+                id: 'hardcore',
+                name: '精通層',
+                icon: '📕',         // 紅色書本 Emoji
+                color: '#EF4444',   // 紅色 (Red)
+                description: '適合進階學習者，挑戰高難度任務'     // ✅ 補上正確說明
+            }
+        ];
+        // ============================================================
 
         const params = new URLSearchParams({
             action: 'getStudentClassEntryData',
@@ -271,62 +299,32 @@
                     return Promise.reject('waiting_for_class');
                 }
 
-                // ============================================================
-                // 🔥 核心邏輯：資料展開與樣式補全
-                // ============================================================
-                
-                let rawTiers = data.tiers || [];
-                
-                // 定義樣式與 ID 對照
-                const STYLES = [
-                    { id: 'tutorial',  name: '基礎層', icon: '📗', color: '#27AE60' },
-                    { id: 'adventure', name: '進階層', icon: '📘', color: '#2980B9' },
-                    { id: 'hardcore',  name: '精通層', icon: '📕', color: '#C0392B' }
-                ];
+                // 取得後端回傳的原始資料
+                let backendData = (data.tiers && data.tiers.length > 0) ? data.tiers[0] : {};
 
-                // 🛑 情況 A：單筆資料 (混合模式) -> 強制展開成 3 筆
-                if (rawTiers.length === 1) {
-                    const baseTier = rawTiers[0]; 
+                // 🛠️ 強制建構：使用 UI_DEFINITIONS 產生 3 張卡片
+                courseTiers = UI_DEFINITIONS.map(def => {
                     
-                    courseTiers = STYLES.map(style => {
-                        // --- 📝 這裡修復了說明文字消失的問題 ---
-                        // 根據 style.id (tutorial/adventure/hardcore) 去抓對應的 Desc 欄位
-                        // 如果抓不到，就用原本的 description，再抓不到就顯示預設文字
-                        let specificDesc = baseTier[style.id + 'Desc']; 
-                        
-                        // 防呆：有時候後端欄位可能是 tutorial_desc (下底線)，這裡做個保險
-                        if (!specificDesc) specificDesc = baseTier[style.id + '_desc'];
-                        
-                        // 最後的 fallback
-                        const finalDesc = specificDesc || baseTier.description || '完成任務以獲得獎勵';
+                    // 優先使用設定檔裡的說明 (def.description)
+                    // 如果後端有特別針對該層級回傳說明 (例如 tutorialDesc)，才覆蓋它
+                    // 這樣可以確保預設情況下，文字絕對正確
+                    const prefix = def.id; 
+                    let descText = 
+                        backendData[prefix + 'Desc'] || 
+                        backendData[prefix + '_desc'] || 
+                        def.description; // ✅ 這裡會使用我們寫死在上面的文字
 
-                        return {
-                            ...baseTier,          // 繼承其他屬性
-                            tierId: style.id,     // 覆寫 ID
-                            name: style.name,     // 覆寫名稱
-                            icon: style.icon,     // 設定圖示
-                            color: style.color,   // 設定顏色
-                            description: finalDesc // ✅ 設定正確的說明文字
-                        };
-                    });
-                    
-                    console.log('✅ 已展開說明文字:', courseTiers.map(t => t.description));
+                    return {
+                        ...backendData,   // 保留後端可能提供的其他資訊 (如 ID 等)
+                        tierId: def.id,   // 強制設定 ID
+                        name: def.name,   // 強制設定名稱
+                        icon: def.icon,   // 強制設定 Emoji
+                        color: def.color, // 強制設定顏色
+                        description: descText // 設定說明文字
+                    };
+                });
 
-                } 
-                // 🛑 情況 B：多筆資料 -> 依序分配樣式
-                else {
-                    courseTiers = rawTiers.map((tier, index) => {
-                        const styleIndex = Math.min(index, 2); 
-                        const style = STYLES[styleIndex];
-
-                        return {
-                            ...tier,
-                            icon: style.icon,
-                            color: style.color
-                        };
-                    });
-                }
-                // ============================================================
+                console.log('✅ UI 重建完成:', courseTiers);
 
                 learningRecord = data.learningRecord;
                 cachedProgressData = data.progress;
@@ -347,7 +345,7 @@
                 APP_CONFIG.error('載入失敗', error);
                 showToast('載入失敗：' + error.message, 'error');
             });
-    }  
+    } 
 
     /**
      * 檢查並恢復上次的層級（優化版：使用緩存數據）
