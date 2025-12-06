@@ -778,12 +778,12 @@
         }
 
         #selfCheckModal .modal-body {
-            height: 70vh; /* 固定佔螢幕 70% 高度 */
-            max-height: 800px; /* 避免在大螢幕太高 */
-            padding: 0;   /* 清除內距，讓左右欄位滿版 */
-            overflow: hidden; /* 隱藏外層捲軸，避免雙重捲軸 */
-            display: flex;
-            flex-direction: column;
+            height: 75vh !important;       /* 強制設定高度為螢幕的 75% */
+            max-height: 80vh !important;   /* 設定最大高度 */
+            display: flex !important;      /* 啟用 Flex 排版 */
+            flex-direction: column !important;
+            padding: 0 !important;         /* 清除內距，讓內容滿版 */
+            overflow: hidden !important;   /* 禁止外層捲動 */
         }
 
         .task-detail-section {
@@ -955,11 +955,12 @@
 
         /* 兩欄佈局容器 */
         .self-check-layout {
-            display: flex;
-            flex-direction: row; /* 左右排列 */
-            height: 100%;        /* 🔥 關鍵：填滿父容器高度 */
-            width: 100%;
-            overflow: hidden;    /* 確保內容不溢出這個容器 */
+           display: flex !important;
+            flex-direction: row !important; /* 左右排列 */
+            flex: 1 1 auto !important;      /* 自動填滿剩餘空間 */
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;       /* 🔥 關鍵魔法：防止 Flex 子元素溢出父容器 */
         }
 
         @media (min-width: 768px) {
@@ -971,31 +972,31 @@
 
         /* 左側：參考答案區 */
         .ref-section {
-            flex: 1; /* 🔥 回歸 50% */
-            height: 100%; /* 🔥 關鍵：強迫高度受限 */
-            background: var(--game-bg-medium);
-            padding: 20px;
-            overflow-y: auto; /* 🔥 關鍵：內容多時，這裡出現捲軸 */
-            border-right: 1px solid var(--game-border);
+            flex: 1 !important;            /* 50% 寬度 */
+            height: 100% !important;       /* 填滿高度 */
+            overflow-y: auto !important;   /* 🔥 關鍵：內容超過時顯示捲軸 */
             
-            /* 文字排版 */
-            white-space: pre-wrap;
-            line-height: 1.8;
+            /* 外觀設定 */
+            background: var(--game-bg-medium, #f0f4f8);
+            padding: 20px;
+            border-right: 1px solid #ddd;
+            
+            /* 文字排版優化 */
+            white-space: pre-wrap !important; /* 保留換行 */
+            line-height: 1.6 !important;
             font-size: 15px;
-            color: var(--game-text-light);
             text-align: justify;
         }
 
         .ref-image-container {
             margin: 15px 0;
-            border: 1px solid var(--game-border);
+            border: 1px solid #ddd;
             border-radius: 8px;
             overflow: hidden;
             cursor: zoom-in;
             background: #000;
-            transition: transform 0.2s;
-            /* 防止圖片容器被撐大導致跑版 */
-            flex-shrink: 0;
+            /* 防止圖片容器被 flex 壓縮 */
+            flex-shrink: 0 !important;
         }
 
         .ref-image-container:hover {
@@ -1046,11 +1047,14 @@
         
         /* 右側：檢核清單區 */
         .checklist-section {
-            flex: 1; /* 🔥 回歸 50% */
-            height: 100%; /* 🔥 關鍵：強迫高度受限 */
+            flex: 1 !important;            /* 50% 寬度 */
+            height: 100% !important;       /* 填滿高度 */
+            overflow-y: auto !important;   /* 🔥 關鍵：內容超過時顯示捲軸 */
+            
+            /* 外觀設定 */
+            background: var(--game-bg-dark, #fff);
             padding: 20px;
-            overflow-y: auto; /* 🔥 關鍵：內容多時，這裡出現捲軸 */
-            background: var(--game-bg-dark);
+            box-shadow: inset 5px 0 10px -5px rgba(0,0,0,0.1);
         }
 
         /* 單個檢核項目卡片 */
@@ -1389,6 +1393,7 @@
     <script src="student.js"></script>
 </body>
 </html>
+
 
 
 
