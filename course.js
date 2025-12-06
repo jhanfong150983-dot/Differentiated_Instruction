@@ -871,7 +871,7 @@ function saveReferenceToBackend() {
 }
 
 /**
- * 使用 GET + JSONP 方式上傳圖片(完全避開 CORS)
+ * 處理參考圖片上傳（使用 POST 請求）
  */
 function handleUploadReferenceImages() {
     const input = document.getElementById('editorImageFiles');
@@ -888,9 +888,15 @@ function handleUploadReferenceImages() {
     
     // 逐一上傳
     files.forEach((file, index) => {
-        // 檢查檔案大小(限制 1MB,因為要透過 URL 傳送)
-        if (file.size > 1 * 1024 * 1024) {
-            showToast(`檔案「${file.name}」過大(超過1MB),請壓縮後再上傳`, 'warning');
+        // 檢查檔案大小（限制 5MB）
+        if (file.size > 5 * 1024 * 1024) {
+            showToast(`檔案「${file.name}」過大（超過5MB），請壓縮後再上傳`, 'warning');
+            return;
+        }
+
+        // 驗證檔案類型
+        if (!file.type.startsWith('image/')) {
+            showToast(`檔案「${file.name}」不是圖片檔案`, 'warning');
             return;
         }
 
@@ -907,8 +913,8 @@ function handleUploadReferenceImages() {
 
             if (index === 0) showLoading('taskLoading');
             
-            // 使用 JSONP 方式上傳
-            uploadImageViaJSONP(file.name, b64, mime, function(success, url, message) {
+            // ✅ 改用 POST 方式上傳
+            uploadImageViaPost(file.name, b64, mime, function(success, url, message) {
                 if (success && url) {
                     // 把回傳連結加入到 textarea
                     const ta = document.getElementById('editorReferenceImages');
@@ -925,7 +931,10 @@ function handleUploadReferenceImages() {
                     
                     if (uploadedCount === totalFiles) {
                         hideLoading('taskLoading');
-                        showToast(`✅ 全部 ${totalFiles} 張圖片上傳完成!`, 'success');
+                        showToast(`✅ 全部 ${totalFiles} 張圖片上傳完成！`, 'success');
+                        
+                        // 清空檔案選擇器
+                        input.value = '';
                     } else {
                         showToast(`上傳進度: ${uploadedCount}/${totalFiles}`, 'info');
                     }
@@ -945,72 +954,83 @@ function handleUploadReferenceImages() {
 }
 
 /**
- * 使用 JSONP 上傳(真正的 GET 請求,完全避開 CORS)
+ * ✅ 使用 POST 方式上傳圖片（取代原本的 JSONP）
+ * @param {string} fileName - 檔案名稱
+ * @param {string} base64Data - Base64 編碼的圖片資料
+ * @param {string} mimeType - MIME 類型
+ * @param {Function} callback - 回調函數 (success, url, error)
  */
-function uploadImageViaJSONP(fileName, base64Data, mimeType, callback) {
-    // 建立唯一的 callback 函數名稱
-    const callbackName = 'uploadCallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    
-    // 註冊全域 callback
-    window[callbackName] = function(response) {
-        // 清理
-        delete window[callbackName];
-        
-        if (response && response.success && response.url) {
-            callback(true, response.url, null);
-        } else {
-            callback(false, null, response.message || '上傳失敗');
-        }
-    };
-    
-    // 建立 GET 請求參數
-    const params = new URLSearchParams({
+function uploadImageViaPost(fileName, base64Data, mimeType, callback) {
+    if (typeof APP_CONFIG === 'undefined' || !APP_CONFIG.API_URL) {
+        callback(false, null, 'API URL 未設定');
+        return;
+    }
+
+    APP_CONFIG.log(`📤 開始上傳圖片: ${fileName}`);
+
+    const payload = {
         action: 'uploadReferenceImage',
         fileName: fileName,
-        fileData: base64Data,
-        fileMime: mimeType,
-        callback: callbackName  // JSONP callback 參數
-    });
-    
-    // 建立 script 標籤來發送 GET 請求(不會觸發 CORS)
-    const script = document.createElement('script');
-    script.src = `${APP_CONFIG.API_URL}?${params.toString()}`;
-    
-    script.onerror = function() {
-        delete window[callbackName];
-        callback(false, null, '網路請求失敗');
-        script.remove();
+        fileData: base64Data, // 純 Base64 字串 (不含 data:image...前綴)
+        fileMime: mimeType
     };
-    
-    // 設定超時
-    const timeout = setTimeout(() => {
-        if (window[callbackName]) {
-            delete window[callbackName];
-            callback(false, null, '上傳逾時(超過30秒)');
+
+    fetch(APP_CONFIG.API_URL, {
+        method: 'POST',
+        // ✅ 關鍵修正：強制使用 text/plain 避免 CORS 預檢失敗
+        headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json()) // GAS 回傳通常會自動處理 header
+    .then(data => {
+        if (data.success && data.url) {
+            callback(true, data.url, null);
+        } else {
+            callback(false, null, data.message || '上傳失敗');
         }
-        script.remove();
-    }, 30000); // 30 秒超時
-    
-    script.onload = function() {
-        clearTimeout(timeout);
-        // 延遲移除,確保 callback 已執行
-        setTimeout(() => script.remove(), 100);
-    };
-    
-    document.head.appendChild(script);
+    })
+    .catch(error => {
+        console.error('❌ 上傳錯誤:', error);
+        callback(false, null, error.message || '網路請求失敗');
+    });
 }
 
+/**
+ * 顯示圖片預覽
+ */
 function addImagePreview(url) {
     const preview = document.getElementById('editorImagePreview');
     if (!preview) return;
+    
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'display:inline-block; position:relative; margin:8px;';
+    
     const img = document.createElement('img');
     img.src = url;
-    img.style.width = '120px';
-    img.style.height = '80px';
-    img.style.objectFit = 'cover';
-    img.style.border = '1px solid #ddd';
-    img.style.borderRadius = '6px';
-    preview.appendChild(img);
+    img.style.cssText = 'width:120px; height:80px; object-fit:cover; border:1px solid #ddd; border-radius:6px; display:block;';
+    
+    // 添加刪除按鈕
+    const deleteBtn = document.createElement('button');
+    deleteBtn.innerHTML = '×';
+    deleteBtn.style.cssText = 'position:absolute; top:-8px; right:-8px; width:24px; height:24px; border-radius:50%; background:#EF4444; color:white; border:none; cursor:pointer; font-size:18px; line-height:1;';
+    deleteBtn.onclick = function() {
+        // 從 textarea 中移除這個 URL
+        const ta = document.getElementById('editorReferenceImages');
+        const lines = ta.value.split('\n');
+        const filtered = lines.filter(line => line.trim() !== url);
+        ta.value = filtered.join('\n');
+        
+        // 移除預覽
+        wrapper.remove();
+        
+        showToast('已移除圖片', 'success');
+    };
+    
+    wrapper.appendChild(img);
+    wrapper.appendChild(deleteBtn);
+    preview.appendChild(wrapper);
 }
 
 function saveAllTaskEditorChanges() {
