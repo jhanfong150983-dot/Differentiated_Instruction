@@ -655,9 +655,38 @@
     }
 
     /**
-     * 載入課程層級
+     * 載入課程層級 (修正：強制同步中文名稱與 UI 樣式)
      */
     function loadCourseTiers() {
+        // ============================================================
+        // 🎨 UI 設定檔：這跟 loadCourseTiersAndRecord 是一模一樣的
+        // 確保兩種流程看到的畫面完全一致
+        // ============================================================
+        const UI_DEFINITIONS = [
+            {
+                id: 'tutorial',
+                name: '基礎層',     // ✅ 強制顯示中文
+                icon: '📘',         // 藍色書本 Emoji
+                color: '#10B981',   // 綠色
+                description: '適合初學者，循序漸進地學習基礎知識'
+            },
+            {
+                id: 'adventure',
+                name: '進階層',     // ✅ 強制顯示中文
+                icon: '📙',         // 橘色書本 Emoji
+                color: '#F59E0B',   // 橘色
+                description: '適合具備基礎能力者，挑戰更深入的內容'
+            },
+            {
+                id: 'hardcore',
+                name: '精通層',     // ✅ 強制顯示中文
+                icon: '📕',         // 紅色書本 Emoji
+                color: '#EF4444',   // 紅色
+                description: '適合進階學習者，挑戰高難度任務'
+            }
+        ];
+        // ============================================================
+
         const params = new URLSearchParams({
             action: 'getCourseTiers',
             courseId: selectedCourse.courseId
@@ -671,7 +700,41 @@
                 APP_CONFIG.log('📥 課程層級回應:', response);
 
                 if (response.success) {
-                    courseTiers = response.tiers || [];
+                    let rawTiers = response.tiers || [];
+
+                    // 🛠️ 強制建構：使用 UI_DEFINITIONS 來覆寫後端的英文資料
+                    courseTiers = UI_DEFINITIONS.map(def => {
+                        
+                        // 嘗試從後端資料中找到對應的那一筆 (透過 id 或 tier 名稱比對)
+                        // 後端傳來的可能是 tier: 'tutorial'
+                        const backendTier = rawTiers.find(t => 
+                            (t.tier || '').toLowerCase() === def.id || 
+                            (t.id || '').toLowerCase() === def.id
+                        ) || {};
+
+                        // 智慧抓取描述文字 (優先用後端的，沒有就用前端設定的)
+                        let descText = 
+                            backendTier.description || 
+                            backendTier.desc || 
+                            def.description;
+
+                        return {
+                            ...backendTier,   // 保留後端可能有的其他資訊
+                            
+                            tierId: def.id,   
+                            
+                            // 🔥 關鍵修正：強制把 'tier' 欄位改成中文名稱
+                            tier: def.name,   // 這會讓卡片顯示「基礎層」
+                            name: def.name,   
+                            
+                            icon: def.icon,   // 確保圖示一致
+                            color: def.color, // 確保顏色一致
+                            description: descText 
+                        };
+                    });
+
+                    console.log('✅ 課程層級載入完成 (已轉中文):', courseTiers);
+
                 } else {
                     showToast('載入層級失敗：' + (response.message || ''), 'error');
                     courseTiers = [];
