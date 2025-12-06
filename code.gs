@@ -8,24 +8,23 @@ const SHEET_CONFIG = {
   
   // 定義各個工作表的名稱
   SHEETS: {
-    USERS: '使用者',
-    ROLES: '角色',
-    LOGIN_HISTORY: '登入紀錄',
-    CLASSES: '班級',
-    CLASS_MEMBERS: '班級成員',
-    COURSES: '課程',
-    TASKS: '任務',
-    ASSIGNMENTS: '作業',
-    LEARNING_RECORDS: '學習紀錄',
-    TASK_PROGRESS: '任務進度',
-    DIFFICULTY_CHANGES: '難度調整',
+    USERS: '使用者資料',
+    LOGIN_HISTORY: '登入紀錄表',
+    CLASSES: '班級資料',
+    CLASS_MEMBERS: '學員資料',
+    COURSES: '課程資料',
+    TASKS: '任務資料',
+    ASSIGNMENTS: '授課安排表',
+    LEARNING_RECORDS: '學習資料表',
+    TASK_PROGRESS: '任務進度表',
+    DIFFICULTY_CHANGES: '難度變更紀錄表',
     CLASS_SESSIONS: '課堂紀錄',
     TASK_CHECKLISTS: '檢核項目表',
     TASK_REFERENCE_ANSWERS: '正確答案示範表',
     TASK_QUESTIONS: '題庫表',
     SELF_CHECK_RECORDS: '自主檢查紀錄表',
     TASK_ASSESSMENT_RECORDS: '評量紀錄表',
-    }
+  }
 
 };
 
@@ -195,6 +194,26 @@ function doGet(e) {
 
       case 'getClassAssignments':
         response = getClassAssignments(params.teacherEmail);
+        break;
+
+      case 'getTaskDetailsForEditor':
+        response = getTaskDetailsForEditor({ taskId: params.taskId });
+        break;
+
+      case 'saveTaskReferenceAnswer':
+        response = saveTaskReferenceAnswer({ taskId: params.taskId, answerText: params.answerText });
+        break;
+
+      case 'saveTaskChecklist':
+        response = saveTaskChecklist({ taskId: params.taskId, checklists: params.checklists ? JSON.parse(params.checklists) : [] });
+        break;
+
+      case 'addOrUpdateTaskQuestion':
+        response = addOrUpdateTaskQuestion({ taskId: params.taskId, question: params.question ? JSON.parse(params.question) : null });
+        break;
+
+      case 'deleteTaskQuestion':
+        response = deleteTaskQuestion({ questionId: params.questionId });
         break;
 
       case 'assignCourseToClass':
@@ -436,7 +455,7 @@ function doPost(e) {
       .setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
   } catch (error) {
-    Logger.log('???航炊嚗? + error.toString());
+    Logger.log('❌ 錯誤：' + error.toString());
     
     return ContentService
       .createTextOutput(JSON.stringify({
@@ -2338,20 +2357,30 @@ function getClassAssignments(teacherEmail) {
       let assignedCourse = null;
       if (assignmentsSheet) {
         const assignData = assignmentsSheet.getDataRange().getValues();
+        Logger.log(`🔍 班級 ${cls.className} (${cls.classId}): 檢查授課安排表，共 ${assignData.length - 1} 筆記錄`);
+        
         for (let i = 1; i < assignData.length; i++) {
+          Logger.log(`  行 ${i}: classId=${assignData[i][1]}, courseId=${assignData[i][2]}, status=${assignData[i][5]}`);
+          
           if (assignData[i][1] === cls.classId && assignData[i][5] === 'active') {
             const courseId = assignData[i][2];
+            Logger.log(`  ✅ 找到符合的授課安排！courseId=${courseId}`);
 
             // 取得課程名稱
             if (coursesSheet) {
               const courseData = coursesSheet.getDataRange().getValues();
+              Logger.log(`  🔍 查詢課程表，共 ${courseData.length - 1} 筆課程`);
+              
               for (let j = 1; j < courseData.length; j++) {
+                Logger.log(`    課程行 ${j}: courseId=${courseData[j][0]}, courseName=${courseData[j][1]}`);
+                
                 if (courseData[j][0] === courseId) {
                   assignedCourse = {
                     courseId: courseId,
                     courseName: courseData[j][1],
                     assignedDate: assignData[i][4]
                   };
+                  Logger.log(`  ✅ 找到課程！courseName=${courseData[j][1]}`);
                   break;
                 }
               }
@@ -2359,6 +2388,12 @@ function getClassAssignments(teacherEmail) {
             break;
           }
         }
+        
+        if (!assignedCourse) {
+          Logger.log(`  ❌ 班級 ${cls.className}: 無有效的授課安排`);
+        }
+      } else {
+        Logger.log(`  ❌ 找不到授課安排表`);
       }
 
       // 統計學習進度
@@ -5902,5 +5937,221 @@ function submitAssessment(params) {
     };
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * 取得任務編輯器所需的資料：參考答案、檢核項目、題庫
+ */
+function getTaskDetailsForEditor(params) {
+  try {
+    const { taskId } = params;
+    if (!taskId) throw new Error('缺少 taskId');
+
+    const ss = getSpreadsheet();
+    const checklistSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLISTS);
+    const answerSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_REFERENCE_ANSWERS);
+    const questionSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+
+    const result = {
+      success: true,
+      referenceAnswer: null,
+      checklists: [],
+      questions: []
+    };
+
+    if (answerSheet) {
+      const ansData = answerSheet.getDataRange().getValues();
+      for (let i = 1; i < ansData.length; i++) {
+        if (ansData[i][1] === taskId) {
+          result.referenceAnswer = {
+            answerId: ansData[i][0],
+            taskId: ansData[i][1],
+            answerText: ansData[i][2],
+            answerImages: ansData[i][3] ? ansData[i][3].split('|') : []
+          };
+          break;
+        }
+      }
+    }
+
+    if (checklistSheet) {
+      const clData = checklistSheet.getDataRange().getValues();
+      for (let i = 1; i < clData.length; i++) {
+        if (clData[i][1] === taskId) {
+          result.checklists.push({
+            checklistId: clData[i][0],
+            taskId: clData[i][1],
+            itemOrder: clData[i][2],
+            itemTitle: clData[i][3],
+            itemDescription: clData[i][4]
+          });
+        }
+      }
+      result.checklists.sort((a,b)=>a.itemOrder - b.itemOrder);
+    }
+
+    if (questionSheet) {
+      const qData = questionSheet.getDataRange().getValues();
+      for (let i = 1; i < qData.length; i++) {
+        if (qData[i][1] === taskId) {
+          result.questions.push({
+            questionId: qData[i][0],
+            taskId: qData[i][1],
+            questionText: qData[i][2],
+            optionA: qData[i][3],
+            optionB: qData[i][4],
+            optionC: qData[i][5],
+            optionD: qData[i][6],
+            correctAnswer: qData[i][7]
+          });
+        }
+      }
+    }
+
+    return result;
+  } catch (error) {
+    Logger.log('getTaskDetailsForEditor error: ' + error);
+    return { success: false, message: '取得資料失敗：' + error.message };
+  }
+}
+
+/**
+ * 儲存或更新參考答案（簡單的 upsert）
+ */
+function saveTaskReferenceAnswer(params) {
+  try {
+    const { taskId, answerText } = params;
+    if (!taskId) throw new Error('缺少 taskId');
+
+    const ss = getSpreadsheet();
+    const answerSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_REFERENCE_ANSWERS);
+    if (!answerSheet) throw new Error('找不到參考答案表');
+
+    const data = answerSheet.getDataRange().getValues();
+    let found = false;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][1] === taskId) {
+        answerSheet.getRange(i+1, 3).setValue(answerText);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      const newId = generateUUID();
+      answerSheet.appendRow([newId, taskId, answerText, '']);
+    }
+
+    return { success: true, message: '參考答案已儲存' };
+  } catch (error) {
+    Logger.log('saveTaskReferenceAnswer error: ' + error);
+    return { success: false, message: '儲存參考答案失敗：' + error.message };
+  }
+}
+
+/**
+ * 儲存整批檢核項（會取代既有 taskId 的檢核項）
+ */
+function saveTaskChecklist(params) {
+  try {
+    const { taskId, checklists } = params;
+    if (!taskId) throw new Error('缺少 taskId');
+    if (!Array.isArray(checklists)) throw new Error('checklists 必須是陣列');
+
+    const ss = getSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLISTS);
+    if (!sheet) throw new Error('找不到檢核項目表');
+
+    const all = sheet.getDataRange().getValues();
+    const header = all[0] || [];
+    const keep = [header];
+    for (let i = 1; i < all.length; i++) {
+      if (all[i][1] !== taskId) {
+        keep.push(all[i]);
+      }
+    }
+
+    // 新增新的檢核項
+    for (let item of checklists) {
+      const id = item.checklistId || generateUUID();
+      keep.push([id, taskId, item.itemOrder || 0, item.itemTitle || '', item.itemDescription || '']);
+    }
+
+    // 清空並寫回
+    sheet.clearContents();
+    sheet.getRange(1,1,keep.length, keep[0].length).setValues(keep);
+
+    return { success: true, message: '檢核項已儲存' };
+  } catch (error) {
+    Logger.log('saveTaskChecklist error: ' + error);
+    return { success: false, message: '儲存檢核項失敗：' + error.message };
+  }
+}
+
+/**
+ * 新增或更新題目
+ */
+function addOrUpdateTaskQuestion(params) {
+  try {
+    const { taskId, question } = params;
+    if (!taskId || !question) throw new Error('缺少參數');
+
+    const ss = getSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+    if (!sheet) throw new Error('找不到題庫表');
+
+    const data = sheet.getDataRange().getValues();
+    // 若提供 questionId 則更新
+    if (question.questionId) {
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === question.questionId) {
+          sheet.getRange(i+1,3).setValue(question.questionText || '');
+          sheet.getRange(i+1,4).setValue(question.optionA || '');
+          sheet.getRange(i+1,5).setValue(question.optionB || '');
+          sheet.getRange(i+1,6).setValue(question.optionC || '');
+          sheet.getRange(i+1,7).setValue(question.optionD || '');
+          sheet.getRange(i+1,8).setValue(question.correctAnswer || '');
+          return { success: true, message: '題目已更新' };
+        }
+      }
+      // 若找不到，則當作新增
+    }
+
+    // 新增
+    const qid = generateUUID();
+    sheet.appendRow([qid, taskId, question.questionText || '', question.optionA || '', question.optionB || '', question.optionC || '', question.optionD || '', question.correctAnswer || '']);
+    return { success: true, message: '題目已新增', questionId: qid };
+  } catch (error) {
+    Logger.log('addOrUpdateTaskQuestion error: ' + error);
+    return { success: false, message: '儲存題目失敗：' + error.message };
+  }
+}
+
+/**
+ * 刪除題目
+ */
+function deleteTaskQuestion(params) {
+  try {
+    const { questionId } = params;
+    if (!questionId) throw new Error('缺少 questionId');
+
+    const ss = getSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+    if (!sheet) throw new Error('找不到題庫表');
+
+    const all = sheet.getDataRange().getValues();
+    const header = all[0] || [];
+    const keep = [header];
+    for (let i = 1; i < all.length; i++) {
+      if (all[i][0] !== questionId) keep.push(all[i]);
+    }
+
+    sheet.clearContents();
+    if (keep.length > 0) sheet.getRange(1,1,keep.length, keep[0].length).setValues(keep);
+
+    return { success: true, message: '題目已刪除' };
+  } catch (error) {
+    Logger.log('deleteTaskQuestion error: ' + error);
+    return { success: false, message: '刪除題目失敗：' + error.message };
   }
 }
