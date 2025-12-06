@@ -871,7 +871,7 @@ function saveReferenceToBackend() {
 }
 
 /**
- * 使用 POST 將圖片（base64）上傳到後端，後端會儲存到 Google Drive 並回傳可嵌入的連結
+ * 使用 POST 將圖片(base64)上傳到後端,後端會儲存到 Google Drive 並回傳可嵌入的連結
  */
 function handleUploadReferenceImages() {
     const input = document.getElementById('editorImageFiles');
@@ -881,6 +881,8 @@ function handleUploadReferenceImages() {
     }
 
     const files = Array.from(input.files);
+    let uploadedCount = 0;
+    
     // 逐一上傳
     files.forEach(file => {
         const reader = new FileReader();
@@ -888,37 +890,69 @@ function handleUploadReferenceImages() {
             const dataUrl = e.target.result; // data:<mime>;base64,xxxx
             const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
             if (!matches) {
-                showToast('檔案讀取失敗：格式不正確', 'error');
+                showToast('檔案讀取失敗:格式不正確', 'error');
                 return;
             }
             const mime = matches[1];
             const b64 = matches[2];
 
             showLoading('taskLoading');
+            
+            // 使用 FormData 來發送 POST 請求
+            const payload = {
+                action: 'uploadReferenceImage',
+                fileName: file.name,
+                fileData: b64,
+                fileMime: mime
+            };
+
             fetch(APP_CONFIG.API_URL, {
                 method: 'POST',
-                body: JSON.stringify({ action: 'uploadReferenceImage', fileName: file.name, fileData: b64, fileMime: mime })
-            }).then(r=>r.json()).then(resp=>{
+                mode: 'cors',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(resp => {
                 hideLoading('taskLoading');
+                
                 if (resp && resp.success && resp.url) {
                     // 把回傳連結加入到 textarea
                     const ta = document.getElementById('editorReferenceImages');
-                    if (ta.value && ta.value.trim() !== '') ta.value = ta.value.trim() + '\n' + resp.url;
-                    else ta.value = resp.url;
+                    if (ta.value && ta.value.trim() !== '') {
+                        ta.value = ta.value.trim() + '\n' + resp.url;
+                    } else {
+                        ta.value = resp.url;
+                    }
 
                     // 顯示預覽
                     addImagePreview(resp.url);
-                    showToast('圖片上傳成功', 'success');
+                    
+                    uploadedCount++;
+                    showToast(`圖片上傳成功 (${uploadedCount}/${files.length})`, 'success');
                 } else {
-                    console.error('uploadReferenceImage 回應：', resp);
+                    console.error('uploadReferenceImage 回應:', resp);
                     showToast(resp.message || '上傳失敗', 'error');
                 }
-            }).catch(err=>{
+            })
+            .catch(err => {
                 hideLoading('taskLoading');
-                console.error(err);
-                showToast('上傳失敗：' + err.message, 'error');
+                console.error('上傳錯誤:', err);
+                showToast('上傳失敗:' + err.message, 'error');
             });
         };
+        
+        reader.onerror = function() {
+            showToast('檔案讀取失敗', 'error');
+        };
+        
         reader.readAsDataURL(file);
     });
 }
