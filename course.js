@@ -732,11 +732,14 @@ function addChecklistItem() {
 function createChecklistRow(item, index) {
     const container = document.getElementById('editorChecklistContainer');
     const div = document.createElement('div');
-    div.className = 'checklist-row checklist-item'; // ✅ 必須有 checklist-item
+    
+    // 1. 確保外層有 checklist-item 這個 class
+    div.className = 'checklist-row checklist-item'; 
     div.dataset.checklistId = item.checklistId || '';
     
     div.innerHTML = `
         <div class="checklist-index">${index}</div>
+        
         <input type="text" class="form-input checklist-desc" 
                value="${escapeHtml(item.itemDescription || '')}" 
                placeholder="輸入檢核項目描述..." style="flex:1;">
@@ -919,56 +922,50 @@ function collectQuestionsData() {
 // 修改：改用 POST 傳送
 function saveChecklistToBackend() {
     const container = document.getElementById('editorChecklistContainer');
-    
-    // 防呆：如果連容器都找不到，直接回傳失敗
-    if (!container) {
-        console.error('找不到 editorChecklistContainer');
-        return Promise.resolve({ success: false, message: '前端錯誤：找不到檢核列表容器' });
-    }
+    if (!container) return Promise.resolve({ success: false });
 
-    // 抓取所有項目
+    // 1. 抓取所有行
     const rows = Array.from(container.querySelectorAll('.checklist-item'));
     
-    // 轉換資料
     const items = rows.map((el, idx) => {
-        // 1. 嘗試抓取描述欄位 (新的 UI class 是 .checklist-desc)
-        const descInput = el.querySelector('.checklist-desc');
+        // --- 除錯重點開始 ---
         
-        // 2. 嘗試抓取排序欄位 (新的 UI class 是 .checklist-order，且是 hidden)
-        // 如果找不到 hidden input，回退去找 checklist-index (雖然它是 div 沒有 value，但防呆用)
-        // 最後如果都沒找到，就用 idx + 1
+        // 嘗試抓取元素
+        const descInput = el.querySelector('.checklist-desc');
         const orderInput = el.querySelector('.checklist-order');
         
-        // 3. 安全讀取值 (使用 ?. 防呆，如果沒抓到元素就給預設值)
-        const description = descInput ? descInput.value.trim() : '';
-        const order = orderInput ? parseInt(orderInput.value) : (idx + 1);
+        // 這裡就是報錯的地方！原本可能是 descInput.value
+        // 現在我們改用「三元運算子」檢查：如果 descInput 存在才取 value，否則給空字串
+        const description = descInput ? descInput.value.trim() : ''; 
+        
+        // 同樣檢查 orderInput
+        let orderVal = idx + 1;
+        if (orderInput && orderInput.value) {
+            orderVal = parseInt(orderInput.value);
+        }
+
+        // --- 除錯重點結束 ---
 
         return {
             checklistId: el.dataset.checklistId || null,
             itemDescription: description,
-            itemTitle: '', // 如果你需要標題欄位，需在 HTML 補上並在此抓取
-            itemOrder: isNaN(order) ? (idx + 1) : order
+            itemTitle: '', 
+            itemOrder: isNaN(orderVal) ? (idx + 1) : orderVal
         };
     });
 
-    // 建立 POST payload
     const payload = {
         action: 'saveTaskChecklist',
         taskId: currentEditorTaskId,
         checklists: items 
     };
 
-    console.log('準備儲存檢核項目:', payload); // Debug 用
-
     return fetch(APP_CONFIG.API_URL, {
         method: 'POST',
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
     })
-    .then(r => r.json())
-    .then(resp => {
-        return resp;
-    });
+    .then(r => r.json());
 }
 
 function saveReferenceToBackend() {
