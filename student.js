@@ -235,7 +235,7 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄 (修正版：自動恢復上次進度)
+     * 載入課程層級和學習記錄 (修復自動跳轉問題)
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
@@ -246,11 +246,11 @@
             return;
         }
 
-        // UI 設定檔 (保持不變)
+        // UI 設定檔
         const UI_DEFINITIONS = [
-            { id: 'tutorial', name: '基礎層', icon: '📘', color: '#10B981', description: '適合初學者...' },
+            { id: 'tutorial',  name: '基礎層', icon: '📘', color: '#10B981', description: '適合初學者...' },
             { id: 'adventure', name: '進階層', icon: '📙', color: '#F59E0B', description: '適合具備基礎能力者...' },
-            { id: 'hardcore', name: '精通層', icon: '📕', color: '#EF4444', description: '適合進階學習者...' }
+            { id: 'hardcore',  name: '精通層', icon: '📕', color: '#EF4444', description: '適合進階學習者...' }
         ];
 
         const params = new URLSearchParams({
@@ -277,7 +277,7 @@
                     return Promise.reject('waiting_for_class');
                 }
 
-                // 1. 處理層級資料 (UI 建構)
+                // 1. 建構 UI 層級資料
                 let backendData = (data.tiers && data.tiers.length > 0) ? data.tiers[0] : {};
                 courseTiers = UI_DEFINITIONS.map(def => {
                     const prefix = def.id; 
@@ -286,7 +286,7 @@
                         ...backendData,
                         tierId: def.id,
                         name: def.name,
-                        tier: def.name,
+                        tier: def.name, // 強制中文名稱
                         icon: def.icon,
                         color: def.color,
                         description: descText
@@ -298,19 +298,31 @@
                 cachedProgressData = data.progress;
 
                 // ============================================================
-                // 🔥 核心修正：自動恢復上次選擇的難度
+                // 🔥 自動跳轉核心除錯區 🔥
                 // ============================================================
-                if (learningRecord && learningRecord.current_tier) {
-                    const savedTierId = learningRecord.current_tier; // 例如 'tutorial' 或 '基礎層'
-                    
-                    // 嘗試比對 ID 或 名稱
-                    const matchedTier = courseTiers.find(t => 
-                        t.tierId === savedTierId || t.name === savedTierId
-                    );
+                console.log('🔍 [Debug] 學習記錄:', learningRecord);
+                
+                if (learningRecord) {
+                    // 取得後端記錄的 current_tier (可能是 'tutorial' 或 '基礎層')
+                    const savedTierRaw = learningRecord.current_tier || learningRecord.currentTier;
+                    console.log('🔍 [Debug] 後端記錄的難度:', savedTierRaw);
 
-                    if (matchedTier) {
-                        selectedTier = matchedTier.name; // 設定全域變數 (例如 '基礎層')
-                        console.log('✅ 自動恢復上次進度:', selectedTier);
+                    if (savedTierRaw && savedTierRaw !== 'initial') {
+                        // 嘗試比對：比對 ID (tutorial) 或 名稱 (基礎層)
+                        const matchedTier = courseTiers.find(t => 
+                            t.tierId === savedTierRaw || t.name === savedTierRaw
+                        );
+
+                        if (matchedTier) {
+                            selectedTier = matchedTier.name; // ✅ 設定全域變數 (關鍵!)
+                            console.log('✅ [Success] 成功匹配難度，準備跳轉:', selectedTier);
+                        } else {
+                            console.warn('⚠️ [Warning] 有記錄但找不到對應層級:', savedTierRaw);
+                            selectedTier = null; // 重置
+                        }
+                    } else {
+                        console.log('ℹ️ [Info] 無有效難度記錄 (initial 或空)，停留在選擇畫面');
+                        selectedTier = null;
                     }
                 }
                 // ============================================================
@@ -318,8 +330,12 @@
                 return checkAndResumeTier();
             })
             .then(function(resumed) {
-                if (!resumed) {
-                    // 只有在「沒有」自動恢復的情況下，才顯示選擇畫面
+                // resumed 必須是 checkAndResumeTier 回傳的 true
+                if (resumed === true) {
+                    console.log('🚀 [Jump] 跳轉成功，隱藏 Loading');
+                    // 跳轉成功，這裡不需要做什麼，因為 loadTierTasks 已經在渲染畫面了
+                } else {
+                    console.log('🛑 [Stop] 無法跳轉，顯示難度選擇畫面');
                     hideLoading('mainLoading');
                     if (typeof displayTierSelection === 'function') {
                         displayTierSelection();
@@ -335,70 +351,32 @@
     }
 
     /**
-     * 檢查並恢復上次的層級（優化版：使用緩存數據）
+     * 檢查並恢復上次的層級狀態
+     * @returns {Promise<boolean>} true=已跳轉, false=未跳轉
      */
     function checkAndResumeTier() {
-        if (!learningRecord || !learningRecord.recordId) {
-            return Promise.resolve(false);
+        console.log('🔍 [Check] 檢查是否需要跳轉, selectedTier:', selectedTier);
+
+        // 如果全域變數 selectedTier 有值 (已經從後端恢復了)
+        if (selectedTier) {
+            // 呼叫載入任務列表 (loadTierTasks 必須回傳 Promise)
+            // 參數1: true (使用緩存), 參數2: true (不顯示 loading，因為我們已經在 loading 中)
+            return loadTierTasks(true, true) 
+                .then(() => {
+                    console.log('✅ [Check] 任務載入完成，回傳 true');
+                    return true; // 告訴上層：我已經處理好畫面了
+                })
+                .catch(err => {
+                    console.error('❌ [Check] 自動跳轉載入失敗:', err);
+                    selectedTier = null; 
+                    return false; // 失敗了，回傳 false 讓上層顯示選單
+                });
         }
-
-        // 已經從整合API獲得進度數據，直接使用緩存
-        if (!cachedProgressData || Object.keys(cachedProgressData).length === 0) {
-            APP_CONFIG.log('⚠️ 無緩存進度數據');
-            return Promise.resolve(false);
-        }
-
-        APP_CONFIG.log('📊 使用緩存數據檢查未完成任務...');
-
-        // 找到第一個未完成的任務（in_progress 或 pending_review）
-        const progressEntries = Object.entries(cachedProgressData);
-        for (let i = 0; i < progressEntries.length; i++) {
-            const [taskId, progress] = progressEntries[i];
-            if (progress.status === 'in_progress' || progress.status === 'pending_review') {
-                // 從 taskId 提取 tier
-                let tier = null;
-                if (taskId.includes('_tutorial')) {
-                    tier = 'tutorial';
-                } else if (taskId.includes('_adventure')) {
-                    tier = 'adventure';
-                } else if (taskId.includes('_hardcore')) {
-                    tier = 'hardcore';
-                }
-
-                if (tier) {
-                    APP_CONFIG.log('✅ 發現未完成任務，恢復層級:', tier);
-                    // 找到對應的 tier 資訊
-                    const tierInfo = courseTiers.find(t => t.tier === tier);
-                    if (tierInfo) {
-                        selectedTier = tier;
-                        // 記錄自動恢復難度
-                        recordTierChange('', tier, 'auto_resume', taskId, 0);
-                        // 直接載入該層級的任務（使用緩存數據，跳過 showLoading）
-                        loadTierTasks(true, true); // useCache=true, skipShowLoading=true
-                        return Promise.resolve(true);
-                    }
-                }
-            }
-        }
-
-        // 沒有找到未完成任務，檢查學習記錄中的 current_tier
-        if (learningRecord.currentTier) {
-            const tier = learningRecord.currentTier;
-            APP_CONFIG.log('✅ 從學習記錄恢復層級:', tier);
-
-            // 找到對應的 tier 資訊
-            const tierInfo = courseTiers.find(t => t.tier === tier);
-            if (tierInfo) {
-                selectedTier = tier;
-                // 直接載入該層級的任務（使用緩存數據，跳過 showLoading）
-                loadTierTasks(true, true); // useCache=true, skipShowLoading=true
-                return Promise.resolve(true);
-            }
-        }
-
+        
+        // 如果沒有 selectedTier，直接回傳 false
         return Promise.resolve(false);
     }
-
+    
     /**
      * 檢查並顯示「接續任務」Modal（課堂開始時）
      * 目的：自動檢測是否有 in_progress 的任務，有則直接跳出 Modal
