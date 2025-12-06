@@ -2514,82 +2514,105 @@
               });
       };
 
-        window.handleCompleteTask = function() {
-        if (!selectedTask) return;
+        /**
+ * 提交任務：進入自主檢查階段 (修復 btn is not defined 錯誤)
+ */
+window.handleCompleteTask = function() {
+    if (!selectedTask) return;
 
-        const taskToSubmit = selectedTask;
+    const taskToSubmit = selectedTask;
 
-        if (!confirm('確定要提交此任務嗎？\n提交後將進行自主檢查，通過後才會獲得 ' + (taskToSubmit.tokenReward || 0) + ' 個代幣！')) {
-            return;
-        }
+    if (!confirm('確定要提交此任務嗎？\n提交後將進行自主檢查，通過後才會獲得 ' + (taskToSubmit.tokenReward || 0) + ' 個代幣！')) {
+        return;
+    }
 
-        const completeBtn = document.getElementById('completeTaskBtn');
-        if (completeBtn) completeBtn.textContent = '處理中...';
+    // 1. 定義按鈕變數
+    const completeBtn = document.getElementById('completeTaskBtn');
+    
+    // 2. 鎖定按鈕
+    if (completeBtn) {
+        completeBtn.disabled = true;
+        completeBtn.textContent = '處理中...';
+    }
 
-        const params = new URLSearchParams({
-            action: 'submitTask',
-            userEmail: currentStudent.email,
-            taskId: taskToSubmit.taskId,
-            classId: selectedClass.classId
-        });
+    const params = new URLSearchParams({
+        action: 'submitTask',
+        userEmail: currentStudent.email,
+        taskId: taskToSubmit.taskId,
+        classId: selectedClass.classId // ✅ 這裡有保留 classId，很好
+    });
 
-        APP_CONFIG.log('📤 提交任務...', { 
-           taskId: taskToSubmit.taskId,
-           classId: selectedClass.classId
-        });
+    APP_CONFIG.log('📤 提交任務...', { 
+        taskId: taskToSubmit.taskId,
+        classId: selectedClass.classId
+    });
 
-        // 使用重試機制（解決 CORS 間歇性錯誤）
-        fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
-            .then(response => response.json())
-            .then(function(response) {
-                btn.disabled = false;
-                btn.textContent = '提交完成';
+    // 使用重試機制
+    fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
+        .then(response => response.json())
+        .then(function(response) {
+            // 🔥 修正點 1：將 btn 改為 completeBtn，並加上存在檢查
+            if (completeBtn) {
+                completeBtn.disabled = false;
+                completeBtn.textContent = '提交完成';
+            }
 
-                APP_CONFIG.log('📥 提交任務回應:', response);
+            APP_CONFIG.log('📥 提交任務回應:', response);
 
-                if (response.success) {
-                    // 停止時間限制檢查
+            if (response.success) {
+                // 停止時間限制檢查
+                if (typeof stopTaskTimeLimitCheck === 'function') {
                     stopTaskTimeLimitCheck();
-
-                    // 關閉任務 Modal
-                    closeTaskModal();
-
-                    // 進入自主檢查階段
-                    APP_CONFIG.log('🔄 進入自主檢查階段', response);
-                    showToast('✅ 任務已提交，開始自主檢查...', 'success');
-
-                    // 更新進度狀態為自主檢查中
-                    currentTasksProgress[taskToSubmit.taskId] = { status: 'self_checking' };
-
-                    // 呼叫自主檢查面板
-                    showSelfCheckPanel(response.taskProgressId, taskToSubmit.taskId);
-
-                    // 重新顯示任務列表
-                    try {
-                        displayQuestList();
-                    } catch (error) {
-                        APP_CONFIG.error('顯示任務列表失敗', error);
-                        showToast('顯示任務列表失敗：' + error.message, 'error');
-                    }
-
-                    // 太快的學生：在提交時建議提高難度
-                    try {
-                        checkAndSuggestDifficultyChange(taskToSubmit, 'fast');
-                    } catch (error) {
-                        APP_CONFIG.error('檢查難度建議失敗', error);
-                    }
-                } else {
-                    showToast(response.message || '提交失敗', 'error');
                 }
-            })
-            .catch(function(error) {
-                btn.disabled = false;
-                btn.textContent = '提交完成';
 
-                APP_CONFIG.error('提交任務失敗', error);
-                showToast('提交失敗，請重試：' + error.message, 'error');
-            });
-    };
+                // 關閉任務 Modal
+                closeTaskModal();
+
+                // 進入自主檢查階段
+                APP_CONFIG.log('🔄 進入自主檢查階段', response);
+                showToast('✅ 任務已提交，開始自主檢查...', 'success');
+
+                // 更新進度狀態為自主檢查中
+                if (currentTasksProgress) {
+                    currentTasksProgress[taskToSubmit.taskId] = { status: 'self_checking' };
+                }
+
+                // 呼叫自主檢查面板 (確保有傳入 taskId)
+                // 注意：後端 response.taskProgressId 必須要有回傳，否則這裡會 undefined
+                showSelfCheckPanel(response.taskProgressId || taskToSubmit.taskId, taskToSubmit.taskId);
+
+                // 重新顯示任務列表
+                try {
+                    if (typeof displayQuestList === 'function') {
+                        displayQuestList();
+                    }
+                } catch (error) {
+                    APP_CONFIG.error('顯示任務列表失敗', error);
+                }
+
+                // 太快的學生：在提交時建議提高難度
+                try {
+                    if (typeof checkAndSuggestDifficultyChange === 'function') {
+                        checkAndSuggestDifficultyChange(taskToSubmit, 'fast');
+                    }
+                } catch (error) {
+                    APP_CONFIG.error('檢查難度建議失敗', error);
+                }
+            } else {
+                showToast(response.message || '提交失敗', 'error');
+            }
+        })
+        .catch(function(error) {
+            // 🔥 修正點 2：將 btn 改為 completeBtn
+            if (completeBtn) {
+                completeBtn.disabled = false;
+                completeBtn.textContent = '提交完成';
+            }
+
+            APP_CONFIG.error('提交任務失敗', error);
+            showToast('提交失敗，請重試：' + error.message, 'error');
+        });
+};
 
     // ==========================================
     // 工具函數
@@ -3038,6 +3061,7 @@
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
