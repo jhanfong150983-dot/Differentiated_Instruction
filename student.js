@@ -2388,146 +2388,158 @@
     // ==========================================
     // 處理任務操作
     // ==========================================
-
-    /**
-     * 開始任務（階段 2：檢查課堂 session）
-     */
-        window.handleStartTask = function() {
-            if (!selectedTask) return;
-
-            const startBtn = document.getElementById('startTaskBtn');
-            // 取得重新打開教材的按鈕 ID
-            const reopenBtn = document.getElementById('reopenMaterialBtn'); 
-
-            startBtn.disabled = true;
-            startBtn.textContent = '檢查中...';
-
-            // 階段 2：先檢查班級是否有進行中的課堂 session
-            if (!selectedClass || !selectedClass.classId) {
-                startBtn.disabled = false;
-                startBtn.textContent = '開始任務';
-                showToast('無法取得班級資訊', 'error');
-                return;
-            }
-
-            const checkParams = new URLSearchParams({
-                action: 'getCurrentSession',
-                classId: selectedClass.classId,
-                userEmail: currentStudent.email
-            });
-
-            APP_CONFIG.log('📤 檢查課堂狀態...', { classId: selectedClass.classId });
-
-            fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
-                .then(response => response.json())
-                .then(function(sessionResponse) {
-                    APP_CONFIG.log('📥 課堂狀態回應:', sessionResponse);
-
-                    if (!sessionResponse.success) {
-                        startBtn.disabled = false;
-                        startBtn.textContent = '開始任務';
-                        showToast('無法檢查課堂狀態', 'error');
-                        return;
-                    }
-
-                    // 檢查是否有進行中的課堂
-                    if (!sessionResponse.isActive) {
-                        startBtn.disabled = false;
-                        startBtn.textContent = '開始任務';
-                        showToast('⏰ 老師尚未開始上課，請稍候', 'warning');
-                        return;
-                    }
-
-                    // 有進行中的課堂，繼續開始任務
-                    startBtn.textContent = '開始中...';
-
-                    const params = new URLSearchParams({
-                        action: 'startTask',
-                        userEmail: currentStudent.email,
-                        taskId: selectedTask.taskId
-                    });
-
-                    APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId });
-
-                    return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`);
-                })
-                .then(function(response) {
-                    if (!response) return; 
-                    return response.json();
-                })
-                .then(function(response) {
-                    if (!response) return;
-
-                    // 這裡不急著把開始按鈕恢復，因為如果成功了我們要隱藏它
-                    
-                    APP_CONFIG.log('📥 開始任務回應:', response);
-
-                    if (response.success) {
-                        showToast('✅ 任務已開始！', 'success');
-
-                        // 更新進度狀態
-                        currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
-
-                        // ----------------------------------------------------
-                        // 🔥 修改重點開始：UI 按鈕狀態切換
-                        // ----------------------------------------------------
-                        
-                        // 1. 隱藏「開始任務」按鈕
-                        if (startBtn) startBtn.style.display = 'none';
-
-                        // 2. 顯示「重新打開教材」按鈕
-                        if (reopenBtn) reopenBtn.style.display = 'inline-block'; // 或 'block'
-
-                        // ----------------------------------------------------
-                        // 🔥 修改重點結束
-                        // ----------------------------------------------------
-
-                        // 取得教材連結
-                        let taskLink = '';
-                        if (selectedTask.tier === 'mixed') {
-                            if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
-                                taskLink = selectedTask.tutorialLink || '';
-                            } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
-                                taskLink = selectedTask.adventureLink || '';
-                            } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
-                                taskLink = selectedTask.hardcoreLink || '';
-                            }
-                        } else {
-                            taskLink = selectedTask.link || '';
-                        }
-
-                        // 🔗 自動打開教材連結
-                        if (taskLink && taskLink.trim() !== '') {
-                            APP_CONFIG.log('📖 打開教材連結:', taskLink);
-                            window.open(taskLink, '_blank');
-                        } else {
-                            APP_CONFIG.log('ℹ️ 此任務沒有外部連結');
-                        }
-
-                        // 啟動時間限制檢查
-                        startTaskTimeLimitCheck(selectedTask);
-
-                        // ⚠️ 注意：我註解掉了自動關閉 Modal 的程式碼
-                        // 如果你一開始任務就關閉視窗，使用者就看不到剛剛顯示出來的「重新打開」按鈕了
-                        // closeTaskModal(); 
-
-                        // 重新顯示任務列表 (背景更新)
-                        displayQuestList();
-                    } else {
-                        // 失敗時才恢復按鈕狀態
-                        startBtn.disabled = false;
-                        startBtn.textContent = '開始任務';
-                        showToast(response.message || '開始失敗', 'error');
-                    }
-                })
-                .catch(function(error) {
-                    startBtn.disabled = false;
-                    startBtn.textContent = '開始任務';
-
-                    APP_CONFIG.error('操作失敗', error);
-                    showToast('操作失敗：' + error.message, 'error');
-                });
-        };
+        /**
+       * 開始任務（階段 2：檢查課堂 session）
+       */
+      window.handleStartTask = function() {
+          if (!selectedTask) return;
+      
+          const startBtn = document.getElementById('startTaskBtn');
+          const reopenBtn = document.getElementById('reopenMaterialBtn');
+          // ✅ 新增：取得提交按鈕
+          const completeBtn = document.getElementById('completeTaskBtn'); 
+      
+          // 防呆：如果按鈕不存在就不往下執行 UI 操作
+          if (startBtn) {
+              startBtn.disabled = true;
+              startBtn.textContent = '檢查中...';
+          }
+      
+          // 階段 2：先檢查班級是否有進行中的課堂 session
+          if (!selectedClass || !selectedClass.classId) {
+              if (startBtn) {
+                  startBtn.disabled = false;
+                  startBtn.textContent = '開始任務';
+              }
+              showToast('無法取得班級資訊', 'error');
+              return;
+          }
+      
+          const checkParams = new URLSearchParams({
+              action: 'getCurrentSession',
+              classId: selectedClass.classId,
+              userEmail: currentStudent.email
+          });
+      
+          APP_CONFIG.log('📤 檢查課堂狀態...', { classId: selectedClass.classId });
+      
+          fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
+              .then(response => response.json())
+              .then(function(sessionResponse) {
+                  
+                  if (!sessionResponse.success) {
+                      if (startBtn) {
+                          startBtn.disabled = false;
+                          startBtn.textContent = '開始任務';
+                      }
+                      showToast('無法檢查課堂狀態', 'error');
+                      return;
+                  }
+      
+                  // 檢查是否有進行中的課堂
+                  if (!sessionResponse.isActive) {
+                      if (startBtn) {
+                          startBtn.disabled = false;
+                          startBtn.textContent = '開始任務';
+                      }
+                      showToast('⏰ 老師尚未開始上課，請稍候', 'warning');
+                      return;
+                  }
+      
+                  // 有進行中的課堂，繼續開始任務
+                  if (startBtn) startBtn.textContent = '開始中...';
+      
+                  const params = new URLSearchParams({
+                      action: 'startTask',
+                      userEmail: currentStudent.email,
+                      taskId: selectedTask.taskId
+                  });
+      
+                  APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId });
+      
+                  return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`);
+              })
+              .then(function(response) {
+                  if (!response) return; 
+                  return response.json();
+              })
+              .then(function(response) {
+                  if (!response) return;
+      
+                  APP_CONFIG.log('📥 開始任務回應:', response);
+      
+                  if (response.success) {
+                      showToast('✅ 任務已開始！', 'success');
+      
+                      // 更新進度狀態
+                      if (currentTasksProgress) {
+                          currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
+                      }
+      
+                      // ====================================================
+                      // 🔥 UI 按鈕狀態切換 (重點修正)
+                      // ====================================================
+                      
+                      // 1. 隱藏「開始任務」按鈕
+                      if (startBtn) startBtn.style.display = 'none';
+      
+                      // 2. 顯示「重新打開教材」按鈕 (如果有連結)
+                      // 這裡要稍微判斷一下連結是否存在，或直接顯示也可以
+                      if (reopenBtn) reopenBtn.style.display = 'inline-block'; 
+      
+                      // 3. ✅ 顯示「提交任務」按鈕 (這就是之前漏掉的！)
+                      if (completeBtn) completeBtn.style.display = 'inline-block';
+      
+                      // ====================================================
+      
+                      // 取得教材連結並開啟
+                      let taskLink = '';
+                      if (selectedTask.tier === 'mixed') {
+                          if (selectedTier === '基礎層' || selectedTier === 'tutorial') taskLink = selectedTask.tutorialLink;
+                          else if (selectedTier === '進階層' || selectedTier === 'adventure') taskLink = selectedTask.adventureLink;
+                          else if (selectedTier === '精通層' || selectedTier === 'hardcore') taskLink = selectedTask.hardcoreLink;
+                      } else {
+                          taskLink = selectedTask.link;
+                      }
+      
+                      // 自動打開教材連結
+                      if (taskLink && taskLink.trim() !== '') {
+                          APP_CONFIG.log('📖 打開教材連結:', taskLink);
+                          window.open(taskLink, '_blank');
+                      } else {
+                          APP_CONFIG.log('ℹ️ 此任務沒有外部連結');
+                          // 如果沒有連結，也可以選擇把 reopenBtn 藏起來
+                          // if (reopenBtn) reopenBtn.style.display = 'none'; 
+                      }
+      
+                      // 啟動計時器 (如果有這個函式的話)
+                      if (typeof startTaskTimeLimitCheck === 'function') {
+                          startTaskTimeLimitCheck(selectedTask);
+                      }
+      
+                      // 重新顯示任務列表 (背景更新，讓列表上的狀態燈號變色)
+                      if (typeof displayQuestList === 'function') {
+                          displayQuestList();
+                      }
+      
+                  } else {
+                      // 失敗時恢復按鈕
+                      if (startBtn) {
+                          startBtn.disabled = false;
+                          startBtn.textContent = '開始任務';
+                      }
+                      showToast(response.message || '開始失敗', 'error');
+                  }
+              })
+              .catch(function(error) {
+                  if (startBtn) {
+                      startBtn.disabled = false;
+                      startBtn.textContent = '開始任務';
+                  }
+                  APP_CONFIG.error('操作失敗', error);
+                  showToast('操作失敗：' + error.message, 'error');
+              });
+      };
 
         window.handleCompleteTask = function() {
         if (!selectedTask) return;
@@ -2990,3 +3002,4 @@
             });
     };
 })(); // IIFE
+
