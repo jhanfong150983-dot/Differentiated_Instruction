@@ -704,143 +704,194 @@ function switchTaskEditorTab(tab, el) {
 
 function renderChecklist(items) {
     const container = document.getElementById('editorChecklistContainer');
-    container.innerHTML = '';
-    items.forEach(item => {
-        const idx = items.indexOf(item);
-        const div = document.createElement('div');
-        div.className = 'form-group checklist-item';
-        div.dataset.checklistId = item.checklistId || '';
-        div.innerHTML = `
-            <input type="text" class="form-input checklist-desc" value="${escapeHtml(item.itemDescription || '')}" placeholder="檢核項目描述">
-            <div style="margin-top:6px; display:flex; gap:8px;">
-                <input type="number" class="form-input" value="${item.itemOrder || idx+1}" style="width:100px;" />
-                <button class="btn btn-danger" onclick="removeChecklistItem(this)">刪除</button>
-            </div>
-        `;
-        container.appendChild(div);
+    container.innerHTML = ''; // 清空
+
+    items.forEach((item, index) => {
+        createChecklistRow(item, index + 1);
     });
 }
 
 function addChecklistItem() {
+    // 取得目前有幾個項目，算出新的序號
+    const container = document.getElementById('editorChecklistContainer');
+    const count = container.children.length;
+    
+    const newItem = {
+        itemDescription: '',
+        itemOrder: count + 1
+    };
+    createChecklistRow(newItem, count + 1);
+    
+    // 自動聚焦到新生成的輸入框
+    setTimeout(() => {
+        const inputs = container.querySelectorAll('.checklist-desc');
+        inputs[inputs.length - 1].focus();
+    }, 50);
+}
+
+function createChecklistRow(item, index) {
     const container = document.getElementById('editorChecklistContainer');
     const div = document.createElement('div');
-    div.className = 'form-group checklist-item';
+    div.className = 'checklist-row checklist-item';
+    div.dataset.checklistId = item.checklistId || '';
+    
+    // 隱藏的 order input，我們會自動維護它，不讓使用者手動輸入數字以保持介面整潔
+    // 顯示的 index 只是為了視覺
     div.innerHTML = `
-        <input type="text" class="form-input checklist-desc" value="" placeholder="檢核項目描述">
-        <div style="margin-top:6px; display:flex; gap:8px;">
-            <input type="number" class="form-input" value="1" style="width:100px;" />
-            <button class="btn btn-danger" onclick="removeChecklistItem(this)">刪除</button>
-        </div>
+        <div class="checklist-index">${index}</div>
+        <input type="text" class="form-input checklist-desc" 
+               value="${escapeHtml(item.itemDescription || '')}" 
+               placeholder="輸入檢核項目描述..." style="flex:1;">
+        <input type="hidden" class="checklist-order" value="${item.itemOrder || index}">
+        <button class="btn-icon danger" onclick="removeChecklistItem(this)" title="刪除">✕</button>
     `;
     container.appendChild(div);
 }
 
 function removeChecklistItem(btn) {
     const row = btn.closest('.checklist-item');
-    if (row) row.remove();
+    row.remove();
+    // 刪除後重新計算序號顯示，保持連續性
+    reindexChecklist();
+}
+
+function reindexChecklist() {
+    const rows = document.querySelectorAll('#editorChecklistContainer .checklist-item');
+    rows.forEach((row, idx) => {
+        row.querySelector('.checklist-index').textContent = idx + 1;
+        row.querySelector('.checklist-order').value = idx + 1;
+    });
 }
 
 function renderQuestions(questions) {
     const container = document.getElementById('editorQuestionsContainer');
     container.innerHTML = '';
+    
     questions.forEach(q => {
-        const div = document.createElement('div');
-        div.className = 'question-card';
-        div.dataset.questionId = q.questionId || '';
-        div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <strong>${escapeHtml(q.questionText || '(無題目)')}</strong>
+        createQuestionCard(q);
+    });
+}
+
+function addNewQuestionCard() {
+    const newQ = {
+        questionId: '',
+        questionText: '',
+        optionA: '',
+        optionB: '',
+        optionC: '',
+        optionD: '',
+        correctAnswer: 'A'
+    };
+    createQuestionCard(newQ, true); // true 代表預設展開
+}
+
+function createQuestionCard(q, expand = false) {
+    const container = document.getElementById('editorQuestionsContainer');
+    const div = document.createElement('div');
+    div.className = 'question-card';
+    div.dataset.questionId = q.questionId || '';
+
+    div.innerHTML = `
+        <div class="question-header" onclick="toggleQuestionBody(this)">
+            <div class="question-title-preview">
+                <span style="color:#64748b; font-size:12px; margin-right:5px;">Q.</span>
+                <span class="preview-text">${escapeHtml(q.questionText || '(未命名題目)')}</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+                 <span class="badge" style="background:#e2e8f0; color:#475569;">答案: <span class="preview-ans">${q.correctAnswer || 'A'}</span></span>
+                 <button class="btn-icon danger" onclick="event.stopPropagation(); deleteQuestionCard(this)">✕</button>
+            </div>
+        </div>
+        
+        <div class="question-body ${expand ? 'open' : ''}">
+            <div class="form-group">
+                <label class="form-label">題目內容</label>
+                <textarea class="form-textarea q-text" rows="2" placeholder="輸入題目..." oninput="updateQuestionPreview(this)">${escapeHtml(q.questionText || '')}</textarea>
+            </div>
+            
+            <div class="question-grid">
                 <div>
-                    <button class="btn btn-secondary" onclick="editQuestion(this)">編輯</button>
-                    <button class="btn btn-danger" onclick="deleteQuestion('${q.questionId || ''}')">刪除</button>
+                    <label class="form-label">選項 A</label>
+                    <input type="text" class="form-input q-opt-a" value="${escapeHtml(q.optionA || '')}" placeholder="選項 A">
+                </div>
+                <div>
+                    <label class="form-label">選項 B</label>
+                    <input type="text" class="form-input q-opt-b" value="${escapeHtml(q.optionB || '')}" placeholder="選項 B">
+                </div>
+                <div>
+                    <label class="form-label">選項 C</label>
+                    <input type="text" class="form-input q-opt-c" value="${escapeHtml(q.optionC || '')}" placeholder="選項 C">
+                </div>
+                <div>
+                    <label class="form-label">選項 D</label>
+                    <input type="text" class="form-input q-opt-d" value="${escapeHtml(q.optionD || '')}" placeholder="選項 D">
+                </div>
+                
+                <div class="full-width">
+                    <label class="form-label">正確答案</label>
+                    <select class="form-select q-correct" onchange="updateQuestionPreview(this)">
+                        <option value="A" ${q.correctAnswer === 'A' ? 'selected' : ''}>選項 A</option>
+                        <option value="B" ${q.correctAnswer === 'B' ? 'selected' : ''}>選項 B</option>
+                        <option value="C" ${q.correctAnswer === 'C' ? 'selected' : ''}>選項 C</option>
+                        <option value="D" ${q.correctAnswer === 'D' ? 'selected' : ''}>選項 D</option>
+                    </select>
                 </div>
             </div>
-            <div style="margin-top:6px; color:#666;">選項：${escapeHtml((q.optionA||'') + ' | ' + (q.optionB||'') + ' | ' + (q.optionC||'') + ' | ' + (q.optionD||''))}</div>
-        `;
-        container.appendChild(div);
-    });
+        </div>
+    `;
+    container.appendChild(div);
 }
 
-function openQuestionEditor(existing) {
-    // 簡易 prompt 介面（可後續改成完整 modal）
-    const questionText = prompt('題目：', existing ? existing.questionText : '');
-    if (questionText === null) return;
-    const optionA = prompt('選項 A：', existing ? existing.optionA : '');
-    if (optionA === null) return;
-    const optionB = prompt('選項 B：', existing ? existing.optionB : '');
-    if (optionB === null) return;
-    const optionC = prompt('選項 C：', existing ? existing.optionC : '');
-    if (optionC === null) return;
-    const optionD = prompt('選項 D：', existing ? existing.optionD : '');
-    if (optionD === null) return;
-    const correct = prompt('正確答案（A/B/C/D）：', existing ? (existing.correctAnswer || 'A') : 'A');
-    if (correct === null) return;
-
-    const questionObj = {
-        questionId: existing ? existing.questionId : null,
-        questionText: questionText,
-        optionA: optionA,
-        optionB: optionB,
-        optionC: optionC,
-        optionD: optionD,
-        correctAnswer: correct.toUpperCase()
-    };
-
-    // 立刻儲存單題（可改成批次）
-    saveQuestion(questionObj);
+// 切換展開/收合
+function toggleQuestionBody(header) {
+    const body = header.nextElementSibling;
+    const isOpen = body.classList.contains('open');
+    
+    // 收合其他所有打開的卡片 (手風琴效果，若想允許同時開多個，這行可拿掉)
+    document.querySelectorAll('.question-body.open').forEach(el => el.classList.remove('open'));
+    
+    if (!isOpen) {
+        body.classList.add('open');
+    }
 }
 
-function editQuestion(btn) {
+// 刪除題目卡片 (只是從 DOM 移除，按儲存才會寫入後端)
+function deleteQuestionCard(btn) {
+    if(!confirm('確定要移除這題嗎？(需按儲存變更才會生效)')) return;
     const card = btn.closest('.question-card');
-    const qid = card.dataset.questionId;
-    // 取得題目資料：以最簡方式呼叫後端取得該題目（或從目前畫面資料快取）
-    const params = new URLSearchParams({ action: 'getTaskDetailsForEditor', taskId: currentEditorTaskId });
-    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`).then(r=>r.json()).then(resp=>{
-        const q = (resp.questions||[]).find(x=>x.questionId===qid);
-        if (q) openQuestionEditor(q);
-    });
+    card.remove();
 }
 
-function saveQuestion(questionObj) {
-    showLoading('taskLoading');
-    const params = new URLSearchParams({
-        action: 'addOrUpdateTaskQuestion',
-        taskId: currentEditorTaskId,
-        question: JSON.stringify(questionObj)
-    });
+// 即時更新標題預覽
+function updateQuestionPreview(input) {
+    const card = input.closest('.question-card');
+    if (input.classList.contains('q-text')) {
+        const text = input.value.trim() || '(未命名題目)';
+        card.querySelector('.preview-text').textContent = text;
+    } else if (input.classList.contains('q-correct')) {
+        card.querySelector('.preview-ans').textContent = input.value;
+    }
+}
 
-    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-        .then(r=>r.json())
-        .then(resp=>{
-            hideLoading('taskLoading');
-            if (resp.success) {
-                showToast('題目已儲存', 'success');
-                // 重新載入題庫
-                openTaskEditor(currentEditorTaskId);
-            } else {
-                showToast(resp.message || '儲存失敗', 'error');
-            }
-        }).catch(err=>{
-            hideLoading('taskLoading');
-            console.error(err);
-            showToast('儲存失敗：' + err.message, 'error');
+function collectQuestionsData() {
+    const cards = document.querySelectorAll('.question-card');
+    const questions = [];
+    
+    cards.forEach(card => {
+        questions.push({
+            questionId: card.dataset.questionId || null, // 有 ID 則更新，無 ID 則新增
+            questionText: card.querySelector('.q-text').value.trim(),
+            optionA: card.querySelector('.q-opt-a').value.trim(),
+            optionB: card.querySelector('.q-opt-b').value.trim(),
+            optionC: card.querySelector('.q-opt-c').value.trim(),
+            optionD: card.querySelector('.q-opt-d').value.trim(),
+            correctAnswer: card.querySelector('.q-correct').value
         });
+    });
+    
+    return questions;
 }
 
-function deleteQuestion(questionId) {
-    if (!confirm('確定要刪除這題嗎？')) return;
-    showLoading('taskLoading');
-    const params = new URLSearchParams({ action: 'deleteTaskQuestion', questionId: questionId });
-    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`).then(r=>r.json()).then(resp=>{
-        hideLoading('taskLoading');
-        if (resp.success) {
-            showToast('題目已刪除', 'success');
-            openTaskEditor(currentEditorTaskId);
-        } else {
-            showToast(resp.message || '刪除失敗', 'error');
-        }
-    }).catch(err=>{ hideLoading('taskLoading'); showToast('刪除失敗：'+err.message,'error'); });
-}
 
 // 修改：改用 POST 傳送
 function saveChecklistToBackend() {
@@ -1067,42 +1118,49 @@ function addImagePreview(url) {
 
 // 修改 index.html 或前端 JS 中的這個函式
 function saveAllTaskEditorChanges() {
-    showLoading('taskLoading'); // 確保有顯示 loading
+    showLoading('taskLoading');
 
-    Promise.all([saveReferenceToBackend(), saveChecklistToBackend()])
+    // 1. 收集參考答案
+    const refPromise = saveReferenceToBackend();
+    
+    // 2. 收集檢核項目
+    const checkPromise = saveChecklistToBackend();
+    
+    // 3. 收集題目 (新增的部分)
+    const questionsData = collectQuestionsData();
+    // 我們需要一個類似 saveTaskQuestionsToBackend 的函式
+    // 假設你後端有對應 action: 'saveTaskQuestions'
+    const payload = {
+        action: 'saveTaskQuestions', // 記得去後端加這個 case
+        taskId: currentEditorTaskId,
+        questions: questionsData
+    };
+    
+    const questionsPromise = fetch(APP_CONFIG.API_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+    }).then(r => r.json());
+
+    // 4. 等待全部完成
+    Promise.all([refPromise, checkPromise, questionsPromise])
     .then(results => {
-        const [refRes, checklistRes] = results;
-        
-        // 1. 先印出完整的結果到 Console (按 F12 看)
-        console.log('儲存結果 - 參考答案:', refRes);
-        console.log('儲存結果 - 檢核項目:', checklistRes);
+        const [refRes, checkRes, qRes] = results;
+        console.log('儲存結果:', results);
 
-        const refSuccess = refRes && refRes.success;
-        const checkSuccess = checklistRes && checklistRes.success;
-
-        if (refSuccess && checkSuccess) {
+        if (refRes.success && checkRes.success && qRes.success) {
             showToast('✅ 所有變更已儲存', 'success');
             closeModal('taskEditorModal');
-            // 重新載入任務列表
-            if (typeof loadCourseTasks === 'function' && typeof currentCourseId !== 'undefined') {
-                loadCourseTasks(currentCourseId);
-            }
+            loadCourseTasks(currentCourseId);
         } else {
-            // 2. 顯示具體的錯誤原因
-            let errorMsg = '部分儲存失敗：\n';
-            if (!refSuccess) errorMsg += `❌ 參考答案: ${refRes?.message || '未知錯誤'}\n`;
-            if (!checkSuccess) errorMsg += `❌ 檢核項目: ${checklistRes?.message || '未知錯誤'}`;
-            
-            alert(errorMsg); // 用 alert 彈窗顯示完整錯誤，比較容易看清楚
-            showToast('儲存發生錯誤，請查看畫面提示', 'error');
+            alert(`儲存發生錯誤：\n參考: ${refRes.message}\n檢核: ${checkRes.message}\n題目: ${qRes.message}`);
         }
-        
         hideLoading('taskLoading');
     })
     .catch(err => {
         console.error(err);
         hideLoading('taskLoading');
-        showToast('網路或系統錯誤：' + err.message, 'error');
+        showToast('系統錯誤', 'error');
     });
 }
 

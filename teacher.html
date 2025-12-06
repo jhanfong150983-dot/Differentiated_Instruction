@@ -1820,6 +1820,122 @@
             }
         }
 
+                /* 共用列表容器 */
+        .list-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+            padding: 4px; /* 預留陰影空間 */
+        }
+
+        /* --- 檢核項目樣式 --- */
+        .checklist-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            padding: 10px 15px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .checklist-row:hover {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            border-color: #cbd5e1;
+        }
+
+        .checklist-index {
+            background: #f1f5f9;
+            color: #64748b;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        /* --- 題庫樣式 (手風琴卡片) --- */
+        .question-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .question-card:hover {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        /* 卡片頭部 (預覽區) */
+        .question-header {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            cursor: pointer;
+            background: #fafafa;
+        }
+
+        .question-title-preview {
+            font-weight: 600;
+            color: #334155;
+            flex: 1;
+            margin-right: 15px;
+        }
+
+        /* 卡片內容 (編輯區) */
+        .question-body {
+            padding: 20px;
+            border-top: 1px solid #e2e8f0;
+            background: #fff;
+            display: none; /* 預設隱藏 */
+        }
+
+        .question-body.open {
+            display: block;
+        }
+
+        /* 題目表單格線系統 */
+        .question-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .full-width {
+            grid-column: span 2;
+        }
+
+        /* 按鈕微調 */
+        .btn-icon {
+            padding: 6px 10px;
+            font-size: 14px;
+            color: #64748b;
+            background: transparent;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-icon:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+        .btn-icon.danger:hover {
+            background: #fee2e2;
+            color: #ef4444;
+            border-color: #fca5a5;
+        }
+
     </style>
 </head>
 
@@ -2419,17 +2535,25 @@
                 </div>
 
                 <div id="checklistTab" class="tab-content" style="display:none;">
-                    <div id="editorChecklistContainer"></div>
-                    <div style="margin-top:10px;">
-                        <button class="btn btn-secondary" onclick="addChecklistItem()">＋ 新增檢核項目</button>
-                    </div>
+                    <div class="form-hint" style="margin-bottom:10px;">設定學員完成此任務必須做到的檢查點。</div>
+                    
+                    <div id="editorChecklistContainer" class="list-container">
+                        </div>
+
+                    <button class="btn btn-dashed" onclick="addChecklistItem()" style="width:100%; border: 2px dashed #cbd5e1; background: #f8fafc; color:#64748b;">
+                        ＋ 新增檢核項目
+                    </button>
                 </div>
 
                 <div id="questionsTab" class="tab-content" style="display:none;">
-                    <div id="editorQuestionsContainer"></div>
-                    <div style="margin-top:10px;">
-                        <button class="btn btn-secondary" onclick="openQuestionEditor()">＋ 新增題目</button>
-                    </div>
+                    <div class="form-hint" style="margin-bottom:10px;">點擊題目可展開編輯詳細內容。</div>
+
+                    <div id="editorQuestionsContainer" class="list-container">
+                        </div>
+
+                    <button class="btn btn-dashed" onclick="addNewQuestionCard()" style="width:100%; border: 2px dashed #cbd5e1; background: #f8fafc; color:#64748b;">
+                        ＋ 新增題目
+                    </button>
                 </div>
             </div>
             <div class="modal-footer">
