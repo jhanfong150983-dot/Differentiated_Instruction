@@ -3001,5 +3001,21 @@
                 showToast('系統錯誤', 'error');
             });
     };
+
+      /**
+    * 關閉自主檢查面板
+    */
+   window.closeSelfCheckModal = function() {
+       const modal = document.getElementById('selfCheckModal');
+       if (modal) {
+           // 隱藏 Modal
+           modal.style.display = 'none';
+           modal.classList.remove('active'); // 若有使用 CSS class 控制顯示也一併移除
+       }
+       
+       // 選用：重置相關變數 (視需求而定)
+       currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
+   };
 })(); // IIFE
+
 
