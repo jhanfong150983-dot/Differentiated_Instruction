@@ -729,20 +729,22 @@ function addChecklistItem() {
     }, 50);
 }
 
+/* 請替換 course.js 中的 createChecklistRow */
 function createChecklistRow(item, index) {
     const container = document.getElementById('editorChecklistContainer');
     const div = document.createElement('div');
     
-    // 1. 確保外層有 checklist-item 這個 class
     div.className = 'checklist-row checklist-item'; 
     div.dataset.checklistId = item.checklistId || '';
     
+    // ✅ 修正點 1：讀取 item.itemTitle 而不是 itemDescription
+    // ✅ 修正點 2：class 改為 checklist-title，placeholder 改為「標題」
     div.innerHTML = `
         <div class="checklist-index">${index}</div>
         
-        <input type="text" class="form-input checklist-desc" 
-               value="${escapeHtml(item.itemDescription || '')}" 
-               placeholder="輸入檢核項目描述..." style="flex:1;">
+        <input type="text" class="form-input checklist-title" 
+               value="${escapeHtml(item.itemTitle || '')}" 
+               placeholder="輸入檢核項目標題..." style="flex:1;">
                
         <input type="hidden" class="checklist-order" value="${item.itemOrder || index}">
         
@@ -919,37 +921,31 @@ function collectQuestionsData() {
 }
 
 
-// 修改：改用 POST 傳送
+/* 請替換 course.js 中的 saveChecklistToBackend */
 function saveChecklistToBackend() {
     const container = document.getElementById('editorChecklistContainer');
     if (!container) return Promise.resolve({ success: false });
 
-    // 1. 抓取所有行
     const rows = Array.from(container.querySelectorAll('.checklist-item'));
     
     const items = rows.map((el, idx) => {
-        // --- 除錯重點開始 ---
-        
-        // 嘗試抓取元素
-        const descInput = el.querySelector('.checklist-desc');
+        // ✅ 修正點 1：抓取 .checklist-title (對應上面的 HTML 修改)
+        const titleInput = el.querySelector('.checklist-title');
         const orderInput = el.querySelector('.checklist-order');
         
-        // 這裡就是報錯的地方！原本可能是 descInput.value
-        // 現在我們改用「三元運算子」檢查：如果 descInput 存在才取 value，否則給空字串
-        const description = descInput ? descInput.value.trim() : ''; 
+        const titleVal = titleInput ? titleInput.value.trim() : ''; 
         
-        // 同樣檢查 orderInput
         let orderVal = idx + 1;
         if (orderInput && orderInput.value) {
             orderVal = parseInt(orderInput.value);
         }
 
-        // --- 除錯重點結束 ---
-
         return {
             checklistId: el.dataset.checklistId || null,
-            itemDescription: description,
-            itemTitle: '', 
+            // ✅ 修正點 2：將值放入 itemTitle
+            itemTitle: titleVal,
+            // 這裡 itemDescription 留空，或者如果你有第二個輸入框可以放這裡
+            itemDescription: '', 
             itemOrder: isNaN(orderVal) ? (idx + 1) : orderVal
         };
     });
