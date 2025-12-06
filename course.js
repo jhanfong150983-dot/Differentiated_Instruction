@@ -1065,20 +1065,46 @@ function addImagePreview(url) {
     preview.appendChild(wrapper);
 }
 
+// 修改 index.html 或前端 JS 中的這個函式
 function saveAllTaskEditorChanges() {
-    Promise.all([saveReferenceToBackend(), saveChecklistToBackend()]).then(results=>{
-        const [refRes, checklistRes] = results;
-        if ((refRes && refRes.success) && (checklistRes && checklistRes.success)) {
-            showToast('所有變更已儲存', 'success');
-            closeModal('taskEditorModal');
-            // refresh tasks
-            loadCourseTasks(currentCourseId);
-        } else {
-            showToast('部分儲存失敗，請重試', 'error');
-        }
-    }).catch(err=>{ console.error(err); showToast('儲存失敗：'+err.message,'error'); });
-}
+    showLoading('taskLoading'); // 確保有顯示 loading
 
+    Promise.all([saveReferenceToBackend(), saveChecklistToBackend()])
+    .then(results => {
+        const [refRes, checklistRes] = results;
+        
+        // 1. 先印出完整的結果到 Console (按 F12 看)
+        console.log('儲存結果 - 參考答案:', refRes);
+        console.log('儲存結果 - 檢核項目:', checklistRes);
+
+        const refSuccess = refRes && refRes.success;
+        const checkSuccess = checklistRes && checklistRes.success;
+
+        if (refSuccess && checkSuccess) {
+            showToast('✅ 所有變更已儲存', 'success');
+            closeModal('taskEditorModal');
+            // 重新載入任務列表
+            if (typeof loadCourseTasks === 'function' && typeof currentCourseId !== 'undefined') {
+                loadCourseTasks(currentCourseId);
+            }
+        } else {
+            // 2. 顯示具體的錯誤原因
+            let errorMsg = '部分儲存失敗：\n';
+            if (!refSuccess) errorMsg += `❌ 參考答案: ${refRes?.message || '未知錯誤'}\n`;
+            if (!checkSuccess) errorMsg += `❌ 檢核項目: ${checklistRes?.message || '未知錯誤'}`;
+            
+            alert(errorMsg); // 用 alert 彈窗顯示完整錯誤，比較容易看清楚
+            showToast('儲存發生錯誤，請查看畫面提示', 'error');
+        }
+        
+        hideLoading('taskLoading');
+    })
+    .catch(err => {
+        console.error(err);
+        hideLoading('taskLoading');
+        showToast('網路或系統錯誤：' + err.message, 'error');
+    });
+}
 
 /**
  * 編輯課程
