@@ -1827,8 +1827,8 @@
             gap: 12px;
             margin-bottom: 20px;
             max-height: 500px;
-            overflow-y: auto;
-            padding: 4px; /* 預留陰影空間 */
+            overflow-y: auto;     /* 保持捲軸 */
+            padding: 4px 4px 150px 4px; /* ✅ 關鍵：底部預留大空間，防止下拉選單被切掉 */
         }
 
         /* --- 檢核項目樣式 --- */
@@ -1867,8 +1867,8 @@
             background: #fff;
             border: 1px solid #e2e8f0;
             border-radius: 8px;
-            overflow: hidden;
             transition: all 0.2s;
+            position: relative;
         }
 
         .question-card:hover {
@@ -1880,9 +1880,19 @@
             padding: 15px;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             cursor: pointer;
-            background: #fafafa;
+            background: #FAFAFA;
+            border-bottom: 1px solid transparent;
+            border-radius: 8px; /* 補回圓角，因為移除了 overflow:hidden */
+        }
+
+        /* 當卡片展開時，Header 下方要有線與圓角調整 */
+        .question-body.open + .question-header, 
+        .question-card:has(.question-body.open) .question-header {
+            border-bottom: 1px solid #E1E8ED;
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
         }
 
         .question-title-preview {
@@ -1892,12 +1902,12 @@
             margin-right: 15px;
         }
 
-        /* 卡片內容 (編輯區) */
         .question-body {
             padding: 20px;
-            border-top: 1px solid #e2e8f0;
             background: #fff;
-            display: none; /* 預設隱藏 */
+            display: none;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
         }
 
         .question-body.open {

@@ -772,6 +772,7 @@ function renderQuestions(questions) {
     });
 }
 
+/* 新增卡片函式 (請取代原本的) */
 function addNewQuestionCard() {
     const newQ = {
         questionId: '',
@@ -783,6 +784,15 @@ function addNewQuestionCard() {
         correctAnswer: 'A'
     };
     createQuestionCard(newQ, true); // true 代表預設展開
+    
+    // ✅ 自動捲動到最下方，避免使用者覺得「沒反應」或「被擋住」
+    setTimeout(() => {
+        const container = document.getElementById('editorQuestionsContainer');
+        container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'smooth'
+        });
+    }, 100);
 }
 
 function createQuestionCard(q, expand = false) {
@@ -873,19 +883,32 @@ function updateQuestionPreview(input) {
     }
 }
 
+/* 收集資料函式 (請取代原本的，加入防呆機制) */
 function collectQuestionsData() {
     const cards = document.querySelectorAll('.question-card');
     const questions = [];
     
-    cards.forEach(card => {
+    cards.forEach((card, index) => {
+        // ✅ 防呆：使用 ?. (Optional Chaining) 確保元素存在才讀取 value
+        // 如果找不到元素，就給空字串 ''，避免報錯 crash
+        const qTextEl = card.querySelector('.q-text');
+        const optAEl = card.querySelector('.q-opt-a');
+        const optBEl = card.querySelector('.q-opt-b');
+        const optCEl = card.querySelector('.q-opt-c');
+        const optDEl = card.querySelector('.q-opt-d');
+        const correctEl = card.querySelector('.q-correct');
+
+        // 如果連題目輸入框都找不到，這張卡片可能有問題，跳過
+        if (!qTextEl) return;
+
         questions.push({
-            questionId: card.dataset.questionId || null, // 有 ID 則更新，無 ID 則新增
-            questionText: card.querySelector('.q-text').value.trim(),
-            optionA: card.querySelector('.q-opt-a').value.trim(),
-            optionB: card.querySelector('.q-opt-b').value.trim(),
-            optionC: card.querySelector('.q-opt-c').value.trim(),
-            optionD: card.querySelector('.q-opt-d').value.trim(),
-            correctAnswer: card.querySelector('.q-correct').value
+            questionId: card.dataset.questionId || null,
+            questionText: qTextEl.value.trim(),
+            optionA: optAEl ? optAEl.value.trim() : '',
+            optionB: optBEl ? optBEl.value.trim() : '',
+            optionC: optCEl ? optCEl.value.trim() : '',
+            optionD: optDEl ? optDEl.value.trim() : '',
+            correctAnswer: correctEl ? correctEl.value : 'A'
         });
     });
     
