@@ -945,6 +945,191 @@
         .quest-board.active {
             display: block !important;
         }
+
+        /* --- 自主檢查 Modal 優化樣式 --- */
+
+        /* 兩欄佈局容器 */
+        .self-check-layout {
+            display: flex;
+            gap: 20px;
+            flex-direction: column; /* 手機版預設垂直 */
+        }
+
+        @media (min-width: 768px) {
+            .self-check-layout {
+                flex-direction: row; /* 電腦版改為左右 */
+                align-items: flex-start;
+            }
+        }
+
+        /* 左側：參考答案區 */
+        .ref-section {
+            flex: 1;
+            background: var(--game-bg-medium);
+            border: 1px solid var(--game-border);
+            border-radius: 8px;
+            padding: 16px;
+            position: sticky;
+            top: 0;
+        }
+
+        .ref-image-container img {
+            max-width: 100%;
+            border-radius: 4px;
+            border: 1px solid #444;
+        }
+
+        /* 右側：檢核清單區 */
+        .checklist-section {
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* 單個檢核項目卡片 */
+        .check-item-card {
+            background: var(--game-bg-medium);
+            border: 1px solid var(--game-border);
+            border-radius: 8px;
+            padding: 12px;
+            transition: all 0.2s;
+        }
+
+        .check-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .check-desc {
+            font-size: 15px;
+            color: var(--game-text-light);
+            flex: 1;
+            line-height: 1.4;
+        }
+
+        /* 通過/待改進 切換按鈕 */
+        .status-toggle {
+            display: flex;
+            background: var(--game-bg-dark);
+            border-radius: 6px;
+            padding: 2px;
+            border: 1px solid var(--game-border);
+        }
+
+        .status-btn {
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            border: none;
+            background: transparent;
+            color: var(--game-text-medium);
+            transition: all 0.2s;
+        }
+
+        .status-btn:hover {
+            color: white;
+        }
+
+        /* 狀態激活樣式 */
+        .status-btn.pass.active {
+            background: #10B981; /* 綠色 */
+            color: white;
+            font-weight: bold;
+        }
+
+        .status-btn.fail.active {
+            background: #F59E0B; /* 橘黃色 */
+            color: white;
+            font-weight: bold;
+            border-color: #D97706;
+        }
+
+        /* 錯誤說明輸入區 (預設隱藏) */
+        .improvement-box {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px dashed var(--game-border);
+            display: none; /* JS 控制顯示 */
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .improvement-box.show {
+            display: block;
+        }
+
+        .improvement-input {
+            width: 100%;
+            background: var(--game-bg-dark);
+            border: 1px solid var(--game-danger);
+            color: white;
+            border-color: #F59E0B;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .improvement-box label {
+            color: #F59E0B;
+        }
+
+        /* 評量階段容器 */
+        .assessment-container {
+            text-align: center;
+            padding: 20px;
+            animation: fadeIn 0.5s;
+        }
+
+        .assessment-question {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 24px;
+            color: var(--game-accent);
+        }
+
+        .assessment-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .assessment-option-btn {
+            background: var(--game-bg-medium);
+            border: 1px solid var(--game-border);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--game-text-light);
+            position: relative;
+        }
+
+        .assessment-option-btn:hover {
+            border-color: var(--game-accent);
+            background: var(--game-bg-light);
+        }
+
+        .assessment-option-btn.selected {
+            border-color: var(--game-accent);
+            background: rgba(var(--game-accent-rgb), 0.1); /* 假設有這個變數，若無可改固定色 */
+            box-shadow: 0 0 0 2px var(--game-accent);
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -1066,12 +1251,6 @@
                     <div class="task-detail-label">任務內容</div>
                     <div class="task-detail-value" id="modalTaskContent">內容載入中...</div>
                 </div>
-                <div class="task-detail-section" id="modalLinkSection" style="display: none;">
-                    <div class="task-detail-label">任務連結</div>
-                    <div class="task-detail-value">
-                        <a id="modalTaskLink" class="task-link" href="#" target="_blank">開啟任務連結 →</a>
-                    </div>
-                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeTaskModal()">關閉</button>
@@ -1086,66 +1265,49 @@
 
     <!-- 自主檢查與評量面板 -->
     <div class="modal" id="selfCheckModal" style="display: none;">
-        <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-content" style="max-width: 900px;">
             <div class="modal-header">
-                <h3 class="modal-title">📋 自主檢查</h3>
+                <h3 class="modal-title" id="selfCheckTitle">📋 自主檢查</h3>
             </div>
+            
             <div class="modal-body">
-                <!-- 步驟指示器 -->
-                <div style="display: flex; justify-content: space-around; margin-bottom: 30px;">
-                    <div class="step-indicator active">
-                        <div class="step-number">1</div>
-                        <div class="step-label">查看示範</div>
-                    </div>
-                    <div class="step-indicator" id="step2Indicator">
-                        <div class="step-number">2</div>
-                        <div class="step-label">完成檢查</div>
-                    </div>
-                    <div class="step-indicator" id="step3Indicator">
-                        <div class="step-number">3</div>
-                        <div class="step-label">通過評量</div>
-                    </div>
-                </div>
-
-                <!-- 第一步：正確答案示範 -->
-                <div id="step1Container">
-                    <h4 style="color: var(--game-accent); margin-bottom: 16px;">✅ 正確答案示範</h4>
-                    <div id="referenceAnswerContent" style="background: var(--game-bg-medium); padding: 16px; border-radius: 8px; margin-bottom: 16px; min-height: 100px;"></div>
-                </div>
-
-                <!-- 第二步：檢核表 -->
-                <div id="step2Container" style="display: none;">
-                    <h4 style="color: var(--game-accent); margin-bottom: 16px;">✓ 檢核項目</h4>
-                    <div id="checklistContainer" style="background: var(--game-bg-medium); padding: 16px; border-radius: 8px; margin-bottom: 16px;"></div>
-
-                    <!-- B情境：錯誤說明表單 -->
-                    <div id="errorExplanationSection" style="display: none; background: var(--game-bg-dark); padding: 16px; border-left: 4px solid var(--game-danger); border-radius: 4px; margin-bottom: 16px;">
-                        <h5 style="color: var(--game-danger); margin-bottom: 12px;">⚠️ 發現錯誤，請說明</h5>
-                        <div style="margin-bottom: 12px;">
-                            <label style="display: block; color: var(--game-text-medium); font-size: 14px; margin-bottom: 6px;">錯誤原因：</label>
-                            <textarea id="errorReasonInput" rows="2" placeholder="例：接線錯誤" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--game-border); background: var(--game-bg-dark); color: var(--game-text-light); font-size: 14px;"></textarea>
+                <div id="checkStageContainer">
+                    <div class="self-check-layout">
+                        <div class="ref-section">
+                            <h4 style="color: var(--game-accent); margin-bottom: 12px;">📌 參考標準</h4>
+                            <div id="referenceDisplay" style="color: var(--game-text-light); line-height: 1.6;">
+                                </div>
                         </div>
-                        <div>
-                            <label style="display: block; color: var(--game-text-medium); font-size: 14px; margin-bottom: 6px;">改善方式：</label>
-                            <textarea id="improvementInput" rows="2" placeholder="例：改接到5V電源" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--game-border); background: var(--game-bg-dark); color: var(--game-text-light); font-size: 14px;"></textarea>
-                        </div>
+
+                        <div class="checklist-section" id="checklistDynamicContainer">
+                            </div>
                     </div>
                 </div>
 
-                <!-- 第三步：評量 -->
-                <div id="step3Container" style="display: none;">
-                    <h4 style="color: var(--game-accent); margin-bottom: 16px;">📝 評量</h4>
-                    <div id="questionContent" style="background: var(--game-bg-medium); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                        <p id="questionText" style="margin-bottom: 16px; font-size: 16px;"></p>
-                        <div id="optionsContainer" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                <div id="assessmentStageContainer" style="display: none;">
+                    <div class="assessment-container">
+                        <div style="font-size: 48px; margin-bottom: 10px;">🧠</div>
+                        <h4 style="margin-bottom: 10px;">隨堂測驗</h4>
+                        <p style="color: var(--game-text-medium); margin-bottom: 20px;" id="assessmentHintText">
+                            完成此題即可結束任務。
+                        </p>
+                        
+                        <div class="assessment-question" id="assessmentQuestionText"></div>
+                        <div class="assessment-options" id="assessmentOptionsContainer"></div>
                     </div>
                 </div>
             </div>
 
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="closeSelfCheckBtn" onclick="closeSelfCheckModal()">關閉</button>
-                <button class="btn btn-primary" id="nextStepBtn" onclick="handleNextStep()" style="display: none;">下一步</button>
-                <button class="btn btn-success" id="submitAnswerBtn" onclick="submitAssessmentAnswer()" style="display: none;">提交答案</button>
+                <button class="btn btn-secondary" onclick="closeSelfCheckModal()">取消</button>
+                
+                <button class="btn btn-primary" id="finishCheckBtn" onclick="submitSelfCheck()">
+                    完成檢查，進入評量 →
+                </button>
+                
+                <button class="btn btn-success" id="submitAssessmentBtn" onclick="submitAssessmentAnswer()" style="display: none;">
+                    提交答案
+                </button>
             </div>
         </div>
     </div>
