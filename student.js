@@ -235,7 +235,8 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄（強制展開混合層級，確保三色書本顯示）
+     * 載入課程層級和學習記錄
+     * (修復：強制展開混合層級 + 自動補全圖示 + 自動對應說明文字)
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
@@ -271,46 +272,50 @@
                 }
 
                 // ============================================================
-                // 🔥 核心修復：檢測並強制展開資料
+                // 🔥 核心邏輯：資料展開與樣式補全
                 // ============================================================
                 
                 let rawTiers = data.tiers || [];
                 
-                // Debug: 讓你知道後端到底傳了幾筆資料回來 (請按 F12 看 Console)
-                console.log('🔍 後端回傳層級數量:', rawTiers.length);
-
-                // 定義樣式
+                // 定義樣式與 ID 對照
                 const STYLES = [
                     { id: 'tutorial',  name: '基礎層', icon: '📗', color: '#27AE60' },
                     { id: 'adventure', name: '進階層', icon: '📘', color: '#2980B9' },
                     { id: 'hardcore',  name: '精通層', icon: '📕', color: '#C0392B' }
                 ];
 
-                // 🛑 情況 A：如果後端只回傳 1 筆資料 (混合模式)，我們手動變成 3 筆
+                // 🛑 情況 A：單筆資料 (混合模式) -> 強制展開成 3 筆
                 if (rawTiers.length === 1) {
-                    const baseTier = rawTiers[0]; // 拿原本那筆資料當基底
+                    const baseTier = rawTiers[0]; 
                     
-                    // 強制產生 3 個新的物件
                     courseTiers = STYLES.map(style => {
+                        // --- 📝 這裡修復了說明文字消失的問題 ---
+                        // 根據 style.id (tutorial/adventure/hardcore) 去抓對應的 Desc 欄位
+                        // 如果抓不到，就用原本的 description，再抓不到就顯示預設文字
+                        let specificDesc = baseTier[style.id + 'Desc']; 
+                        
+                        // 防呆：有時候後端欄位可能是 tutorial_desc (下底線)，這裡做個保險
+                        if (!specificDesc) specificDesc = baseTier[style.id + '_desc'];
+                        
+                        // 最後的 fallback
+                        const finalDesc = specificDesc || baseTier.description || '完成任務以獲得獎勵';
+
                         return {
-                            ...baseTier,          // 繼承原始資料 (如 description)
-                            tierId: style.id,     // 覆寫 ID (tutorial/adventure/hardcore)
+                            ...baseTier,          // 繼承其他屬性
+                            tierId: style.id,     // 覆寫 ID
                             name: style.name,     // 覆寫名稱
-                            icon: style.icon,     // 強制設定圖示
-                            color: style.color,   // 強制設定顏色
-                            // 如果原始資料有分層描述，也可以在這裡對應 (視後端欄位而定)
-                            // description: baseTier[style.id + 'Desc'] || baseTier.description
+                            icon: style.icon,     // 設定圖示
+                            color: style.color,   // 設定顏色
+                            description: finalDesc // ✅ 設定正確的說明文字
                         };
                     });
                     
-                    console.log('✅ 偵測到單一層級，已強制展開為 3 筆:', courseTiers);
+                    console.log('✅ 已展開說明文字:', courseTiers.map(t => t.description));
 
                 } 
-                // 🛑 情況 B：如果後端確實回傳了 3 筆 (或多筆) 資料
+                // 🛑 情況 B：多筆資料 -> 依序分配樣式
                 else {
                     courseTiers = rawTiers.map((tier, index) => {
-                        // 依據順序強制分配樣式 (0=綠, 1=藍, 2=紅)
-                        // 如果資料超過 3 筆，後面重複使用最後一個樣式
                         const styleIndex = Math.min(index, 2); 
                         const style = STYLES[styleIndex];
 
@@ -342,7 +347,7 @@
                 APP_CONFIG.error('載入失敗', error);
                 showToast('載入失敗：' + error.message, 'error');
             });
-    }   
+    }  
 
     /**
      * 檢查並恢復上次的層級（優化版：使用緩存數據）
