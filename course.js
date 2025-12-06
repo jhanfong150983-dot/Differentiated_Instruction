@@ -842,17 +842,33 @@ function deleteQuestion(questionId) {
     }).catch(err=>{ hideLoading('taskLoading'); showToast('刪除失敗：'+err.message,'error'); });
 }
 
+// 修改：改用 POST 傳送
 function saveChecklistToBackend() {
     const container = document.getElementById('editorChecklistContainer');
     const items = Array.from(container.querySelectorAll('.checklist-item')).map((el, idx) => ({
         checklistId: el.dataset.checklistId || null,
         itemDescription: el.querySelector('.checklist-desc').value.trim(),
-        itemOrder: parseInt(el.querySelector('input[type="number"]').value) || (idx+1)
+        itemTitle: '', // 視你的需求補充
+        itemOrder: parseInt(el.querySelector('input[type="number"]').value) || (idx + 1)
     }));
 
     showLoading('taskLoading');
-    const params = new URLSearchParams({ action: 'saveTaskChecklist', taskId: currentEditorTaskId, checklists: JSON.stringify(items) });
-    return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`).then(r=>r.json()).then(resp=>{
+
+    // 建立 POST payload
+    const payload = {
+        action: 'saveTaskChecklist',
+        taskId: currentEditorTaskId,
+        checklists: items // 直接傳送陣列物件，不需要 JSON.stringify (fetch body 會統一轉)
+    };
+
+    return fetch(APP_CONFIG.API_URL, {
+        method: 'POST',
+        // 為了避免 GAS CORS 預檢問題，建議用 text/plain
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(resp => {
         hideLoading('taskLoading');
         return resp;
     });
@@ -860,14 +876,29 @@ function saveChecklistToBackend() {
 
 function saveReferenceToBackend() {
     const answerText = document.getElementById('editorReferenceAnswer').value.trim();
-    // 收集圖片欄位（每行一個 URL），支援以逗號/分號或換行分隔
     const imagesRaw = document.getElementById('editorReferenceImages').value.trim();
-    const imagesArray = imagesRaw ? imagesRaw.split(/\r?\n|,|;/).map(s=>s.trim()).filter(Boolean) : [];
-    const imagesString = imagesArray.join('|');
+    // 轉成陣列
+    const imagesArray = imagesRaw ? imagesRaw.split(/\r?\n|,|;/).map(s => s.trim()).filter(Boolean) : [];
 
     showLoading('taskLoading');
-    const params = new URLSearchParams({ action: 'saveTaskReferenceAnswer', taskId: currentEditorTaskId, answerText: answerText, answerImages: imagesString });
-    return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`).then(r=>r.json()).then(resp=>{ hideLoading('taskLoading'); return resp; });
+
+    const payload = {
+        action: 'saveTaskReferenceAnswer',
+        taskId: currentEditorTaskId,
+        answerText: answerText,
+        answerImages: imagesArray // 直接傳陣列
+    };
+
+    return fetch(APP_CONFIG.API_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(resp => {
+        hideLoading('taskLoading');
+        return resp;
+    });
 }
 
 /**
