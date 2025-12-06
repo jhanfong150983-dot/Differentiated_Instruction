@@ -2392,6 +2392,7 @@
        * 開始任務（階段 2：檢查課堂 session）
        */
       window.handleStartTask = function() {
+          console.log('🔍 [Debug] selectedClass:', selectedClass);
           if (!selectedTask) return;
       
           const startBtn = document.getElementById('startTaskBtn');
@@ -2455,7 +2456,10 @@
                       classId: selectedClass.classId
                   });
       
-                  APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId });
+                  APP_CONFIG.log('📤 開始任務...', { 
+                     taskId: selectedTask.taskId,
+                     classId: selectedClass.classId
+                  });
       
                   return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`);
               })
@@ -3062,6 +3066,7 @@
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
