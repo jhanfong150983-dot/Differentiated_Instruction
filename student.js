@@ -235,12 +235,16 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄
+     * 載入課程層級和學習記錄（包含自動補全圖示與顏色）
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
 
-        // ... (前面的檢查邏輯不變) ...
+        if (!selectedClass || !selectedClass.classId || !selectedCourse || !selectedCourse.courseId) {
+            hideLoading('mainLoading');
+            showToast('無法取得班級或課程資訊', 'error');
+            return;
+        }
 
         const params = new URLSearchParams({
             action: 'getStudentClassEntryData',
@@ -249,88 +253,99 @@
             courseId: selectedCourse.courseId
         });
 
-        // ... (fetch 部分) ...
+        APP_CONFIG.log('🚀 載入課程資料...', {
+            classId: selectedClass.classId,
+            courseId: selectedCourse.courseId
+        });
 
         fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
             .then(response => response.json())
             .then(function(data) {
                 
-                if (!data.success) throw new Error(data.message || '載入失敗');
+                if (!data.success) {
+                    throw new Error(data.message || '載入失敗');
+                }
 
                 // 緩存課堂狀態
                 cachedSessionStatus = data.isActive;
                 sessionCheckTime = Date.now();
 
+                // 如果課堂未開始，顯示等待畫面
                 if (!data.isActive) {
                     hideLoading('mainLoading');
                     displayCourseWaitingScreen();
                     return Promise.reject('waiting_for_class');
                 }
 
-                // ==============================================
-                // 🔥 核心修正開始：定義樣式對照表 (UI Config)
-                // ==============================================
-                const TIER_STYLES = {
-                    'tutorial': { 
-                        color: '#27AE60', // 綠色
-                        icon: '📗'        // 綠色書本 Emoji (或是你原本的 HTML/Class)
-                    },
-                    'adventure': { 
-                        color: '#2980B9', // 藍色
-                        icon: '📘'        // 藍色書本 Emoji
-                    },
-                    'hardcore': { 
-                        color: '#C0392B', // 紅色
-                        icon: '📕'        // 紅色書本 Emoji
-                    }
+                // ============================================================
+                // 🔥 核心修復：前端自動補上「圖示」與「顏色」
+                // 因為後端通常只回傳純資料，不包含 UI 樣式，所以要在這裡加工
+                // ============================================================
+                
+                // 定義三種書本的樣式 (Emoji + 顏色)
+                const UI_CONFIG = {
+                    'tutorial':  { icon: '📗', color: '#27AE60' }, // 基礎層：綠書
+                    'adventure': { icon: '📘', color: '#2980B9' }, // 進階層：藍書
+                    'hardcore':  { icon: '📕', color: '#C0392B' }  // 精通層：紅書
                 };
 
                 let rawTiers = data.tiers || [];
 
-                // 將 API 資料與樣式合併
+                // 重新組裝 courseTiers
                 courseTiers = rawTiers.map(tier => {
-                    // 1. 判斷這是哪個層級 (轉小寫比對，防止大小寫問題)
-                    const tierId = (tier.tierId || tier.id || '').toLowerCase();
-                    const tierName = (tier.name || '').toLowerCase();
+                    // 1. 判斷層級類型
+                    // 將 ID 或 名稱 轉小寫，方便比對
+                    const tId = (tier.tierId || tier.id || '').toLowerCase();
+                    const tName = (tier.name || '').toLowerCase();
+                    
+                    let styleKey = 'tutorial'; // 預設用基礎層樣式
 
-                    let styleKey = 'tutorial'; // 預設值
-
-                    if (tierId.includes('tutorial') || tierName.includes('基礎')) {
-                        styleKey = 'tutorial';
-                    } else if (tierId.includes('adventure') || tierName.includes('進階')) {
+                    if (tId.includes('adventure') || tName.includes('進階')) {
                         styleKey = 'adventure';
-                    } else if (tierId.includes('hardcore') || tierName.includes('精通')) {
+                    } else if (tId.includes('hardcore') || tName.includes('精通')) {
                         styleKey = 'hardcore';
+                    } else {
+                        // 預設 tutorial 或含有基礎字樣
+                        styleKey = 'tutorial';
                     }
 
-                    // 2. 取得對應的樣式
-                    const style = TIER_STYLES[styleKey];
+                    // 2. 取得對應樣式
+                    const style = UI_CONFIG[styleKey];
 
-                    // 3. 回傳合併後的物件 (API 資料 + 本地樣式)
+                    // 3. 回傳完整物件 (補上 icon 和 color)
                     return {
-                        ...tier,           // 保留 API 的 id, name, description
-                        color: style.color, // 補上顏色
-                        icon: style.icon    // 補上圖示
+                        ...tier,           // 保留原始資料 (id, name, description)
+                        icon: style.icon,   // 補上書本 Emoji 📗/📘/📕
+                        color: style.color  // 補上顏色 Hex Code
                     };
                 });
-                // ==============================================
-                // 🔥 核心修正結束
-                // ==============================================
+                // ============================================================
 
                 learningRecord = data.learningRecord;
                 cachedProgressData = data.progress;
 
+                APP_CONFIG.log('✅ 資料載入完成 (樣式已補全)', { tiers: courseTiers.length });
+
+                // 檢查是否直接進入任務
                 return checkAndResumeTier();
             })
             .then(function(resumed) {
                 if (!resumed) {
+                    // 如果沒有自動進入任務，就顯示層級選擇畫面
                     hideLoading('mainLoading');
-                    displayTierSelection();
+                    
+                    // 確保函式存在再呼叫
+                    if (typeof displayTierSelection === 'function') {
+                        displayTierSelection();
+                    } else {
+                        console.error('找不到 displayTierSelection 函式');
+                    }
                 }
             })
             .catch(function(error) {
                 if (error === 'waiting_for_class') return;
                 hideLoading('mainLoading');
+                APP_CONFIG.error('載入失敗', error);
                 showToast('載入失敗：' + error.message, 'error');
             });
     }
