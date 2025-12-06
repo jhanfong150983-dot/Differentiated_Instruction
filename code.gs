@@ -201,7 +201,7 @@ function doGet(e) {
         break;
 
       case 'saveTaskReferenceAnswer':
-        response = saveTaskReferenceAnswer({ taskId: params.taskId, answerText: params.answerText });
+        response = saveTaskReferenceAnswer({ taskId: params.taskId, answerText: params.answerText, answerImages: params.answerImages });
         break;
 
       case 'saveTaskChecklist':
@@ -439,11 +439,16 @@ function doPost(e) {
       case 'checkPermission':
         response = checkPermission(requestData.user_id, requestData.permission);
         break;
+
+      case 'uploadReferenceImage':
+        // 前端會傳 { action:'uploadReferenceImage', fileName, fileData, fileMime }
+        response = uploadReferenceImage(requestData);
+        break;
         
       default:
         response = {
           success: false,
-          message: '未知的操作類型: ' + params.action
+          message: '未知的操作類型: ' + requestData.action
         };
     }
     
@@ -3899,6 +3904,44 @@ function submitTask(params) {
   }
 }
 
+/**
+ * 上傳參考圖片（從前端送來的 base64）並存到 Drive，回傳可嵌入的連結
+ * params: { fileName, fileData (base64), fileMime }
+ */
+function uploadReferenceImage(params) {
+  try {
+    if (!params || !params.fileName || !params.fileData) {
+      throw new Error('缺少檔案參數');
+    }
+
+    const fileName = params.fileName;
+    const b64 = params.fileData;
+    const mime = params.fileMime || 'image/png';
+
+    // Decode base64
+    const bytes = Utilities.base64Decode(b64);
+    const blob = Utilities.newBlob(bytes, mime, fileName);
+
+    // 建立檔案到應用程式的根目錄
+    const file = DriveApp.createFile(blob);
+
+    // 設為 anyone with link 可檢視
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (e) {
+      Logger.log('⚠️ 設定分享權限失敗: ' + e);
+    }
+
+    const fileId = file.getId();
+    const publicUrl = 'https://drive.google.com/uc?export=view&id=' + fileId;
+
+    return { success: true, url: publicUrl, fileId: fileId };
+  } catch (error) {
+    Logger.log('uploadReferenceImage error: ' + error);
+    return { success: false, message: '上傳失敗：' + error.message };
+  }
+}
+
 
 /**
  * 取得學生所屬的所有班級及其課程資訊
@@ -6021,25 +6064,35 @@ function getTaskDetailsForEditor(params) {
  */
 function saveTaskReferenceAnswer(params) {
   try {
-    const { taskId, answerText } = params;
+    const { taskId, answerText, answerImages } = params;
     if (!taskId) throw new Error('缺少 taskId');
 
     const ss = getSpreadsheet();
     const answerSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_REFERENCE_ANSWERS);
     if (!answerSheet) throw new Error('找不到參考答案表');
 
+    // 支援 answerImages 為字串或陣列
+    let imagesString = '';
+    if (Array.isArray(answerImages)) {
+      imagesString = answerImages.map(s=>String(s).trim()).filter(Boolean).join('|');
+    } else if (typeof answerImages === 'string' && answerImages.trim() !== '') {
+      imagesString = String(answerImages).trim();
+    }
+
     const data = answerSheet.getDataRange().getValues();
     let found = false;
     for (let i = 1; i < data.length; i++) {
       if (data[i][1] === taskId) {
-        answerSheet.getRange(i+1, 3).setValue(answerText);
+        // 更新文字與圖片欄位（第3與第4欄）
+        answerSheet.getRange(i+1, 3).setValue(answerText || '');
+        answerSheet.getRange(i+1, 4).setValue(imagesString || '');
         found = true;
         break;
       }
     }
     if (!found) {
       const newId = generateUUID();
-      answerSheet.appendRow([newId, taskId, answerText, '']);
+      answerSheet.appendRow([newId, taskId, answerText || '', imagesString || '']);
     }
 
     return { success: true, message: '參考答案已儲存' };

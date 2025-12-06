@@ -2405,6 +2405,16 @@
                     <div class="form-group">
                         <label class="form-label">參考答案（純文字 / HTML）</label>
                         <textarea id="editorReferenceAnswer" class="form-textarea" rows="6" placeholder="輸入此任務的參考示範或標準答案..."></textarea>
+                        <div style="margin-top:10px;">
+                            <label class="form-label">參考圖片（每行一個圖片雲端連結）</label>
+                            <textarea id="editorReferenceImages" class="form-textarea" rows="3" placeholder="每行一個圖片連結（例如：https://...）"></textarea>
+                            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+                                <input type="file" id="editorImageFiles" accept="image/*" multiple style="flex:1;" />
+                                <button class="btn btn-secondary" id="uploadReferenceImagesBtn" onclick="handleUploadReferenceImages()">上傳圖片</button>
+                            </div>
+                            <div id="editorImagePreview" style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"></div>
+                            <div class="form-hint">可貼上多個圖片連結，系統會以 | 分隔儲存並在讀取時解析。或使用上傳按鈕直接上傳圖片取得分享連結。</div>
+                        </div>
                     </div>
                 </div>
 

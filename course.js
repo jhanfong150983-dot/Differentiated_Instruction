@@ -672,7 +672,10 @@ function openTaskEditor(taskId) {
             }
 
             // 參考答案
-            document.getElementById('editorReferenceAnswer').value = resp.referenceAnswer ? (resp.referenceAnswer.answerText || '') : '';
+                    document.getElementById('editorReferenceAnswer').value = resp.referenceAnswer ? (resp.referenceAnswer.answerText || '') : '';
+                    // 載入圖片欄位，若後端回傳陣列則換行顯示
+                    const images = resp.referenceAnswer && resp.referenceAnswer.answerImages ? resp.referenceAnswer.answerImages : [];
+                    document.getElementById('editorReferenceImages').value = Array.isArray(images) ? images.join('\n') : (images || '');
 
             // 檢核項目
             renderChecklist(resp.checklists || []);
@@ -857,9 +860,81 @@ function saveChecklistToBackend() {
 
 function saveReferenceToBackend() {
     const answerText = document.getElementById('editorReferenceAnswer').value.trim();
+    // 收集圖片欄位（每行一個 URL），支援以逗號/分號或換行分隔
+    const imagesRaw = document.getElementById('editorReferenceImages').value.trim();
+    const imagesArray = imagesRaw ? imagesRaw.split(/\r?\n|,|;/).map(s=>s.trim()).filter(Boolean) : [];
+    const imagesString = imagesArray.join('|');
+
     showLoading('taskLoading');
-    const params = new URLSearchParams({ action: 'saveTaskReferenceAnswer', taskId: currentEditorTaskId, answerText: answerText });
+    const params = new URLSearchParams({ action: 'saveTaskReferenceAnswer', taskId: currentEditorTaskId, answerText: answerText, answerImages: imagesString });
     return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`).then(r=>r.json()).then(resp=>{ hideLoading('taskLoading'); return resp; });
+}
+
+/**
+ * 使用 POST 將圖片（base64）上傳到後端，後端會儲存到 Google Drive 並回傳可嵌入的連結
+ */
+function handleUploadReferenceImages() {
+    const input = document.getElementById('editorImageFiles');
+    if (!input || !input.files || input.files.length === 0) {
+        showToast('請先選擇要上傳的圖片', 'warning');
+        return;
+    }
+
+    const files = Array.from(input.files);
+    // 逐一上傳
+    files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const dataUrl = e.target.result; // data:<mime>;base64,xxxx
+            const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+            if (!matches) {
+                showToast('檔案讀取失敗：格式不正確', 'error');
+                return;
+            }
+            const mime = matches[1];
+            const b64 = matches[2];
+
+            showLoading('taskLoading');
+            fetch(APP_CONFIG.API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'uploadReferenceImage', fileName: file.name, fileData: b64, fileMime: mime })
+            }).then(r=>r.json()).then(resp=>{
+                hideLoading('taskLoading');
+                if (resp && resp.success && resp.url) {
+                    // 把回傳連結加入到 textarea
+                    const ta = document.getElementById('editorReferenceImages');
+                    if (ta.value && ta.value.trim() !== '') ta.value = ta.value.trim() + '\n' + resp.url;
+                    else ta.value = resp.url;
+
+                    // 顯示預覽
+                    addImagePreview(resp.url);
+                    showToast('圖片上傳成功', 'success');
+                } else {
+                    console.error('uploadReferenceImage 回應：', resp);
+                    showToast(resp.message || '上傳失敗', 'error');
+                }
+            }).catch(err=>{
+                hideLoading('taskLoading');
+                console.error(err);
+                showToast('上傳失敗：' + err.message, 'error');
+            });
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function addImagePreview(url) {
+    const preview = document.getElementById('editorImagePreview');
+    if (!preview) return;
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.width = '120px';
+    img.style.height = '80px';
+    img.style.objectFit = 'cover';
+    img.style.border = '1px solid #ddd';
+    img.style.borderRadius = '6px';
+    preview.appendChild(img);
 }
 
 function saveAllTaskEditorChanges() {
