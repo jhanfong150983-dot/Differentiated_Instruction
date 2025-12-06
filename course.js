@@ -732,18 +732,18 @@ function addChecklistItem() {
 function createChecklistRow(item, index) {
     const container = document.getElementById('editorChecklistContainer');
     const div = document.createElement('div');
-    div.className = 'checklist-row checklist-item';
+    div.className = 'checklist-row checklist-item'; // ✅ 必須有 checklist-item
     div.dataset.checklistId = item.checklistId || '';
     
-    // 隱藏的 order input，我們會自動維護它，不讓使用者手動輸入數字以保持介面整潔
-    // 顯示的 index 只是為了視覺
     div.innerHTML = `
         <div class="checklist-index">${index}</div>
         <input type="text" class="form-input checklist-desc" 
                value="${escapeHtml(item.itemDescription || '')}" 
                placeholder="輸入檢核項目描述..." style="flex:1;">
+               
         <input type="hidden" class="checklist-order" value="${item.itemOrder || index}">
-        <button class="btn-icon danger" onclick="removeChecklistItem(this)" title="刪除">✕</button>
+        
+        <button class="btn-icon danger" onclick="removeChecklistItem(this)">✕</button>
     `;
     container.appendChild(div);
 }
@@ -919,31 +919,54 @@ function collectQuestionsData() {
 // 修改：改用 POST 傳送
 function saveChecklistToBackend() {
     const container = document.getElementById('editorChecklistContainer');
-    const items = Array.from(container.querySelectorAll('.checklist-item')).map((el, idx) => ({
-        checklistId: el.dataset.checklistId || null,
-        itemDescription: el.querySelector('.checklist-desc').value.trim(),
-        itemTitle: '', // 視你的需求補充
-        itemOrder: parseInt(el.querySelector('input[type="number"]').value) || (idx + 1)
-    }));
+    
+    // 防呆：如果連容器都找不到，直接回傳失敗
+    if (!container) {
+        console.error('找不到 editorChecklistContainer');
+        return Promise.resolve({ success: false, message: '前端錯誤：找不到檢核列表容器' });
+    }
 
-    showLoading('taskLoading');
+    // 抓取所有項目
+    const rows = Array.from(container.querySelectorAll('.checklist-item'));
+    
+    // 轉換資料
+    const items = rows.map((el, idx) => {
+        // 1. 嘗試抓取描述欄位 (新的 UI class 是 .checklist-desc)
+        const descInput = el.querySelector('.checklist-desc');
+        
+        // 2. 嘗試抓取排序欄位 (新的 UI class 是 .checklist-order，且是 hidden)
+        // 如果找不到 hidden input，回退去找 checklist-index (雖然它是 div 沒有 value，但防呆用)
+        // 最後如果都沒找到，就用 idx + 1
+        const orderInput = el.querySelector('.checklist-order');
+        
+        // 3. 安全讀取值 (使用 ?. 防呆，如果沒抓到元素就給預設值)
+        const description = descInput ? descInput.value.trim() : '';
+        const order = orderInput ? parseInt(orderInput.value) : (idx + 1);
+
+        return {
+            checklistId: el.dataset.checklistId || null,
+            itemDescription: description,
+            itemTitle: '', // 如果你需要標題欄位，需在 HTML 補上並在此抓取
+            itemOrder: isNaN(order) ? (idx + 1) : order
+        };
+    });
 
     // 建立 POST payload
     const payload = {
         action: 'saveTaskChecklist',
         taskId: currentEditorTaskId,
-        checklists: items // 直接傳送陣列物件，不需要 JSON.stringify (fetch body 會統一轉)
+        checklists: items 
     };
+
+    console.log('準備儲存檢核項目:', payload); // Debug 用
 
     return fetch(APP_CONFIG.API_URL, {
         method: 'POST',
-        // 為了避免 GAS CORS 預檢問題，建議用 text/plain
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
     })
     .then(r => r.json())
     .then(resp => {
-        hideLoading('taskLoading');
         return resp;
     });
 }
