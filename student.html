@@ -777,8 +777,12 @@
             transform: rotate(90deg);
         }
 
-        .modal-body {
-            margin-bottom: 32px;
+        #selfCheckModal .modal-body {
+            height: 70vh; /* 固定高度 (螢幕的 70%) */
+            padding: 0;   /* 清除內距，讓左右欄位滿版 */
+            overflow: hidden; /* 隱藏外層捲軸 */
+            display: flex;
+            flex-direction: column;
         }
 
         .task-detail-section {
@@ -951,8 +955,8 @@
         /* 兩欄佈局容器 */
         .self-check-layout {
             display: flex;
-            gap: 20px;
-            flex-direction: column; /* 手機版預設垂直 */
+            flex-direction: row; /* 左右排列 */
+            height: 100%;        /* 填滿高度 */
         }
 
         @media (min-width: 768px) {
@@ -964,27 +968,83 @@
 
         /* 左側：參考答案區 */
         .ref-section {
-            flex: 1;
+            flex: 1.6; /* 🔥 調整比例：佔約 62% 寬度 */
             background: var(--game-bg-medium);
+            padding: 20px;
+            overflow-y: auto; /* ✅ 內容多時，只有這裡會捲動 */
+            border-right: 1px solid var(--game-border);
+            
+            /* 文字排版優化 */
+            white-space: pre-wrap; /* ✅ 關鍵：保留 Sheet 裡的換行 */
+            line-height: 1.8;      /* 增加行高，閱讀更舒適 */
+            font-size: 15px;       /* 字體適中 */
+            color: var(--game-text-light);
+            text-align: justify;   /* 左右對齊，看起來較整齊 */
+        }
+
+        .ref-image-container {
+            margin: 15px 0;
             border: 1px solid var(--game-border);
             border-radius: 8px;
-            padding: 16px;
-            position: sticky;
+            overflow: hidden;
+            cursor: zoom-in; /* 滑鼠游標變放大鏡 */
+            background: #000;
+            transition: transform 0.2s;
+        }
+
+        .ref-image-container:hover {
+            border-color: var(--game-accent);
+            transform: translateY(-2px);
+        }
+        
+        .ref-thumbnail {
+            width: 100%;
+            height: 200px; /* 固定高度，保持版面整齊 */
+            object-fit: contain; /* 圖片保持比例顯示 */
+            display: block;
+        }
+
+        .lightbox-overlay {
+            position: fixed;
             top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9); /* 深黑背景 */
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            cursor: zoom-out;
         }
-
-        .ref-image-container img {
-            max-width: 100%;
-            border-radius: 4px;
-            border: 1px solid #444;
+        
+        .lightbox-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
         }
-
+        
+        .lightbox-img {
+            max-width: 95%;
+            max-height: 95%;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            transform: scale(0.95);
+            transition: transform 0.3s;
+        }
+        
+        .lightbox-overlay.active .lightbox-img {
+            transform: scale(1);
+        }
+        
         /* 右側：檢核清單區 */
         .checklist-section {
-            flex: 1.2;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
+            flex: 1; /* 🔥 調整比例：佔約 38% 寬度 */
+            padding: 20px;
+            overflow-y: auto; /* ✅ 這裡也可以獨立捲動 */
+            background: var(--game-bg-dark);
+            box-shadow: inset 10px 0 20px -10px rgba(0,0,0,0.3); /* 加點陰影區隔 */
         }
 
         /* 單個檢核項目卡片 */
@@ -1319,3 +1379,4 @@
     <script src="student.js"></script>
 </body>
 </html>
+
