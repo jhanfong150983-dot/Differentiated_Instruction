@@ -2523,17 +2523,20 @@
             return;
         }
 
-        const btn = document.getElementById('completeTaskBtn');
-        btn.disabled = true;
-        btn.textContent = '提交中...';
+        const completeBtn = document.getElementById('completeTaskBtn');
+        if (completeBtn) completeBtn.textContent = '處理中...';
 
         const params = new URLSearchParams({
             action: 'submitTask',
             userEmail: currentStudent.email,
-            taskId: taskToSubmit.taskId
+            taskId: taskToSubmit.taskId,
+            classId: selectedClass.classId
         });
 
-        APP_CONFIG.log('📤 提交任務...', { taskId: taskToSubmit.taskId });
+        APP_CONFIG.log('📤 提交任務...', { 
+           taskId: taskToSubmit.taskId,
+           classId: selectedClass.classId
+        });
 
         // 使用重試機制（解決 CORS 間歇性錯誤）
         fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
@@ -3035,6 +3038,7 @@
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
