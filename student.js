@@ -235,7 +235,7 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄 (完全前端主導 UI 版 - 修復名稱重複問題)
+     * 載入課程層級和學習記錄 (修正版：自動恢復上次進度)
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
@@ -246,33 +246,12 @@
             return;
         }
 
-        // ============================================================
-        // 🎨 UI 設定檔
-        // ============================================================
+        // UI 設定檔 (保持不變)
         const UI_DEFINITIONS = [
-            {
-                id: 'tutorial',
-                name: '基礎層',
-                icon: '📘',         
-                color: '#10B981',   
-                description: '適合初學者，循序漸進地學習基礎知識' 
-            },
-            {
-                id: 'adventure',
-                name: '進階層',
-                icon: '📙',         
-                color: '#F59E0B',   
-                description: '適合具備基礎能力者，挑戰更深入的內容' 
-            },
-            {
-                id: 'hardcore',
-                name: '精通層',
-                icon: '📕',         
-                color: '#EF4444',   
-                description: '適合進階學習者，挑戰高難度任務'     
-            }
+            { id: 'tutorial', name: '基礎層', icon: '📘', color: '#10B981', description: '適合初學者...' },
+            { id: 'adventure', name: '進階層', icon: '📙', color: '#F59E0B', description: '適合具備基礎能力者...' },
+            { id: 'hardcore', name: '精通層', icon: '📕', color: '#EF4444', description: '適合進階學習者...' }
         ];
-        // ============================================================
 
         const params = new URLSearchParams({
             action: 'getStudentClassEntryData',
@@ -298,43 +277,49 @@
                     return Promise.reject('waiting_for_class');
                 }
 
-                // 取得後端回傳的原始資料
+                // 1. 處理層級資料 (UI 建構)
                 let backendData = (data.tiers && data.tiers.length > 0) ? data.tiers[0] : {};
-
-                // 🛠️ 強制建構
                 courseTiers = UI_DEFINITIONS.map(def => {
-                    
                     const prefix = def.id; 
-                    let descText = 
-                        backendData[prefix + 'Desc'] || 
-                        backendData[prefix + '_desc'] || 
-                        def.description;
-
+                    let descText = backendData[prefix + 'Desc'] || backendData[prefix + '_desc'] || def.description;
                     return {
-                        ...backendData,   // 保留後端資料
-                        
-                        // 🔥 關鍵修正：同時覆寫所有可能的名稱欄位
-                        tierId: def.id,   
-                        id: def.id,       // 有些程式碼可能讀 id
-                        
-                        name: def.name,   
-                        tier: def.name,   // ✅ 這裡！強制讓 HTML 讀取的 'tier' 欄位等於正確名稱
-                        
-                        icon: def.icon,   
-                        color: def.color, 
-                        description: descText 
+                        ...backendData,
+                        tierId: def.id,
+                        name: def.name,
+                        tier: def.name,
+                        icon: def.icon,
+                        color: def.color,
+                        description: descText
                     };
                 });
 
-                console.log('✅ UI 重建完成:', courseTiers);
-
+                // 2. 儲存學習記錄
                 learningRecord = data.learningRecord;
                 cachedProgressData = data.progress;
+
+                // ============================================================
+                // 🔥 核心修正：自動恢復上次選擇的難度
+                // ============================================================
+                if (learningRecord && learningRecord.current_tier) {
+                    const savedTierId = learningRecord.current_tier; // 例如 'tutorial' 或 '基礎層'
+                    
+                    // 嘗試比對 ID 或 名稱
+                    const matchedTier = courseTiers.find(t => 
+                        t.tierId === savedTierId || t.name === savedTierId
+                    );
+
+                    if (matchedTier) {
+                        selectedTier = matchedTier.name; // 設定全域變數 (例如 '基礎層')
+                        console.log('✅ 自動恢復上次進度:', selectedTier);
+                    }
+                }
+                // ============================================================
 
                 return checkAndResumeTier();
             })
             .then(function(resumed) {
                 if (!resumed) {
+                    // 只有在「沒有」自動恢復的情況下，才顯示選擇畫面
                     hideLoading('mainLoading');
                     if (typeof displayTierSelection === 'function') {
                         displayTierSelection();
@@ -1045,27 +1030,28 @@
     }
 
     /**
-     * 選擇層級
+     * 選擇難度層級
      */
     function selectTier(tierInfo) {
-        APP_CONFIG.log('✅ 選擇層級:', tierInfo);
+        if (!tierInfo) return;
 
-        const oldTier = selectedTier;  // 保存舊的難度
-        selectedTier = tierInfo.tier;
+        const tierName = tierInfo.name || tierInfo.tier; // 例如 "基礎層"
+        const tierId = tierInfo.tierId || tierInfo.id;   // 例如 "tutorial"
 
-        // 重置完成訊息標記（切換難度時重置）
-        hasShownCompletionModal = false;
+        // 呼叫後端記錄 (Record Change)
+        // 注意：這裡我們傳 tierId 給後端存 (例如 tutorial)，但前端顯示用 tierName
+        recordTierChange(
+            null, // fromTier 設為 null，交給後端去查
+            tierId, // toTier: 存入資料庫的值 (建議存 ID: tutorial)
+            'manual', 
+            null, 
+            0
+        );
 
-        // 記錄難度變更（首次選擇或手動切換）
-        if (oldTier && oldTier !== selectedTier) {
-            // 手動切換難度
-            recordTierChange(oldTier, selectedTier, 'manual', '', 0);
-        } else if (!oldTier) {
-            // 首次選擇難度
-            recordTierChange('', selectedTier, 'manual', '', 0);
-        }
-
-        // 載入該層級的任務
+        // 更新前端狀態
+        selectedTier = tierName; 
+        
+        // 進入任務列表
         loadTierTasks();
     }
 
