@@ -235,7 +235,7 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄（包含自動補全圖示與顏色）
+     * 載入課程層級和學習記錄（強制依順序補全圖示與顏色）
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
@@ -278,45 +278,45 @@
                 }
 
                 // ============================================================
-                // 🔥 核心修復：前端自動補上「圖示」與「顏色」
-                // 因為後端通常只回傳純資料，不包含 UI 樣式，所以要在這裡加工
+                // 🔥 核心修復：使用「關鍵字」+「排列順序」雙重判斷
                 // ============================================================
                 
-                // 定義三種書本的樣式 (Emoji + 顏色)
                 const UI_CONFIG = {
-                    'tutorial':  { icon: '📗', color: '#27AE60' }, // 基礎層：綠書
-                    'adventure': { icon: '📘', color: '#2980B9' }, // 進階層：藍書
-                    'hardcore':  { icon: '📕', color: '#C0392B' }  // 精通層：紅書
+                    'tutorial':  { icon: '📗', color: '#27AE60' }, // 基礎
+                    'adventure': { icon: '📘', color: '#2980B9' }, // 進階
+                    'hardcore':  { icon: '📕', color: '#C0392B' }  // 精通
                 };
 
                 let rawTiers = data.tiers || [];
 
-                // 重新組裝 courseTiers
-                courseTiers = rawTiers.map(tier => {
-                    // 1. 判斷層級類型
-                    // 將 ID 或 名稱 轉小寫，方便比對
+                // 重新組裝 courseTiers (加入 index 參數)
+                courseTiers = rawTiers.map((tier, index) => {
+                    // 1. 先嘗試用名字判斷
                     const tId = (tier.tierId || tier.id || '').toLowerCase();
                     const tName = (tier.name || '').toLowerCase();
                     
-                    let styleKey = 'tutorial'; // 預設用基礎層樣式
+                    let styleKey = 'tutorial'; // 預設值
 
-                    if (tId.includes('adventure') || tName.includes('進階')) {
+                    // 2. 判斷邏輯：名字對了 OR 順序對了
+                    // 如果是陣列中的第 2 個 (index === 1)，或是名字含 adventure/進階 -> 藍色
+                    if (tId.includes('adventure') || tName.includes('進階') || index === 1) {
                         styleKey = 'adventure';
-                    } else if (tId.includes('hardcore') || tName.includes('精通')) {
+                    } 
+                    // 如果是陣列中的第 3 個 (index === 2)，或是名字含 hardcore/精通 -> 紅色
+                    else if (tId.includes('hardcore') || tName.includes('精通') || index === 2) {
                         styleKey = 'hardcore';
-                    } else {
-                        // 預設 tutorial 或含有基礎字樣
+                    }
+                    // 其他情況 (包含 index === 0) -> 綠色
+                    else {
                         styleKey = 'tutorial';
                     }
 
-                    // 2. 取得對應樣式
                     const style = UI_CONFIG[styleKey];
 
-                    // 3. 回傳完整物件 (補上 icon 和 color)
                     return {
-                        ...tier,           // 保留原始資料 (id, name, description)
-                        icon: style.icon,   // 補上書本 Emoji 📗/📘/📕
-                        color: style.color  // 補上顏色 Hex Code
+                        ...tier,
+                        icon: style.icon,   
+                        color: style.color  
                     };
                 });
                 // ============================================================
@@ -324,21 +324,15 @@
                 learningRecord = data.learningRecord;
                 cachedProgressData = data.progress;
 
-                APP_CONFIG.log('✅ 資料載入完成 (樣式已補全)', { tiers: courseTiers.length });
+                APP_CONFIG.log('✅ 資料載入完成', { tiers: courseTiers.length });
 
-                // 檢查是否直接進入任務
                 return checkAndResumeTier();
             })
             .then(function(resumed) {
                 if (!resumed) {
-                    // 如果沒有自動進入任務，就顯示層級選擇畫面
                     hideLoading('mainLoading');
-                    
-                    // 確保函式存在再呼叫
                     if (typeof displayTierSelection === 'function') {
                         displayTierSelection();
-                    } else {
-                        console.error('找不到 displayTierSelection 函式');
                     }
                 }
             })
