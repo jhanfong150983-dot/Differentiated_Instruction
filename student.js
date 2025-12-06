@@ -1075,50 +1075,56 @@
     // ==========================================
 
     /**
-     * 載入選定層級的任務（階段 2：檢查 session 狀態）
-     * @param {boolean} useCache - 是否使用緩存數據（避免重複 API 調用）
-     * @param {boolean} skipShowLoading - 是否跳過 showLoading（當已經在顯示 loading 時）
-     */
+ * 載入選定層級的任務（階段 2：檢查 session 狀態）
+ * @param {boolean} useCache - 是否使用緩存數據
+ * @param {boolean} skipShowLoading - 是否跳過 showLoading
+ * @returns {Promise} - 回傳 Promise 以便 checkAndResumeTier 等待完成
+ */
     function loadTierTasks(useCache = false, skipShowLoading = false) {
-        // ✓ 修正：只在需要時顯示 loading，避免重複調用
+        
         if (!skipShowLoading) {
             showLoading('mainLoading');
         }
 
-        // 階段 2：先檢查班級是否有進行中的課堂 session
+        // 檢查基本資料
         if (!selectedClass || !selectedClass.classId) {
             hideLoading('mainLoading');
             showToast('無法取得班級資訊', 'error');
-            return;
+            return Promise.reject('no_class_info');
         }
 
-        // 性能優化：如果有緩存的 session 狀態且時間在 5 秒內，直接使用
+        // --- 1. 檢查緩存 (Cache Check) ---
         const now = Date.now();
         const cacheValid = useCache &&
-                          cachedSessionStatus !== null &&
-                          sessionCheckTime &&
-                          (now - sessionCheckTime) < 5000;
+                        cachedSessionStatus !== null &&
+                        sessionCheckTime &&
+                        (now - sessionCheckTime) < 5000;
 
         if (cacheValid) {
-            APP_CONFIG.log('⚡ 使用緩存的課堂狀態，跳過重複檢查');
+            APP_CONFIG.log('⚡ 使用緩存的課堂狀態');
 
             if (!cachedSessionStatus) {
                 hideLoading('mainLoading');
-                displayWaitingScreen();
-                return;
+                // 請確認你的等待畫面函式名稱是 displayCourseWaitingScreen 還是 displayWaitingScreen
+                if (typeof displayCourseWaitingScreen === 'function') {
+                    displayCourseWaitingScreen();
+                } else {
+                    console.error('找不到等待畫面函式');
+                }
+                return Promise.reject('waiting_for_class');
             }
 
-            // 直接載入任務
-            loadTasksData()
+            // ✅ 重點修正：這裡必須加上 return
+            return loadTasksData()
                 .catch(function(error) {
                     hideLoading('mainLoading');
                     APP_CONFIG.error('載入任務失敗', error);
                     showToast('載入任務失敗：' + error.message, 'error');
+                    throw error; // 繼續拋出錯誤，讓上層知道失敗了
                 });
-            return;
         }
 
-        // 沒有緩存或緩存過期，重新檢查
+        // --- 2. 無緩存，呼叫 API 檢查 ---
         const checkParams = new URLSearchParams({
             action: 'getCurrentSession',
             classId: selectedClass.classId,
@@ -1127,7 +1133,8 @@
 
         APP_CONFIG.log('📤 檢查課堂狀態...', { classId: selectedClass.classId });
 
-        fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
+        // ✅ 重點修正：這裡必須加上 return
+        return fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
             .then(response => response.json())
             .then(function(sessionResponse) {
                 APP_CONFIG.log('📥 課堂狀態回應:', sessionResponse);
@@ -1143,8 +1150,9 @@
                 // 檢查是否有進行中的課堂
                 if (!sessionResponse.isActive) {
                     hideLoading('mainLoading');
-                    displayWaitingScreen();
-                    // 返回 rejected promise 中斷鏈條
+                    if (typeof displayCourseWaitingScreen === 'function') {
+                        displayCourseWaitingScreen();
+                    }
                     return Promise.reject('waiting_for_class');
                 }
 
@@ -1155,16 +1163,20 @@
                 // 如果是等待課堂的狀態，不顯示錯誤訊息
                 if (error === 'waiting_for_class') {
                     APP_CONFIG.log('⏳ 等待課堂開始...');
-                    return;
+                    // 這裡我們把錯誤 "吃掉" (不 throw)，回傳一個空的 Promise
+                    // 這樣 checkAndResumeTier 那邊會收到 undefined/false，就不會報錯
+                    return Promise.resolve(false); 
                 }
+                
                 hideLoading('mainLoading');
                 APP_CONFIG.error('檢查課堂狀態失敗', error);
                 showToast('檢查課堂狀態失敗：' + error.message, 'error');
+                throw error;
             });
     }
 
     /**
-     * 載入任務資料（內部函數）
+     * 載入並篩選任務列表
      */
     function loadTasksData() {
         const params = new URLSearchParams({
@@ -1174,6 +1186,7 @@
 
         APP_CONFIG.log('📤 載入任務列表...', { courseId: selectedCourse.courseId });
 
+        // ✅ 這裡有 return，這是正確的
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
@@ -1182,20 +1195,37 @@
                 if (response.success) {
                     const allTasks = response.tasks || [];
 
-                    // 篩選出選定層級的任務
+                    // ============================================================
+                    // 🔥 強化篩選邏輯：建立中英文對照，防止篩選失敗
+                    // ============================================================
+                    const TIER_MAP = {
+                        '基礎層': 'tutorial',
+                        '進階層': 'adventure',
+                        '精通層': 'hardcore',
+                        // 反向對照也加進去，防呆
+                        'tutorial': '基礎層',
+                        'adventure': '進階層',
+                        'hardcore': '精通層'
+                    };
+
+                    // 取得對應的英文 ID (例如 selectedTier='基礎層' -> targetId='tutorial')
+                    const targetId = TIER_MAP[selectedTier] || selectedTier; 
+                    // ============================================================
+
                     currentTasks = allTasks.filter(task => {
-                        // ✅ 防禦性檢查：過濾掉 null、undefined 或無效的任務
+                        // 1. 基本防呆
                         if (!task || typeof task !== 'object' || !task.taskId) {
-                            APP_CONFIG.error('發現無效任務（載入時）', { task });
                             return false;
                         }
 
-                        // 新結構：直接比對 tier
-                        if (task.tier !== 'mixed') {
-                            return task.tier === selectedTier;
+                        // 2. 新結構篩選 (支援中英文比對)
+                        if (task.tier && task.tier !== 'mixed') {
+                            // 比對：任務的 tier 等於「選定名稱」或「對應 ID」
+                            return task.tier === selectedTier || task.tier === targetId;
                         }
 
-                        // 舊結構（tier === 'mixed'）：根據選擇的難度檢查對應欄位是否有內容
+                        // 3. 舊結構篩選 (Mixed 模式)
+                        // 這裡維持原本邏輯，因為它已經寫好中文判斷了
                         if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
                             return !!(task.tutorialDesc || task.tutorialLink);
                         } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
@@ -1207,18 +1237,13 @@
                         return false;
                     });
 
-                    // 按 sequence 排序
+                    // 按順序排序
                     currentTasks.sort((a, b) => a.sequence - b.sequence);
 
-                    // ✅ 驗證：檢查排序後是否有無效任務
-                    const invalidTaskCount = currentTasks.filter(t => !t || !t.taskId).length;
-                    if (invalidTaskCount > 0) {
-                        APP_CONFIG.error(`⚠️ 發現 ${invalidTaskCount} 個無效任務`, currentTasks);
-                        // 再次過濾確保清除無效任務
-                        currentTasks = currentTasks.filter(t => t && t.taskId);
-                    }
+                    // 再次過濾無效任務
+                    currentTasks = currentTasks.filter(t => t && t.taskId);
 
-                    APP_CONFIG.log('✅ 篩選後的任務:', { count: currentTasks.length, selectedTier, invalidTaskCount });
+                    APP_CONFIG.log('✅ 篩選後的任務:', { count: currentTasks.length, selectedTier });
 
                     // 載入任務進度
                     return loadTaskProgress(learningRecord.recordId);
@@ -1229,7 +1254,7 @@
             .then(function(progressResult) {
                 hideLoading('mainLoading');
 
-                // 確保 displayQuestBoard 被調用
+                // 確保畫面顯示
                 try {
                     displayQuestBoard();
                 } catch (error) {
@@ -1241,6 +1266,7 @@
                 hideLoading('mainLoading');
                 APP_CONFIG.error('載入任務失敗', error);
                 showToast('載入任務失敗：' + error.message, 'error');
+                // 這裡不需要 throw，因為這裡是最後一步了
             });
     }
 
