@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // 設定區
 // ==========================================
 
@@ -8,31 +8,24 @@ const SHEET_CONFIG = {
   
   // 定義各個工作表的名稱
   SHEETS: {
-    // 登入系統相關
-    USERS: '使用者資料',
-    ROLES: '使用者權限',
-    LOGIN_HISTORY: '登入紀錄表',
-
-    // 班級管理相關
-    CLASSES: '班級資料',
-    CLASS_MEMBERS: '學員資料',
-
-    // 課程管理
-    COURSES: '課程資料',
-    TASKS: '任務資料',
-
-    // 授課安排與學習追蹤
-    ASSIGNMENTS: '授課安排表',
-    LEARNING_RECORDS: '學習資料表',
-    TASK_PROGRESS: '任務進度表',
-    DIFFICULTY_CHANGES: '難度變更記錄表',
-
-    // 課堂控制系統
-    CLASS_SESSIONS: 'Class_Sessions',
-
-    // 互評系統
-    PEER_REVIEW_RECORDS: 'Peer_Review_Records',
-  }
+    USERS: '使用者',
+    ROLES: '角色',
+    LOGIN_HISTORY: '登入紀錄',
+    CLASSES: '班級',
+    CLASS_MEMBERS: '班級成員',
+    COURSES: '課程',
+    TASKS: '任務',
+    ASSIGNMENTS: '作業',
+    LEARNING_RECORDS: '學習紀錄',
+    TASK_PROGRESS: '任務進度',
+    DIFFICULTY_CHANGES: '難度調整',
+    CLASS_SESSIONS: '課堂紀錄',
+    TASK_CHECKLISTS: '檢核項目表',
+    TASK_REFERENCE_ANSWERS: '正確答案示範表',
+    TASK_QUESTIONS: '題庫表',
+    SELF_CHECK_RECORDS: '自主檢查紀錄表',
+    TASK_ASSESSMENT_RECORDS: '評量紀錄表',
+    }
 
 };
 
@@ -72,7 +65,6 @@ function doGet(e) {
     
     Logger.log('📥 收到 GET 請求：' + JSON.stringify(params));
     
-    // 如果沒有 action，回傳測試訊息
     if (!params.action) {
       const testResponse = {
         status: 'ok',
@@ -93,10 +85,8 @@ function doGet(e) {
     
     let response;
 
-   //如果有action，執行對應的API，傳回對應資料JSON
     switch(params.action) {
       
-      // ===== 1.登入系統 =====
       case 'login':
         const userData = {
           google_id: params.google_id,
@@ -107,40 +97,32 @@ function doGet(e) {
         response = handleLogin(userData, params.timestamp);
         break;
 
-      //==== 1-1.使用者資料====
       case 'getUserData':
         response = getUserData(params.user_id);
         break;
 
-      //==== 1-2.使用者權限====
       case 'checkPermission':
         response = checkPermission(params.user_id, params.permission);
         break;
       
-      // ===== 學生自動綁定 =====
       case 'checkAndBindStudent':
         response = checkAndBindStudent(params.email, params.user_id);
         break;
       
-      // ===== 班級管理 =====
       case 'createClass':
-        // ✅ 傳入 teacherEmail 參數
         response = createClass(params.className, params.teacherEmail);
         break;
       
       case 'getTeacherClasses':
-        // ✅ 傳入 teacherEmail 參數
         response = getTeacherClasses(params.teacherEmail);
         break;
       
       case 'importStudents':
         const studentList = JSON.parse(params.studentList);
-        // ✅ 傳入 teacherEmail 參數
         response = importStudents(params.classId, studentList, params.teacherEmail);
         break;
       
       case 'getClassMembers':
-        // ✅ 傳入 teacherEmail 參數
         response = getClassMembers(params.classId, params.teacherEmail);
         break;
 
@@ -195,7 +177,6 @@ function doGet(e) {
         response = reorderTasks(params.courseId, taskOrder);
         break;
       
-      // ===== 代幣管理 =====
       case 'getClassTokens':
         response = getClassTokens({
           classId: params.classId,
@@ -212,7 +193,6 @@ function doGet(e) {
         });
         break;
 
-      // ===== 授課安排 =====
       case 'getClassAssignments':
         response = getClassAssignments(params.teacherEmail);
         break;
@@ -232,7 +212,6 @@ function doGet(e) {
         });
         break;
 
-      // ===== 學生端 =====
       case 'getUserTokens':
         response = getUserTokens(params.userEmail);
         break;
@@ -253,7 +232,6 @@ function doGet(e) {
         response = getTaskProgress(params.recordId);
         break;
 
-      // ===== 學生進入優化：整合API =====
       case 'getStudentClassEntryData':
         response = getStudentClassEntryData({
           userEmail: params.userEmail,
@@ -350,51 +328,36 @@ function doGet(e) {
         });
         break;
 
-      // ===== 互評系統 =====
-      case 'acceptPeerReview':
-        response = acceptPeerReview({
-          reviewId: params.reviewId,
-          reviewerEmail: params.reviewerEmail
-        });
-        break;
-
-      case 'declinePeerReview':
-        response = declinePeerReview({
-          reviewId: params.reviewId,
-          reviewerEmail: params.reviewerEmail
-        });
-        break;
-
-      case 'handleAcceptTimeout':
-        response = handleAcceptTimeout({
-          taskProgressId: params.taskProgressId,
-          reviewId: params.reviewId
-        });
-        break;
-
-      case 'completePeerReview':
-        response = completePeerReview({
-          reviewId: params.reviewId,
-          reviewerEmail: params.reviewerEmail,
-          result: params.result,
-          rejectReason: params.rejectReason
-        });
-        break;
-
-      case 'getPendingReview':
-        response = getPendingReview({
+      case 'getTaskChecklistsAndAnswer':
+        response = getTaskChecklistsAndAnswer({
+          taskId: params.taskId,
           userEmail: params.userEmail
         });
         break;
 
-      case 'getReviewStatus':
-        response = getReviewStatus({
-          taskProgressId: params.taskProgressId
+      case 'submitSelfCheck':
+        response = submitSelfCheck({
+          taskProgressId: params.taskProgressId,
+          checklistData: JSON.parse(params.checklistData || '[]'),
+          scenarioType: params.scenarioType,
+          errorExplanation: params.errorExplanation,
+          userEmail: params.userEmail
         });
         break;
 
-      case 'checkReviewTimeouts':
-        response = checkReviewTimeouts();
+      case 'getTaskQuestion':
+        response = getTaskQuestion({
+          taskId: params.taskId
+        });
+        break;
+
+      case 'submitAssessment':
+        response = submitAssessment({
+          taskProgressId: params.taskProgressId,
+          questionId: params.questionId,
+          studentAnswer: params.studentAnswer,
+          userEmail: params.userEmail
+        });
         break;
 
       default:
@@ -404,7 +367,6 @@ function doGet(e) {
         };
     }
     
-    // 回傳 JSONP 格式
     if (params.callback) {
       return ContentService
         .createTextOutput(params.callback + '(' + JSON.stringify(response) + ')')
@@ -416,7 +378,7 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
     
   } catch (error) {
-    Logger.log('❌ 錯誤：' + error.toString());
+    Logger.log('❌ 錯誤：'  + error.toString());
     
     const errorResponse = {
       success: false,
@@ -462,7 +424,7 @@ function doPost(e) {
       default:
         response = {
           success: false,
-          message: '未知的操作類型'
+          message: '未知的操作類型: ' + params.action
         };
     }
     
@@ -474,12 +436,12 @@ function doPost(e) {
       .setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
   } catch (error) {
-    Logger.log('❌ 錯誤：' + error.toString());
+    Logger.log('???航炊嚗? + error.toString());
     
     return ContentService
       .createTextOutput(JSON.stringify({
         success: false,
-        message: '伺服器錯誤：' + error.toString()
+        message: '❌ 錯誤：' + error.toString()
       }))
       .setMimeType(ContentService.MimeType.JSON)
       .setHeader('Access-Control-Allow-Origin', '*');
@@ -511,8 +473,8 @@ function getMemberSeat(classId, userId) {
   const data = membersSheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
-    if (data[i][1] === classId && data[i][5] === userId) {  // user_id 在第6欄
-      return data[i][2]; // seat 在第3欄
+    if (data[i][1] === classId && data[i][5] === userId) {  // user_id ?函洵6甈?
+      return data[i][2];
     }
   }
   return '';
@@ -527,8 +489,8 @@ function getUserRole(email) {
   const data = usersSheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
-    if (data[i][2] === email) {  // email 在第3欄 (索引2)
-      return data[i][4]; // role 在第5欄 (索引4)
+    if (data[i][2] === email) {
+      return data[i][4];
     }
   }
   return null;
@@ -4159,7 +4121,6 @@ function getCourseTiers(courseId) {
   }
 }
 
-
 // ==========================================
 // 教師任務審核系統
 // ==========================================
@@ -5497,1031 +5458,449 @@ function getDifficultyChangeHistory(params) {
 }
 
 
+
 // ==========================================
-// 互評系統 (Peer Review System)
+// 自檢清單與答案處理模組
 // ==========================================
 
 /**
- * 分配互評任務
- * 從已完成同一任務的學生中隨機抽取1位審核者
- * @param {Object} params - {taskProgressId, taskId, revieweeEmail, excludeEmails}
- * @returns {Object} 分配結果
+ * 獲取任務的檢查清單與參考答案
  */
-function assignPeerReview(params) {
+function getTaskChecklistsAndAnswer(params) {
+  try {
+    const { taskId, userEmail } = params;
+
+    if (!taskId) {
+      throw new Error('缺少任務 ID');
+    }
+
+    const ss = getSpreadsheet();
+    const checklistSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLISTS);
+    const answerSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_REFERENCE_ANSWERS);
+
+    if (!checklistSheet || !answerSheet) {
+      throw new Error('找不到檢查清單或答案工作表');
+    }
+
+    // 獲取檢查清單資料
+    const checklistData = checklistSheet.getDataRange().getValues();
+    const checklists = [];
+
+    for (let i = 1; i < checklistData.length; i++) {
+      if (checklistData[i][1] === taskId) {
+        checklists.push({
+          checklistId: checklistData[i][0],
+          taskId: checklistData[i][1],
+          itemOrder: checklistData[i][2],
+          itemTitle: checklistData[i][3],
+          itemDescription: checklistData[i][4]
+        });
+      }
+    }
+
+    // 排序檢查清單
+    checklists.sort((a, b) => a.itemOrder - b.itemOrder);
+
+    // 獲取參考答案資料
+    const answerData = answerSheet.getDataRange().getValues();
+    let answer = null;
+
+    for (let i = 1; i < answerData.length; i++) {
+      if (answerData[i][1] === taskId) {
+        answer = {
+          answerId: answerData[i][0],
+          taskId: answerData[i][1],
+          answerText: answerData[i][2],
+          answerImages: answerData[i][3] ? answerData[i][3].split('|') : []
+        };
+        break;
+      }
+    }
+
+    Logger.log(`已獲取檢查清單: taskId=${taskId}, 數量=${checklists.length}`);
+
+    return {
+      success: true,
+      checklists: checklists,
+      answer: answer || { answerText: '無參考答案', answerImages: [] }
+    };
+
+  } catch (error) {
+    Logger.log('獲取檢查清單時發生錯誤: ' + error);
+    return {
+      success: false,
+      message: '獲取失敗: ' + error.message
+    };
+  }
+}
+
+/**
+ * 提交自檢清單記錄，並生成題目
+ */
+function submitSelfCheck(params) {
   const lock = LockService.getScriptLock();
 
   try {
     lock.waitLock(30000);
 
-    const { taskProgressId, taskId, revieweeEmail, excludeEmails } = params;
+    const { taskProgressId, checklistData, scenarioType, errorExplanation, userEmail } = params;
 
-    if (!taskProgressId || !taskId || !revieweeEmail) {
+    if (!taskProgressId || !Array.isArray(checklistData)) {
       throw new Error('缺少必要參數');
     }
 
-    const email = getCurrentUserEmail(revieweeEmail);
+    const email = getCurrentUserEmail(userEmail);
+
     const ss = getSpreadsheet();
-
-    // 取得或創建 Peer_Review_Records 工作表
-    let reviewSheet = ss.getSheetByName('Peer_Review_Records');
-    if (!reviewSheet) {
-      reviewSheet = ss.insertSheet('Peer_Review_Records');
-      reviewSheet.appendRow([
-        'review_id', 'task_progress_id', 'reviewee_email', 'reviewer_email',
-        'task_id', 'assigned_time', 'accepted_time', 'completed_time',
-        'status', 'result', 'reject_reason', 'reviewer_reward', 'reviewee_reward'
-      ]);
-      Logger.log('✅ 創建 Peer_Review_Records 工作表');
-    }
-
     const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+    const checkRecordSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.SELF_CHECK_RECORDS);
     const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
 
-    // 排除名單（包含被審核者自己和已拒絕/超時的審核者）
-    const excludeList = excludeEmails || [];
-    if (!excludeList.includes(email)) {
-      excludeList.push(email);  // 加入被審核者自己
+    if (!progressSheet || !checkRecordSheet) {
+      throw new Error('找不到必要工作表');
     }
 
-    Logger.log('📋 排除名單:', excludeList);
-
-    // 查找已完成同一任務的學生
-    const progressData = progressSheet.getDataRange().getValues();
+    // 獲取 user_id
     const usersData = usersSheet.getDataRange().getValues();
+    let userId = null;
 
-    const completedStudents = [];
+    for (let i = 1; i < usersData.length; i++) {
+      if (usersData[i][2] === email) {
+        userId = usersData[i][0];
+        break;
+      }
+    }
+
+    if (!userId) {
+      throw new Error('找不到使用者資訊');
+    }
+
+    // 查找 task_progress_id
+    const progressData = progressSheet.getDataRange().getValues();
+    let taskId = null;
+    let progressRow = -1;
 
     for (let i = 1; i < progressData.length; i++) {
-      const progTaskId = progressData[i][2];
-      const progStatus = progressData[i][3];
-      const progRecordId = progressData[i][1];
+      if (progressData[i][0] === taskProgressId) {
+        taskId = progressData[i][2];
+        progressRow = i + 1;
+        break;
+      }
+    }
 
-      // 找到已完成同一任務的記錄
-      if (progTaskId === taskId && progStatus === 'completed') {
-        // 從 learning_records 找到學生 email
-        const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
-        const learningData = learningSheet.getDataRange().getValues();
+    if (!taskId) {
+      throw new Error('找不到任務進度記錄');
+    }
 
-        for (let j = 1; j < learningData.length; j++) {
-          if (learningData[j][0] === progRecordId) {
-            const userId = learningData[j][1];
+    // 記錄每一項檢查
+    let checkRecordData = checkRecordSheet.getDataRange().getValues();
+    let nextRow = checkRecordData.length + 1;
 
-            // 從 users 找到 email
-            for (let k = 1; k < usersData.length; k++) {
-              if (usersData[k][0] === userId) {
-                const studentEmail = usersData[k][2];
-                const studentName = usersData[k][3];
+    for (let checkItem of checklistData) {
+      const recordId = generateUUID();
+      checkRecordSheet.appendRow([
+        recordId,                       // check_record_id
+        taskProgressId,                 // task_progress_id
+        email,                          // student_email
+        userId,                         // user_id
+        checkItem.checklistId,          // checklist_id
+        checkItem.isChecked ? true : false,  // student_checked
+        checkItem.isChecked ? '' : errorExplanation,  // student_answer_text (若在否的情境)
+        new Date()                      // check_time
+      ]);
+    }
 
-                // 排除被審核者自己和已拒絕/超時的審核者
-                if (!excludeList.includes(studentEmail)) {
-                  completedStudents.push({
-                    email: studentEmail,
-                    name: studentName,
-                    userId: userId
-                  });
-                }
-                break;
-              }
+    // 更新 TASK_PROGRESS 的自檢狀態
+    progressSheet.getRange(progressRow, 9).setValue(scenarioType);  // self_check_status (第9欄)
+
+    Logger.log(`自檢清單記錄已儲存: taskProgressId=${taskProgressId}, 情境=${scenarioType}`);
+
+    // 生成題目
+    const questionResult = getTaskQuestion({ taskId: taskId });
+
+    if (!questionResult.success) {
+      throw new Error('無法獲取測驗題目');
+    }
+
+    return {
+      success: true,
+      message: '檢查清單完成，請回答題目',
+      scenarioType: scenarioType,
+      question: questionResult.question,
+      taskProgressId: taskProgressId
+    };
+
+  } catch (error) {
+    Logger.log('提交自檢清單時發生錯誤: ' + error);
+    return {
+      success: false,
+      message: '提交失敗: ' + error.message
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 獲取隨機題目
+ */
+function getTaskQuestion(params) {
+  try {
+    const { taskId } = params;
+
+    if (!taskId) {
+      throw new Error('缺少任務 ID');
+    }
+
+    const ss = getSpreadsheet();
+    const questionSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+
+    if (!questionSheet) {
+      throw new Error('找不到題庫表');
+    }
+
+    const questionData = questionSheet.getDataRange().getValues();
+    const taskQuestions = [];
+
+    for (let i = 1; i < questionData.length; i++) {
+      if (questionData[i][1] === taskId) {
+        taskQuestions.push({
+          questionId: questionData[i][0],
+          taskId: questionData[i][1],
+          questionText: questionData[i][2],
+          optionA: questionData[i][3],
+          optionB: questionData[i][4],
+          optionC: questionData[i][5],
+          optionD: questionData[i][6],
+          correctAnswer: questionData[i][7]
+        });
+      }
+    }
+
+    if (taskQuestions.length === 0) {
+      throw new Error('此任務無題目');
+    }
+
+    // 隨機選取一題
+    const randomIndex = Math.floor(Math.random() * taskQuestions.length);
+    const selectedQuestion = taskQuestions[randomIndex];
+
+    // 不回傳正確答案
+    const question = {
+      questionId: selectedQuestion.questionId,
+      taskId: selectedQuestion.taskId,
+      questionText: selectedQuestion.questionText,
+      optionA: selectedQuestion.optionA,
+      optionB: selectedQuestion.optionB,
+      optionC: selectedQuestion.optionC,
+      optionD: selectedQuestion.optionD
+    };
+
+    Logger.log(`已生成題目: taskId=${taskId}, questionId=${question.questionId}`);
+
+    return {
+      success: true,
+      question: question
+    };
+
+  } catch (error) {
+    Logger.log('獲取題目發生錯誤: ' + error);
+    return {
+      success: false,
+      message: '獲取失敗: ' + error.message
+    };
+  }
+}
+
+/**
+ * 提交測驗答案，判斷是否正確
+ */
+function submitAssessment(params) {
+  const lock = LockService.getScriptLock();
+
+  try {
+    lock.waitLock(30000);
+
+    const { taskProgressId, questionId, studentAnswer, userEmail } = params;
+
+    if (!taskProgressId || !questionId || !studentAnswer) {
+      throw new Error('缺少必要參數');
+    }
+
+    const email = getCurrentUserEmail(userEmail);
+
+    const ss = getSpreadsheet();
+    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+    const questionSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+    const assessmentSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_ASSESSMENT_RECORDS);
+    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
+    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
+    const membersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASS_MEMBERS);
+    const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
+
+    if (!progressSheet || !questionSheet || !assessmentSheet) {
+      throw new Error('找不到必要工作表');
+    }
+
+    // 獲取 user_id
+    const usersData = usersSheet.getDataRange().getValues();
+    let userId = null;
+
+    for (let i = 1; i < usersData.length; i++) {
+      if (usersData[i][2] === email) {
+        userId = usersData[i][0];
+        break;
+      }
+    }
+
+    if (!userId) {
+      throw new Error('找不到使用者資訊');
+    }
+
+    // 查找題目並比對正確答案
+    const questionData = questionSheet.getDataRange().getValues();
+    let correctAnswer = null;
+
+    for (let i = 1; i < questionData.length; i++) {
+      if (questionData[i][0] === questionId) {
+        correctAnswer = questionData[i][7];
+        break;
+      }
+    }
+
+    if (!correctAnswer) {
+      throw new Error('找不到答案');
+    }
+
+    // 判斷答案是否正確
+    const isCorrect = studentAnswer.toLowerCase() === correctAnswer.toLowerCase();
+
+    // 計算測驗次數
+    const assessmentData = assessmentSheet.getDataRange().getValues();
+    let attemptNumber = 1;
+
+    for (let i = 1; i < assessmentData.length; i++) {
+      if (assessmentData[i][1] === taskProgressId) {
+        attemptNumber = Math.max(attemptNumber, assessmentData[i][6] + 1);
+      }
+    }
+
+    // 記錄測驗結果
+    const assessmentId = generateUUID();
+    assessmentSheet.appendRow([
+      assessmentId,            // assessment_id
+      taskProgressId,         // task_progress_id
+      email,                   // student_email
+      userId,                  // user_id
+      questionId,              // question_id
+      studentAnswer,           // student_answer
+      isCorrect,               // is_correct
+      attemptNumber,           // attempt_number
+      new Date()               // attempt_time
+    ]);
+
+    Logger.log(`測驗記錄已儲存: taskProgressId=${taskProgressId}, isCorrect=${isCorrect}, attempt=${attemptNumber}`);
+
+    // 如果答對
+    if (isCorrect) {
+      // 更新 TASK_PROGRESS
+      const progressData = progressSheet.getDataRange().getValues();
+      let progressRow = -1;
+      let recordId = null;
+      let taskId = null;
+
+      for (let i = 1; i < progressData.length; i++) {
+        if (progressData[i][0] === taskProgressId) {
+          progressRow = i + 1;
+          recordId = progressData[i][1];
+          taskId = progressData[i][2];
+          break;
+        }
+      }
+
+      if (progressRow > 0) {
+        progressSheet.getRange(progressRow, 4).setValue('completed');  // status = completed
+        progressSheet.getRange(progressRow, 7).setValue(new Date());   // complete_time
+
+        // 獲取自檢情境
+        const selfCheckStatus = progressData[progressRow - 1][8];  // 第9欄
+
+        // 計算獎勵
+        let tokenReward = 0;
+        const tasksData = tasksSheet.getDataRange().getValues();
+
+        for (let i = 1; i < tasksData.length; i++) {
+          if (tasksData[i][0] === taskId) {
+            tokenReward = tasksData[i][11] || 100;  // token_reward
+
+            // B情境加 10 TOKEN
+            if (selfCheckStatus === 'B') {
+              tokenReward += 10;
             }
             break;
           }
         }
-      }
-    }
 
-    Logger.log('📊 找到已完成任務的學生:', completedStudents.length);
+        // 更新學員 Tokens
+        const membersData = membersSheet.getDataRange().getValues();
+        const learningData = learningSheet.getDataRange().getValues();
+        let classId = null;
 
-    // 如果沒有合適的審核者，返回教師審核
-    if (completedStudents.length === 0) {
-      Logger.log('⚠️ 沒有可用的同儕審核者，改為教師審核');
-      return {
-        success: true,
-        usePeerReview: false,
-        message: '沒有可用的同儕審核者，將由教師審核'
-      };
-    }
-
-    // 隨機抽取1位審核者
-    const randomIndex = Math.floor(Math.random() * completedStudents.length);
-    const reviewer = completedStudents[randomIndex];
-
-    // 生成 review_id
-    const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
-    const reviewData = reviewSheet.getDataRange().getValues();
-    const todayCount = reviewData.filter(row =>
-      row[0] && row[0].toString().startsWith('PR_' + today)
-    ).length;
-    const reviewId = `PR_${today}_${String(todayCount + 1).padStart(3, '0')}`;
-
-    // 創建互評記錄
-    const assignedTime = new Date();
-    reviewSheet.appendRow([
-      reviewId,
-      taskProgressId,
-      email,
-      reviewer.email,
-      taskId,
-      assignedTime,
-      '',  // accepted_time
-      '',  // completed_time
-      'assigned',
-      '',  // result
-      '',  // reject_reason
-      50,  // reviewer_reward（審核者：無論通過或退回都給50金幣）
-      0    // reviewee_reward（被審核者：通過任務本身就有金幣，不額外給）
-    ]);
-
-    // 更新任務進度狀態為 pending_peer_review
-    for (let i = 1; i < progressData.length; i++) {
-      if (progressData[i][0] === taskProgressId) {
-        progressSheet.getRange(i + 1, 4).setValue('pending_peer_review');
-        break;
-      }
-    }
-
-    Logger.log('✅ 分配互評成功:', { reviewId, reviewer: reviewer.name });
-
-    return {
-      success: true,
-      usePeerReview: true,
-      reviewId: reviewId,
-      reviewerName: reviewer.name,
-      reviewerEmail: reviewer.email,
-      assignedTime: assignedTime.toISOString()
-    };
-
-  } catch (error) {
-    Logger.log('❌ 分配互評失敗：' + error);
-    return {
-      success: false,
-      message: '分配失敗：' + error.message
-    };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-
-/**
- * 接受互評任務
- * @param {Object} params - {reviewId, reviewerEmail}
- * @returns {Object} 接受結果
- */
-function acceptPeerReview(params) {
-  const lock = LockService.getScriptLock();
-
-  try {
-    lock.waitLock(30000);
-
-    const { reviewId, reviewerEmail } = params;
-
-    if (!reviewId || !reviewerEmail) {
-      throw new Error('缺少必要參數');
-    }
-
-    const email = getCurrentUserEmail(reviewerEmail);
-    const ss = getSpreadsheet();
-    const reviewSheet = ss.getSheetByName('Peer_Review_Records');
-
-    if (!reviewSheet) {
-      throw new Error('找不到互評記錄表');
-    }
-
-    const reviewData = reviewSheet.getDataRange().getValues();
-    let reviewRow = -1;
-    let reviewInfo = null;
-
-    // 找到對應的互評記錄
-    for (let i = 1; i < reviewData.length; i++) {
-      if (reviewData[i][0] === reviewId && reviewData[i][3] === email) {
-        reviewRow = i + 1;
-        reviewInfo = {
-          taskProgressId: reviewData[i][1],
-          revieweeEmail: reviewData[i][2],
-          taskId: reviewData[i][4],
-          assignedTime: reviewData[i][5],
-          status: reviewData[i][8]
-        };
-        break;
-      }
-    }
-
-    if (!reviewInfo) {
-      throw new Error('找不到對應的互評記錄');
-    }
-
-    // 檢查狀態
-    if (reviewInfo.status !== 'assigned') {
-      throw new Error('此互評任務狀態不正確：' + reviewInfo.status);
-    }
-
-    // 更新為已接受
-    const now = new Date();
-    reviewSheet.getRange(reviewRow, 7).setValue(now);  // accepted_time
-    reviewSheet.getRange(reviewRow, 9).setValue('accepted');  // status
-
-    // 取得被審核者姓名
-    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
-    const usersData = usersSheet.getDataRange().getValues();
-    let revieweeName = '';
-
-    for (let i = 1; i < usersData.length; i++) {
-      if (usersData[i][2] === reviewInfo.revieweeEmail) {
-        revieweeName = usersData[i][3];
-        break;
-      }
-    }
-
-    // 取得任務名稱
-    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
-    const tasksData = tasksSheet.getDataRange().getValues();
-    let taskName = reviewInfo.taskId;  // 預設使用 taskId
-
-    // 去除層級後綴來查找任務
-    let actualTaskId = reviewInfo.taskId;
-    if (actualTaskId.includes('_tutorial')) {
-      actualTaskId = actualTaskId.replace('_tutorial', '');
-    } else if (actualTaskId.includes('_adventure')) {
-      actualTaskId = actualTaskId.replace('_adventure', '');
-    } else if (actualTaskId.includes('_hardcore')) {
-      actualTaskId = actualTaskId.replace('_hardcore', '');
-    }
-
-    for (let i = 1; i < tasksData.length; i++) {
-      if (tasksData[i][0] === actualTaskId) {
-        taskName = tasksData[i][3];  // 任務名稱在第4欄
-        break;
-      }
-    }
-
-    Logger.log('✅ 接受互評成功:', { reviewId, revieweeName, taskName });
-
-    return {
-      success: true,
-      revieweeName: revieweeName,
-      revieweeEmail: reviewInfo.revieweeEmail,
-      taskId: reviewInfo.taskId,
-      taskName: taskName,
-      timeLimit: 180  // 3分鐘
-    };
-
-  } catch (error) {
-    Logger.log('❌ 接受互評失敗：' + error);
-    return {
-      success: false,
-      message: '接受失敗：' + error.message
-    };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-
-/**
- * 拒絕互評任務
- * @param {Object} params - {reviewId, reviewerEmail}
- * @returns {Object} 拒絕結果
- */
-function declinePeerReview(params) {
-  const lock = LockService.getScriptLock();
-
-  try {
-    lock.waitLock(30000);
-
-    const { reviewId, reviewerEmail } = params;
-
-    if (!reviewId || !reviewerEmail) {
-      throw new Error('缺少必要參數');
-    }
-
-    const email = getCurrentUserEmail(reviewerEmail);
-    const ss = getSpreadsheet();
-    const reviewSheet = ss.getSheetByName('Peer_Review_Records');
-
-    if (!reviewSheet) {
-      throw new Error('找不到互評記錄表');
-    }
-
-    const reviewData = reviewSheet.getDataRange().getValues();
-    let reviewRow = -1;
-    let reviewInfo = null;
-
-    // 找到對應的互評記錄
-    for (let i = 1; i < reviewData.length; i++) {
-      if (reviewData[i][0] === reviewId && reviewData[i][3] === email) {
-        reviewRow = i + 1;
-        reviewInfo = {
-          taskProgressId: reviewData[i][1],
-          revieweeEmail: reviewData[i][2],
-          taskId: reviewData[i][4],
-          status: reviewData[i][8]
-        };
-        break;
-      }
-    }
-
-    if (!reviewInfo) {
-      throw new Error('找不到對應的互評記錄');
-    }
-
-    // 更新狀態為 declined
-    reviewSheet.getRange(reviewRow, 9).setValue('declined');
-
-    Logger.log('❌ 審核者拒絕審核:', { reviewId });
-
-    // 收集此任務所有已超時或拒絕的審核者
-    const excludeEmails = [];
-    for (let i = 1; i < reviewData.length; i++) {
-      if (reviewData[i][1] === reviewInfo.taskProgressId &&
-          (reviewData[i][8] === 'timeout_accept' || reviewData[i][8] === 'declined')) {
-        excludeEmails.push(reviewData[i][3]);  // reviewer_email
-      }
-    }
-
-    Logger.log('📋 已超時/拒絕的審核者:', excludeEmails);
-
-    // 嘗試重新分配給下一個審核者
-    const reassignResult = assignPeerReview({
-      taskProgressId: reviewInfo.taskProgressId,
-      taskId: reviewInfo.taskId,
-      revieweeEmail: reviewInfo.revieweeEmail,
-      excludeEmails: excludeEmails
-    });
-
-    if (reassignResult.usePeerReview) {
-      // 成功分配給下一個審核者
-      Logger.log('✅ 已重新分配給:', reassignResult.reviewerName);
-      return {
-        success: true,
-        reassigned: true,
-        newReviewId: reassignResult.reviewId,
-        newReviewerName: reassignResult.reviewerName,
-        message: `已改為 ${reassignResult.reviewerName} 審核`
-      };
-    } else {
-      // 所有人都輪過了，改為教師審核
-      const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
-      const progressData = progressSheet.getDataRange().getValues();
-      for (let i = 1; i < progressData.length; i++) {
-        if (progressData[i][0] === reviewInfo.taskProgressId) {
-          progressSheet.getRange(i + 1, 4).setValue('pending_review');
-          break;
-        }
-      }
-
-      Logger.log('⚠️ 所有同學都無法審核，改為教師審核');
-      return {
-        success: true,
-        reassigned: false,
-        message: '所有同學都無法審核，已改為教師審核'
-      };
-    }
-
-  } catch (error) {
-    Logger.log('❌ 拒絕互評失敗：' + error);
-    return {
-      success: false,
-      message: '拒絕失敗：' + error.message
-    };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-
-/**
- * 處理30秒接受超時
- * 由前端在30秒超時時呼叫，負責reassign或改為教師審核
- * @param {Object} params - {taskProgressId} 或 {reviewId}
- * @returns {Object} 處理結果
- */
-function handleAcceptTimeout(params) {
-  const lock = LockService.getScriptLock();
-
-  try {
-    lock.waitLock(30000);
-
-    const { taskProgressId, reviewId } = params;
-
-    if (!taskProgressId && !reviewId) {
-      throw new Error('缺少必要參數：taskProgressId 或 reviewId');
-    }
-
-    const ss = getSpreadsheet();
-    const reviewSheet = ss.getSheetByName('Peer_Review_Records');
-
-    if (!reviewSheet) {
-      throw new Error('找不到互評記錄表');
-    }
-
-    const reviewData = reviewSheet.getDataRange().getValues();
-    let reviewRow = -1;
-    let reviewInfo = null;
-
-    // 根據 taskProgressId 或 reviewId 找到最新的 assigned 狀態記錄
-    if (taskProgressId) {
-      let latestAssignedTime = null;
-      for (let i = 1; i < reviewData.length; i++) {
-        if (reviewData[i][1] === taskProgressId && reviewData[i][8] === 'assigned') {
-          const assignedTime = reviewData[i][5];
-          if (!latestAssignedTime || new Date(assignedTime) > new Date(latestAssignedTime)) {
-            latestAssignedTime = assignedTime;
-            reviewRow = i + 1;
-            reviewInfo = {
-              reviewId: reviewData[i][0],
-              taskProgressId: reviewData[i][1],
-              revieweeEmail: reviewData[i][2],
-              reviewerEmail: reviewData[i][3],
-              taskId: reviewData[i][4],
-              assignedTime: assignedTime,
-              status: reviewData[i][8]
-            };
+        for (let i = 1; i < learningData.length; i++) {
+          if (learningData[i][0] === recordId) {
+            classId = learningData[i][2];
+            break;
           }
         }
-      }
-    } else if (reviewId) {
-      for (let i = 1; i < reviewData.length; i++) {
-        if (reviewData[i][0] === reviewId) {
-          reviewRow = i + 1;
-          reviewInfo = {
-            reviewId: reviewData[i][0],
-            taskProgressId: reviewData[i][1],
-            revieweeEmail: reviewData[i][2],
-            reviewerEmail: reviewData[i][3],
-            taskId: reviewData[i][4],
-            assignedTime: reviewData[i][5],
-            status: reviewData[i][8]
-          };
-          break;
+
+        if (classId) {
+          for (let i = 1; i < membersData.length; i++) {
+            if (membersData[i][4] === email) {  // student_email
+              const currentTokens = membersData[i][5] || 0;  // total_tokens
+              membersSheet.getRange(i + 1, 6).setValue(currentTokens + tokenReward);
+              break;
+            }
+          }
         }
+
+        Logger.log(`任務完成: taskProgressId=${taskProgressId}, tokens=${tokenReward}, scenario=${selfCheckStatus}`);
       }
-    }
 
-    if (!reviewInfo) {
-      Logger.log('⚠️ 找不到對應的 assigned 審核記錄，可能已被處理');
       return {
         success: true,
-        alreadyProcessed: true,
-        message: '審核記錄已被處理'
+        isCorrect: true,
+        message: '太棒了！答對了，任務完成！',
+        tokenReward: tokenReward
       };
-    }
 
-    if (reviewInfo.status !== 'assigned') {
-      Logger.log(`⚠️ 審核狀態為 ${reviewInfo.status}，不是 assigned，不處理超時`);
-      return {
-        success: true,
-        alreadyProcessed: true,
-        message: `審核狀態為 ${reviewInfo.status}，已被處理`
-      };
-    }
-
-    // 更新狀態為 timeout_accept
-    reviewSheet.getRange(reviewRow, 9).setValue('timeout_accept');
-    Logger.log('⏰ 接受超時，更新狀態為 timeout_accept');
-
-    // ✅ 修復：收集此任務所有已超時或拒絕的審核者
-    const excludeEmails = [];
-    for (let i = 1; i < reviewData.length; i++) {
-      if (reviewData[i][1] === reviewInfo.taskProgressId) {
-        const status = reviewData[i][8];
-        // 包含：timeout_accept, declined, 以及當前這筆（剛更新為 timeout_accept）
-        if (status === 'timeout_accept' || status === 'declined') {
-          excludeEmails.push(reviewData[i][3]);  // reviewer_email
-        }
-      }
-    }
-    
-    // ✅ 確保當前審核者也被排除
-    if (!excludeEmails.includes(reviewInfo.reviewerEmail)) {
-      excludeEmails.push(reviewInfo.reviewerEmail);
-    }
-
-    Logger.log('📋 已超時/拒絕的審核者:', excludeEmails);
-
-    // 嘗試重新分配給下一個審核者
-    const reassignResult = assignPeerReview({
-      taskProgressId: reviewInfo.taskProgressId,
-      taskId: reviewInfo.taskId,
-      revieweeEmail: reviewInfo.revieweeEmail,
-      excludeEmails: excludeEmails
-    });
-
-    if (reassignResult.usePeerReview) {
-      Logger.log('✅ 已重新分配給:', reassignResult.reviewerName);
-      return {
-        success: true,
-        reassigned: true,
-        newReviewId: reassignResult.reviewId,
-        newReviewerName: reassignResult.reviewerName,
-        message: `30秒內無人接受，已改為 ${reassignResult.reviewerName} 審核`
-      };
     } else {
-      // 所有人都輪過了，改為教師審核
-      const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
-      const progressData = progressSheet.getDataRange().getValues();
-      for (let i = 1; i < progressData.length; i++) {
-        if (progressData[i][0] === reviewInfo.taskProgressId) {
-          progressSheet.getRange(i + 1, 4).setValue('pending_review');
-          Logger.log('✅ 更新任務狀態為 pending_review（教師審核）');
-          break;
-        }
-      }
-
-      Logger.log('⚠️ 所有同學都無法審核，改為教師審核');
-      return {
-        success: true,
-        reassigned: false,
-        message: '所有同學都無法審核，已改為教師審核'
-      };
-    }
-
-  } catch (error) {
-    Logger.log('❌ 處理接受超時失敗：' + error);
-    return {
-      success: false,
-      message: '處理超時失敗：' + error.message
-    };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-
-/**
- * 提交互評結果
- * @param {Object} params - {reviewId, reviewerEmail, result, rejectReason}
- * @returns {Object} 提交結果
- */
-function submitPeerReview(params) {
-  const lock = LockService.getScriptLock();
-
-  try {
-    lock.waitLock(30000);
-
-    const { reviewId, reviewerEmail, result, rejectReason } = params;
-
-    if (!reviewId || !reviewerEmail || !result) {
-      throw new Error('缺少必要參數');
-    }
-
-    if (result === 'reject' && !rejectReason) {
-      throw new Error('退回必須填寫理由');
-    }
-
-    const email = getCurrentUserEmail(reviewerEmail);
-    const ss = getSpreadsheet();
-    const reviewSheet = ss.getSheetByName('Peer_Review_Records');
-
-    if (!reviewSheet) {
-      throw new Error('找不到互評記錄表');
-    }
-
-    const reviewData = reviewSheet.getDataRange().getValues();
-    let reviewRow = -1;
-    let reviewInfo = null;
-
-    // 找到對應的互評記錄
-    for (let i = 1; i < reviewData.length; i++) {
-      if (reviewData[i][0] === reviewId && reviewData[i][3] === email) {
-        reviewRow = i + 1;
-        reviewInfo = {
-          taskProgressId: reviewData[i][1],
-          revieweeEmail: reviewData[i][2],
-          taskId: reviewData[i][4],
-          acceptedTime: reviewData[i][6],
-          status: reviewData[i][8],
-          reviewerReward: reviewData[i][11],
-          revieweeReward: reviewData[i][12]
-        };
-        break;
-      }
-    }
-
-    if (!reviewInfo) {
-      throw new Error('找不到對應的互評記錄');
-    }
-
-    // 檢查狀態
-    if (reviewInfo.status !== 'accepted') {
-      throw new Error('此互評任務狀態不正確：' + reviewInfo.status);
-    }
-
-    // 檢查是否超時（3分鐘）
-    const now = new Date();
-    const accepted = new Date(reviewInfo.acceptedTime);
-    const elapsedSeconds = Math.floor((now - accepted) / 1000);
-
-    if (elapsedSeconds > 180) {
-      // 超時，更新狀態為 timeout_review
-      reviewSheet.getRange(reviewRow, 9).setValue('timeout_review');
-
-      // 更新任務進度回到 pending_review（教師審核）
-      const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
-      const progressData = progressSheet.getDataRange().getValues();
-      for (let i = 1; i < progressData.length; i++) {
-        if (progressData[i][0] === reviewInfo.taskProgressId) {
-          progressSheet.getRange(i + 1, 4).setValue('pending_review');
-          break;
-        }
-      }
-
-      Logger.log('⏰ 審核超時，改為教師審核');
-      return {
-        success: false,
-        timeout: true,
-        message: '審核超時（超過3分鐘），已改為教師審核'
-      };
-    }
-
-    // 更新互評記錄
-    reviewSheet.getRange(reviewRow, 8).setValue(now);  // completed_time
-    reviewSheet.getRange(reviewRow, 9).setValue('completed');  // status
-    reviewSheet.getRange(reviewRow, 10).setValue(result);  // result
-    if (result === 'reject') {
-      reviewSheet.getRange(reviewRow, 11).setValue(rejectReason);  // reject_reason
-    }
-
-    // 更新任務進度
-    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
-    const progressData = progressSheet.getDataRange().getValues();
-
-    for (let i = 1; i < progressData.length; i++) {
-      if (progressData[i][0] === reviewInfo.taskProgressId) {
-        if (result === 'pass') {
-          // 通過：更新為 completed
-          progressSheet.getRange(i + 1, 4).setValue('completed');
-          progressSheet.getRange(i + 1, 7).setValue(now);  // completion_time
-        } else {
-          // 退回：更新回 in_progress，清除提交時間
-          progressSheet.getRange(i + 1, 4).setValue('in_progress');
-          progressSheet.getRange(i + 1, 6).setValue('');  // 清除 submit_time
-        }
-        break;
-      }
-    }
-
-    // 給雙方發放金幣
-    const tokensSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASS_MEMBERS);
-    const tokensData = tokensSheet.getDataRange().getValues();
-    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
-    const usersData = usersSheet.getDataRange().getValues();
-
-    // 找到審核者和被審核者的 userId
-    let reviewerUserId = null;
-    let revieweeUserId = null;
-
-    for (let i = 1; i < usersData.length; i++) {
-      if (usersData[i][2] === email) {
-        reviewerUserId = usersData[i][0];
-      }
-      if (usersData[i][2] === reviewInfo.revieweeEmail) {
-        revieweeUserId = usersData[i][0];
-      }
-    }
-
-    // 發放金幣
-    // 審核者：無論通過或退回都給50金幣（因為有審核工作）
-    // 被審核者：不給金幣（通過任務本身就有金幣）
-    for (let i = 1; i < tokensData.length; i++) {
-      const userId = tokensData[i][5];  // user_id 在第6欄
-
-      // 審核者獲得金幣（無論通過或退回）
-      if (userId === reviewerUserId) {
-        const currentTokens = tokensData[i][6] || 0;  // tokens 在第7欄
-        tokensSheet.getRange(i + 1, 7).setValue(currentTokens + reviewInfo.reviewerReward);
-        Logger.log('💰 審核者獲得金幣:', reviewInfo.reviewerReward);
-      }
-
-      // 被審核者：revieweeReward 已設為 0，所以這裡即使執行也不會加金幣
-      if (userId === revieweeUserId && result === 'pass') {
-        const currentTokens = tokensData[i][6] || 0;
-        tokensSheet.getRange(i + 1, 7).setValue(currentTokens + reviewInfo.revieweeReward);
-        Logger.log('💰 被審核者獲得金幣:', reviewInfo.revieweeReward);
-      }
-    }
-
-    Logger.log('✅ 提交互評成功:', { reviewId, result });
-
-    return {
-      success: true,
-      result: result,
-      reward: reviewInfo.reviewerReward,
-      message: `審核完成，獲得${reviewInfo.reviewerReward}金幣！`
-    };
-
-  } catch (error) {
-    Logger.log('❌ 提交互評失敗：' + error);
-    return {
-      success: false,
-      message: '提交失敗：' + error.message
-    };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-
-/**
- * 查詢互評狀態
- * @param {Object} params - {taskProgressId} or {reviewerEmail}
- * @returns {Object} 查詢結果
- */
-function checkPeerReviewStatus(params) {
-  try {
-    const { taskProgressId, reviewerEmail } = params;
-
-    if (!taskProgressId && !reviewerEmail) {
-      throw new Error('至少需要提供 taskProgressId 或 reviewerEmail');
-    }
-
-    const ss = getSpreadsheet();
-    const reviewSheet = ss.getSheetByName('Peer_Review_Records');
-
-    if (!reviewSheet) {
-      return {
-        success: true,
-        reviews: [],
-        taskStatus: null // ✅ 確保有預設值
-      };
-    }
-
-    const reviewData = reviewSheet.getDataRange().getValues();
-    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
-    const usersData = usersSheet.getDataRange().getValues();
-    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
-    const tasksData = tasksSheet ? tasksSheet.getDataRange().getValues() : [];
-
-    const reviews = [];
-    const now = new Date();
-
-    // ... 原有的 reviews 收集邏輯 ...
-
-    // ✅ 如果是查詢 taskProgressId，同時查詢任務狀態
-    let taskStatus = null;
-    if (taskProgressId) {
-      const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+      // 答錯：狀態改為 in_progress，不更新時間
       const progressData = progressSheet.getDataRange().getValues();
 
       for (let i = 1; i < progressData.length; i++) {
         if (progressData[i][0] === taskProgressId) {
-          taskStatus = progressData[i][3];  // status 在第4欄
-          Logger.log('📊 任務狀態:', taskStatus);
+          progressSheet.getRange(i + 1, 4).setValue('in_progress');  // status = in_progress
           break;
         }
       }
-    }
 
-    return {
-      success: true,
-      reviews: reviews,
-      taskStatus: taskStatus  // ✅ 確保回傳
-    };
+      Logger.log(`哎呀！測驗答錯: taskProgressId=${taskProgressId}, attempt=${attemptNumber}`);
 
-  } catch (error) {
-    Logger.log('❌ 查詢互評狀態失敗：' + error);
-    return {
-      success: false,
-      message: '查詢失敗：' + error.message,
-      reviews: [],
-      taskStatus: null // ✅ 錯誤時也要有預設值
-    };
-  }
-}
-
-// ==========================================
-// Wrapper functions for API naming consistency
-// ==========================================
-
-/**
- * completePeerReview - Wrapper for submitPeerReview
- * 完成互評（與 API 路由命名一致）
- */
-function completePeerReview(params) {
-  return submitPeerReview(params);
-}
-
-/**
- * getReviewStatus - Wrapper for checkPeerReviewStatus
- * 取得審核狀態（與 API 路由命名一致）
- */
-function getReviewStatus(params) {
-  return checkPeerReviewStatus(params);
-}
-
-/**
- * getPendingReview - 取得等待該使用者審核的記錄
- * @param {Object} params - { userEmail }
- * @returns {Object} 待審核記錄
- */
-function getPendingReview(params) {
-  try {
-    const { userEmail } = params;
-
-    if (!userEmail) {
-      throw new Error('缺少 userEmail 參數');
-    }
-
-    const email = getCurrentUserEmail(userEmail);
-    const ss = getSpreadsheet();
-    const reviewSheet = ss.getSheetByName('Peer_Review_Records');
-
-    if (!reviewSheet) {
       return {
         success: true,
-        hasPendingReview: false,
-        review: null
+        isCorrect: false,
+        message: `答錯了，這是第 ${attemptNumber} 次測驗。請重新複習任務內容。`,
+        attemptNumber: attemptNumber
       };
     }
 
-    const reviewData = reviewSheet.getDataRange().getValues();
-    const now = new Date();
-
-    // 查找該使用者的待審核記錄（assigned 或 accepted 狀態）
-    for (let i = 1; i < reviewData.length; i++) {
-      if (reviewData[i][3] === email) {
-        const status = reviewData[i][8];
-
-        if (status === 'assigned' || status === 'accepted') {
-          const assignedTime = reviewData[i][5];
-          const acceptedTime = reviewData[i][6];
-
-          // 計算剩餘時間
-          let timeRemaining = 0;
-          if (status === 'assigned' && assignedTime) {
-            const elapsed = Math.floor((now - new Date(assignedTime)) / 1000);
-            timeRemaining = Math.max(0, 30 - elapsed);
-          } else if (status === 'accepted' && acceptedTime) {
-            const elapsed = Math.floor((now - new Date(acceptedTime)) / 1000);
-            timeRemaining = Math.max(0, 180 - elapsed);
-          }
-
-          // 取得被審核者姓名
-          const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
-          const usersData = usersSheet.getDataRange().getValues();
-          let revieweeName = '';
-          const revieweeEmail = reviewData[i][2];
-
-          for (let j = 1; j < usersData.length; j++) {
-            if (usersData[j][2] === revieweeEmail) {
-              revieweeName = usersData[j][3];
-              break;
-            }
-          }
-
-          // 取得任務名稱
-          const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
-          const tasksData = tasksSheet ? tasksSheet.getDataRange().getValues() : [];
-          const taskId = reviewData[i][4];
-          let taskName = taskId;  // 預設使用 taskId
-          let actualTaskId = taskId;
-
-          // 去除層級後綴來查找任務
-          if (actualTaskId.includes('_tutorial')) {
-            actualTaskId = actualTaskId.replace('_tutorial', '');
-          } else if (actualTaskId.includes('_adventure')) {
-            actualTaskId = actualTaskId.replace('_adventure', '');
-          } else if (actualTaskId.includes('_hardcore')) {
-            actualTaskId = actualTaskId.replace('_hardcore', '');
-          }
-
-          for (let j = 1; j < tasksData.length; j++) {
-            if (tasksData[j][0] === actualTaskId) {
-              taskName = tasksData[j][3];  // 任務名稱在第4欄
-              break;
-            }
-          }
-
-          return {
-            success: true,
-            hasPendingReview: true,
-            review: {
-              reviewId: reviewData[i][0],
-              taskProgressId: reviewData[i][1],
-              revieweeEmail: revieweeEmail,
-              revieweeName: revieweeName,
-              taskId: taskId,
-              taskName: taskName,
-              assignedTime: assignedTime,
-              acceptedTime: acceptedTime,
-              status: status,
-              timeRemaining: timeRemaining
-            }
-          };
-        }
-      }
-    }
-
-    return {
-      success: true,
-      hasPendingReview: false,
-      review: null
-    };
-
   } catch (error) {
-    Logger.log('❌ 取得待審核記錄失敗：' + error);
+    Logger.log('提交測驗時發生錯誤: ' + error);
     return {
       success: false,
-      message: '取得失敗：' + error.message,
-      hasPendingReview: false,
-      review: null
-    };
-  }
-}
-
-/**
- * checkReviewTimeouts - 檢查並處理所有超時的互評記錄
- * @returns {Object} 處理結果
- */
-function checkReviewTimeouts() {
-  const lock = LockService.getScriptLock();
-
-  try {
-    lock.waitLock(30000);
-
-    const ss = getSpreadsheet();
-    const reviewSheet = ss.getSheetByName('Peer_Review_Records');
-
-    if (!reviewSheet) {
-      return {
-        success: true,
-        processed: 0
-      };
-    }
-
-    const reviewData = reviewSheet.getDataRange().getValues();
-    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
-    const now = new Date();
-    let processed = 0;
-
-    for (let i = 1; i < reviewData.length; i++) {
-      const status = reviewData[i][8];
-      const rowIndex = i + 1;
-
-      // 檢查 assigned 狀態超時（30秒）
-      if (status === 'assigned') {
-        const assignedTime = new Date(reviewData[i][5]);
-        const elapsedSeconds = Math.floor((now - assignedTime) / 1000);
-
-        if (elapsedSeconds > 30) {
-          // 更新狀態為 timeout_accept
-          reviewSheet.getRange(rowIndex, 9).setValue('timeout_accept');
-
-          // 更新任務進度回到 pending_review（教師審核）
-          const taskProgressId = reviewData[i][1];
-          const progressData = progressSheet.getDataRange().getValues();
-          for (let j = 1; j < progressData.length; j++) {
-            if (progressData[j][0] === taskProgressId) {
-              progressSheet.getRange(j + 1, 4).setValue('pending_review');
-              break;
-            }
-          }
-
-          processed++;
-          Logger.log('⏰ 處理接受超時:', { reviewId: reviewData[i][0] });
-        }
-      }
-
-      // 檢查 accepted 狀態超時（3分鐘）
-      if (status === 'accepted') {
-        const acceptedTime = new Date(reviewData[i][6]);
-        const elapsedSeconds = Math.floor((now - acceptedTime) / 1000);
-
-        if (elapsedSeconds > 180) {
-          // 更新狀態為 timeout_review
-          reviewSheet.getRange(rowIndex, 9).setValue('timeout_review');
-
-          // 更新任務進度回到 pending_review（教師審核）
-          const taskProgressId = reviewData[i][1];
-          const progressData = progressSheet.getDataRange().getValues();
-          for (let j = 1; j < progressData.length; j++) {
-            if (progressData[j][0] === taskProgressId) {
-              progressSheet.getRange(j + 1, 4).setValue('pending_review');
-              break;
-            }
-          }
-
-          processed++;
-          Logger.log('⏰ 處理審核超時:', { reviewId: reviewData[i][0] });
-        }
-      }
-    }
-
-    Logger.log('✅ 超時檢查完成:', { processed });
-
-    return {
-      success: true,
-      processed: processed
-    };
-
-  } catch (error) {
-    Logger.log('❌ 檢查超時失敗：' + error);
-    return {
-      success: false,
-      message: '檢查失敗：' + error.message,
-      processed: 0
+      message: '提交失敗: ' + error.message
     };
   } finally {
     lock.releaseLock();
   }
-
 }

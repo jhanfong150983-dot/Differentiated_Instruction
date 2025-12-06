@@ -1,0 +1,36 @@
+使用者資料(google登入紀錄)
+user_id	google_id	email	name	role	registration_date	last_login	status	total_tokens
+
+登入紀錄表(使用者登入狀況)
+log_id	user_id	login_time	device_type	status
+
+班級資料(教師於前端設定的班級)
+class_id	class_name	teacher_email	create_date
+
+學員資料(教師於前端設定班級中的學生)
+uuid	class_id	seat_number	student_name	student_email	user_id
+
+課程資料(教師於前端設定的課程)
+course_id	course_name	teacher_email	description	create_date
+
+任務資料(教師於前端設定課程中的任務)
+task_id	course_id	sequence	task_name	time_limit	tutorial_desc	tutorial_link	adventure_desc	adventure_link	hardcore_desc	hardcore_link	token_reward	createDate
+
+授課安排表(教師安排課程給班級)
+assignment_id	class_id	course_id	teacher_email	assigned_date	status
+
+學習資料表(學生完成課程的紀錄)
+record_id	user_id	class_id	course_id	teacher_email	start_date	last_access_date	status	completed_tasks	total_tasks	current_tier
+
+任務進度表(學生完成任務的紀錄)
+progress_id	record_id	task_id	status	start_time	complete_time	time_spent
+
+Peer_Review_Records(學生互評紀錄)
+review_id	task_progress_id	reviewee_email	reviewer_email	task_id	assigned_time	accepted_time	completed_time	status	result	reject_reason	reviewer_reward
+
+難度變更紀錄(學生變更任務難度的歷史紀錄)
+change_id	record_id	user_id	course_id	from_tier	to_tier 	change_reason	change_time	triggered_by_task	execution_time
+
+Class_Sessions(班級課堂紀錄)
+session_id	class_id	teacher_email	start_time	end_time	status	course_id	create_date
+

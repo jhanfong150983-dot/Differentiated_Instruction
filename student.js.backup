@@ -26,6 +26,9 @@
     let currentTaskStartTime = null; // 当前任务开始时间
     let hasShownSlowSuggestion = false; // 是否已显示过太慢建议
 
+    let shownReviewTasks = new Set();
+    let isCheckingPeerReview = false;
+
     // 性能優化：緩存數據避免重複 API 調用
     let cachedSessionStatus = null; // 緩存課堂狀態
     let cachedProgressData = null; // 緩存任務進度數據
@@ -221,6 +224,9 @@
 
         // 停止 session 檢查
         stopSessionCheck();
+
+        // 停止互評輪詢
+        stopPeerReviewPolling();
 
         if (allClasses.length === 1) {
             // 只有一個班級，重新載入
@@ -985,6 +991,7 @@
         // 停止檢查
         stopSessionCheck();
         stopTaskStatusCheck();
+        stopPeerReviewPolling();
 
         displayTierSelection();
     };
@@ -1147,6 +1154,9 @@
             })
             .then(function(progressResult) {
                 hideLoading('mainLoading');
+
+                // 啟動互評輪詢檢查
+                startPeerReviewPolling();
 
                 // 確保 displayQuestBoard 被調用
                 try {
@@ -2429,12 +2439,17 @@
             });
     };
 
-        window.handleCompleteTask = function() {
+    /**
+     * 提交任務（等待教師審核）
+     */
+    window.handleCompleteTask = function() {
         if (!selectedTask) return;
 
+        // ✅ 保存任務資訊到局部變數，避免被 closeTaskModal() 清空
+        let isHandlingTimeout = false;
         const taskToSubmit = selectedTask;
 
-        if (!confirm('確定要提交此任務嗎？\n提交後將進行自主檢查，通過後才會獲得 ' + (taskToSubmit.tokenReward || 0) + ' 個代幣！')) {
+        if (!confirm('確定要提交此任務嗎？\n提交後將由教師審核，通過後才會獲得 ' + (taskToSubmit.tokenReward || 0) + ' 個代幣！')) {
             return;
         }
 
@@ -2460,31 +2475,154 @@
                 APP_CONFIG.log('📥 提交任務回應:', response);
 
                 if (response.success) {
-                    // 停止時間限制檢查
+                    // 停止时间限制检查
                     stopTaskTimeLimitCheck();
 
                     // 關閉任務 Modal
                     closeTaskModal();
 
-                    // 進入自主檢查階段
-                    APP_CONFIG.log('🔄 進入自主檢查階段', response);
-                    showToast('✅ 任務已提交，開始自主檢查...', 'success');
+                    // ===== 互評流程整合 =====
+                    if (response.peerReviewMode) {
+                        // 進入互評模式
+                        APP_CONFIG.log('🔄 進入互評模式', response);
+                        showToast(response.message || '✅ 任務已提交，正在尋找同學協助審核...', 'success');
 
-                    // 更新進度狀態為自主檢查中
-                    currentTasksProgress[taskToSubmit.taskId] = { status: 'self_checking' };
+                        // 更新進度狀態為等待互評
+                        currentTasksProgress[taskToSubmit.taskId] = { status: 'waiting_peer_review' };
 
-                    // 呼叫自主檢查面板
-                    showSelfCheckPanel(response.taskProgressId, taskToSubmit.taskId);
+                        // 顯示等待審核 Modal
+                        const waitingModal = document.getElementById('waitingReviewModal');
+                        const messageElement = document.getElementById('waitingReviewMessage');
+
+                        if (waitingModal && messageElement) {
+                            messageElement.textContent = response.reviewerName ?
+                                `正在等待 ${response.reviewerName} 接受審核...` :
+                                '正在尋找同學協助審核...';
+                            waitingModal.style.display = 'flex';
+                            APP_CONFIG.log('✅ 顯示等待審核 Modal');
+                        } else {
+                            APP_CONFIG.error('找不到等待審核 Modal 元素');
+                        }
+
+                        // 開始輪詢檢查審核狀態
+                        let checkCount = 0;
+                        const maxChecks = 60; // 最多檢查 60 次（3 分鐘）
+
+                        // 重置狀態標記，允許處理新的審核流程
+                        lastProcessedReviewStatus = null;
+
+                        // 清除舊的計時器（如果存在）
+                        if (waitingReviewCheckInterval) {
+                            clearInterval(waitingReviewCheckInterval);
+                        }
+                        if (waitingReviewTimeout) {
+                            clearTimeout(waitingReviewTimeout);
+                        }
+
+                        waitingReviewCheckInterval = setInterval(function() {
+                            checkCount++;
+                            APP_CONFIG.log(`🔍 檢查審核狀態 (${checkCount}/${maxChecks})`);
+                            checkMyTaskReviewStatus(response.taskProgressId);
+
+                            if (checkCount >= maxChecks) {
+                                clearInterval(waitingReviewCheckInterval);
+                                waitingReviewCheckInterval = null;
+                                APP_CONFIG.log('⏰ 停止輪詢檢查審核狀態（已達最大次數）');
+                            }
+                        }, 3000);
+
+                        // 30秒後如果還沒被接受，則超時並呼叫後端處理
+                        // 在檔案開頭的變數區加入
+                        // 然後修改 handleCompleteTask 函數中的 30 秒超時部分
+                        waitingReviewTimeout = setTimeout(function() {
+                            // ✅ 檢查是否已在處理中
+                            if (isHandlingTimeout) {
+                                APP_CONFIG.log('⚠️ 超時處理已在執行中，跳過');
+                                return;
+                            }
+                            
+                            // 檢查是否已被接受（如果已接受就不處理超時）
+                            if (lastProcessedReviewStatus === 'accepted' || lastProcessedReviewStatus === 'completed') {
+                                APP_CONFIG.log('✅ 審核已被接受或完成，忽略30秒超時');
+                                waitingReviewTimeout = null;
+                                return;
+                            }
+
+                            // ✅ 設定處理中標記
+                            isHandlingTimeout = true;
+                            APP_CONFIG.log('⏰ 30秒超時，呼叫後端處理');
+
+                            // 呼叫後端API處理超時（reassign或改教師審核）
+                            const timeoutParams = new URLSearchParams({
+                                action: 'handleAcceptTimeout',
+                                taskProgressId: response.taskProgressId
+                            });
+
+                            fetch(`${APP_CONFIG.API_URL}?${timeoutParams.toString()}`)
+                                .then(response => response.json())
+                                .then(function(data) {
+                                    // ✅ 處理完成後解鎖
+                                    isHandlingTimeout = false;
+                                    
+                                    if (data.success) {
+                                        if (data.reassigned) {
+                                            // 改派給其他人，繼續等待
+                                            showToast(`30秒內無人接受，已改為 ${data.newReviewerName} 審核`, 'info');
+                                            // 不關閉視窗，繼續輪詢
+                                        } else {
+                                            // 改為教師審核，關閉視窗
+                                            if (waitingReviewCheckInterval) {
+                                                clearInterval(waitingReviewCheckInterval);
+                                                waitingReviewCheckInterval = null;
+                                            }
+                                            const waitingModal = document.getElementById('waitingReviewModal');
+                                            if (waitingModal && waitingModal.style.display === 'flex') {
+                                                waitingModal.style.display = 'none';
+                                            }
+                                            showToast('所有同學都無法審核，已改為教師審核', 'info');
+                                            
+                                            // ✅ 重新載入任務列表
+                                            if (selectedTier) {
+                                                setTimeout(() => {
+                                                    loadTierTasks(true);
+                                                }, 1000);
+                                            }
+                                        }
+                                    }
+                                })
+                                .catch(function(error) {
+                                    // ✅ 發生錯誤也要解鎖
+                                    isHandlingTimeout = false;
+                                    APP_CONFIG.error('處理接受超時失敗', error);
+                                });
+
+                            waitingReviewTimeout = null;
+                        }, 30000);
+                    } else {
+                        // 教師審核模式
+                        showToast(response.message || '✅ 任務已提交，等待教師審核中...', 'success');
+
+                        // 更新進度狀態為待審核
+                        currentTasksProgress[taskToSubmit.taskId] = { status: 'pending_review' };
+                    }
 
                     // 重新顯示任務列表
                     try {
                         displayQuestList();
                     } catch (error) {
                         APP_CONFIG.error('顯示任務列表失敗', error);
+
+                        // 關閉等待審核 Modal 以便用戶看到錯誤訊息
+                        const waitingModal = document.getElementById('waitingReviewModal');
+                        if (waitingModal && waitingModal.style.display === 'flex') {
+                            waitingModal.style.display = 'none';
+                            APP_CONFIG.log('❌ 因錯誤關閉等待審核 Modal');
+                        }
+
                         showToast('顯示任務列表失敗：' + error.message, 'error');
                     }
 
-                    // 太快的學生：在提交時建議提高難度
+                    // 太快的学生：在提交时建议提高难度
                     try {
                         checkAndSuggestDifficultyChange(taskToSubmit, 'fast');
                     } catch (error) {
@@ -2574,233 +2712,600 @@
     // 當離開頁面時停止所有計時器（階段 2）
     window.addEventListener('beforeunload', function() {
         stopSessionCheck();
+        stopPeerReviewPolling();
     });
 
-        // ==========================================
-    // 自主檢查系統
+    // ==========================================
+    // 互評系統
     // ==========================================
 
+    // 互評系統變數
+    let currentReviewData = null;
+    let peerReviewCheckInterval = null;
+    let reviewNotificationTimer = null;
+    let reviewTimer = null;
+    let waitingReviewCheckInterval = null;  // 30秒輪詢檢查的計時器
+    let waitingReviewTimeout = null;  // 30秒超時的計時器
+    let lastProcessedReviewStatus = null;  // 記錄已處理過的審核狀態，防止重複處理
+
     /**
-     * 顯示自主檢查面板
+     * 開始輪詢檢查是否有待審核的任務
      */
-    window.showSelfCheckPanel = function(taskProgressId, taskId) {
-        APP_CONFIG.log('🎯 打開自主檢查面板', { taskProgressId, taskId });
-        
-        const modal = document.getElementById('selfCheckModal');
-        if (!modal) {
-            APP_CONFIG.error('找不到自主檢查 Modal');
-            showToast('找不到自主檢查介面', 'error');
+    function startPeerReviewPolling() {
+        // 每5秒檢查一次
+        if (peerReviewCheckInterval) {
+            clearInterval(peerReviewCheckInterval);
+        }
+
+        peerReviewCheckInterval = setInterval(checkPendingPeerReview, 5000);
+        checkPendingPeerReview(); // 立即檢查一次
+    }
+
+    /**
+     * 停止輪詢檢查
+     */
+    function stopPeerReviewPolling() {
+        if (peerReviewCheckInterval) {
+            clearInterval(peerReviewCheckInterval);
+            peerReviewCheckInterval = null;
+        }
+    }
+
+    /**
+     * 檢查是否有待審核的任務
+     */
+    function checkPendingPeerReview() {
+        // ✅ 新增：防止重複調用
+        if (isCheckingPeerReview) {
+            APP_CONFIG.log('⚠️ checkPendingPeerReview 正在執行中，跳過');
             return;
         }
+        
+        if (!currentStudent || !currentStudent.email) return;
 
-        // 獲取任務的檢查清單和參考答案
+        // ✅ 新增：設置鎖
+        isCheckingPeerReview = true;
+
         const params = new URLSearchParams({
-            action: 'getTaskChecklistsAndAnswer',
-            taskId: taskId
+            action: 'getPendingReview',
+            userEmail: currentStudent.email
         });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(data) {
-                if (data.success) {
-                    // 第一步：顯示參考答案
-                    const referenceAnswerDiv = document.getElementById('referenceAnswerStep');
-                    if (referenceAnswerDiv) {
-                        referenceAnswerDiv.innerHTML = `<p>${escapeHtml(data.referenceAnswer)}</p>`;
+                if (data.success && data.hasPendingReview) {
+                    const review = data.review;
+
+                    if (review.status === 'assigned') {
+                        const taskProgressId = review.taskProgressId;
+                        
+                        if (shownReviewTasks.has(taskProgressId)) {
+                            APP_CONFIG.log('⚠️ 此任務已顯示過審核請求，跳過');
+                            return;
+                        }
+                        
+                        shownReviewTasks.add(taskProgressId);
+                        showPeerReviewNotification(review);
+                    } else if (review.status === 'accepted') {
+                        showPeerReviewInterface(review);
                     }
-
-                    // 第二步：顯示檢查清單
-                    const checklistDiv = document.getElementById('checklistStep');
-                    if (checklistDiv && data.checklists) {
-                        let html = '<form>';
-                        data.checklists.forEach((item, index) => {
-                            html += `
-                                <label>
-                                    <input type="checkbox" name="checklist" value="${index}"> ${escapeHtml(item.description)}
-                                </label><br>
-                            `;
-                        });
-                        html += '</form>';
-                        checklistDiv.innerHTML = html;
-
-                        // 保存檢查清單到 window 以便後續使用
-                        window.currentChecklists = data.checklists;
-                        window.currentTaskProgressId = taskProgressId;
-                        window.currentTaskId = taskId;
-                    }
-
-                    // 顯示 Modal
-                    modal.style.display = 'flex';
-                } else {
-                    showToast('無法獲取檢查清單', 'error');
                 }
             })
             .catch(function(error) {
-                APP_CONFIG.error('獲取檢查清單失敗', error);
-                showToast('獲取檢查清單失敗', 'error');
-            });
-    };
-
-    /**
-     * 提交自主檢查結果
-     */
-    window.submitSelfCheck = function() {
-        const checkedBoxes = document.querySelectorAll('input[name="checklist"]:checked');
-        const checkedCount = checkedBoxes.length;
-        const totalCount = window.currentChecklists ? window.currentChecklists.length : 0;
-
-        APP_CONFIG.log(`✅ 已勾選 ${checkedCount}/${totalCount} 項`, {
-            checked: checkedCount,
-            total: totalCount
-        });
-
-        // 判斷場景：全部勾選 = Scenario A，未全部勾選 = Scenario B
-        if (checkedCount === totalCount) {
-            // Scenario A：全部正確
-            APP_CONFIG.log('🎯 場景 A：所有項目正確');
-            proceedToAssessment('A');
-        } else {
-            // Scenario B：有錯誤，要求填寫錯誤說明
-            APP_CONFIG.log('🎯 場景 B：有錯誤項目');
-            
-            const errorExplanation = prompt('請說明哪些項目有問題及修正方向：');
-            if (errorExplanation === null) return; // 取消
-
-            // 記錄錯誤說明到後端
-            const params = new URLSearchParams({
-                action: 'submitSelfCheck',
-                taskProgressId: window.currentTaskProgressId,
-                checkedItems: JSON.stringify(Array.from(checkedBoxes, b => b.value)),
-                errorExplanation: errorExplanation,
-                scenario: 'B'
-            });
-
-            fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-                .then(response => response.json())
-                .then(function(data) {
-                    if (data.success) {
-                        APP_CONFIG.log('✅ 錯誤說明已記錄');
-                        proceedToAssessment('B');
-                    } else {
-                        showToast('提交失敗', 'error');
-                    }
-                })
-                .catch(function(error) {
-                    APP_CONFIG.error('提交自主檢查失敗', error);
-                    showToast('提交失敗', 'error');
-                });
-        }
-    };
-
-    /**
-     * 進行隨機測驗
-     */
-    function proceedToAssessment(scenario) {
-        APP_CONFIG.log(`🎯 進入場景 ${scenario} 的隨機測驗`);
-
-        // 獲取隨機題目
-        const params = new URLSearchParams({
-            action: 'getTaskQuestion',
-            taskId: window.currentTaskId
-        });
-
-        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-            .then(response => response.json())
-            .then(function(data) {
-                if (data.success) {
-                    // 顯示題目
-                    const questionDiv = document.getElementById('assessmentStep');
-                    if (questionDiv && data.question) {
-                        let html = `<p><strong>${escapeHtml(data.question.title)}</strong></p>`;
-                        if (data.question.options) {
-                            html += '<form>';
-                            data.question.options.forEach((option, index) => {
-                                html += `
-                                    <label>
-                                        <input type="radio" name="assessment" value="${index}"> ${escapeHtml(option)}
-                                    </label><br>
-                                `;
-                            });
-                            html += '</form>';
-                        }
-                        questionDiv.innerHTML = html;
-
-                        // 保存題目資訊
-                        window.currentQuestion = data.question;
-                        window.currentScenario = scenario;
-
-                        // 顯示提交按鈕
-                        const submitBtn = document.getElementById('submitAssessmentBtn');
-                        if (submitBtn) {
-                            submitBtn.onclick = function() {
-                                submitAssessmentAnswer(scenario);
-                            };
-                        }
-                    }
-                } else {
-                    showToast('無法獲取題目', 'error');
-                }
+                APP_CONFIG.error('檢查待審核任務失敗', error);
             })
-            .catch(function(error) {
-                APP_CONFIG.error('獲取題目失敗', error);
-                showToast('獲取題目失敗', 'error');
+            .finally(function() {
+                // ✅ 新增：釋放鎖
+                isCheckingPeerReview = false;
             });
     }
 
     /**
-     * 提交測驗答案
+     * 顯示互評通知
      */
-    function submitAssessmentAnswer(scenario) {
-        const selectedAnswer = document.querySelector('input[name="assessment"]:checked');
-        
-        if (!selectedAnswer) {
-            showToast('請選擇答案', 'warning');
-            return;
+    function showPeerReviewNotification(review) {
+        currentReviewData = review;
+
+        const modal = document.getElementById('peerReviewNotificationModal');
+        const nameElement = document.getElementById('peerRevieweeNameNotif');
+        const timerElement = document.getElementById('peerReviewTimer');
+
+        nameElement.textContent = review.revieweeName;
+        modal.style.display = 'flex';
+
+        let remaining = review.timeRemaining || 30;
+        timerElement.textContent = remaining;
+
+        if (reviewNotificationTimer) {
+            clearInterval(reviewNotificationTimer);
         }
 
-        const selectedIndex = parseInt(selectedAnswer.value);
-        const isCorrect = selectedIndex === window.currentQuestion.correctAnswer;
+        reviewNotificationTimer = setInterval(function() {
+            remaining--;
+            timerElement.textContent = remaining;
 
-        APP_CONFIG.log(`📝 答案${isCorrect ? '正確' : '錯誤'}`, {
-            scenario: scenario,
-            isCorrect: isCorrect
-        });
+            if (remaining <= 0) {
+                clearInterval(reviewNotificationTimer);
+                reviewNotificationTimer = null;
+                modal.style.display = 'none';
 
-        // 送出答案到後端
+                shownReviewTasks.delete(currentReviewData.taskProgressId);
+
+                const timeoutParams = new URLSearchParams({
+                    action: 'handleAcceptTimeout',
+                    reviewId: currentReviewData.reviewId
+                });
+
+                fetch(`${APP_CONFIG.API_URL}?${timeoutParams.toString()}`)
+                    .then(response => response.json())
+                    .then(function(data) {
+                        if (data.success && !data.alreadyProcessed) {
+                            if (data.reassigned) {
+                                APP_CONFIG.log(`✅ 超時已處理，改為 ${data.newReviewerName} 審核`);
+                            } else {
+                                APP_CONFIG.log('✅ 超時已處理，改為教師審核');
+                            }
+                        }
+                    })
+                    .catch(function(error) {
+                        APP_CONFIG.error('處理接受超時失敗', error);
+                    });
+
+                currentReviewData = null;
+                showToast('審核請求已超時', 'warning');
+            }
+        }, 1000);
+    }
+
+    /**
+     * 接受審核通知
+     */
+    window.acceptPeerReviewNotification = function() {
+        if (!currentReviewData) return;
+        
+        //按鈕鎖定，防止重複點擊
+        const acceptButton = document.getElementById('acceptReviewButton');
+        const declineButton = document.getElementById('declineReviewButton');
+        
+        if (acceptButton) {
+            acceptButton.disabled = true;
+            acceptButton.textContent = processingText; 
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定接受按鈕，請檢查 HTML 中 ID 是否為 acceptReviewButton！');
+        }
+
+        
+        if (declineButton) {
+            declineButton.disabled = true;
+            declineButton.textContent = processingText;
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定拒絕按鈕，請檢查 HTML 中 ID 是否為 declineReviewButton！');
+        }
+
+        shownReviewTasks.delete(currentReviewData.taskProgressId);
+
+        // 清除通知倒數計時器
+        if (reviewNotificationTimer) {
+            clearInterval(reviewNotificationTimer);
+            reviewNotificationTimer = null;
+        }
+
+        // 清除30秒等待審核的計時器（這是關鍵修復）
+        if (waitingReviewCheckInterval) {
+            clearInterval(waitingReviewCheckInterval);
+            waitingReviewCheckInterval = null;
+            APP_CONFIG.log('✅ 已清除等待審核輪詢計時器');
+        }
+        if (waitingReviewTimeout) {
+            clearTimeout(waitingReviewTimeout);
+            waitingReviewTimeout = null;
+            APP_CONFIG.log('✅ 已清除等待審核超時計時器');
+        }
+
+        // 清除舊的審核計時器（防止誤報超時）
+        if (reviewTimer) {
+            clearInterval(reviewTimer);
+            reviewTimer = null;
+            APP_CONFIG.log('✅ 已清除舊的審核計時器');
+        }
+
         const params = new URLSearchParams({
-            action: 'submitAssessment',
-            taskProgressId: window.currentTaskProgressId,
-            taskId: window.currentTaskId,
-            isCorrect: isCorrect,
-            scenario: scenario
+            action: 'acceptPeerReview',
+            reviewId: currentReviewData.reviewId,
+            reviewerEmail: currentStudent.email
         });
+
+        showLoading('mainLoading');
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(data) {
+                hideLoading('mainLoading');
+
                 if (data.success) {
-                    APP_CONFIG.log('✅ 任務完成', data);
-                    showToast(`🎉 任務完成！獲得 ${data.tokensAwarded} 個代幣`, 'success');
-                    
-                    // 關閉 Modal
-                    const modal = document.getElementById('selfCheckModal');
-                    if (modal) {
-                        modal.style.display = 'none';
+                    document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                    showPeerReviewInterface(data);
+                    showToast('已接受審核請求', 'success');
+                } else if (data.timeout) {
+                    document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                    showToast(data.message, 'warning');
+                    currentReviewData = null;
+                } else {
+                    showToast(data.message || '接受失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                hideLoading('mainLoading');
+                APP_CONFIG.error('接受審核失敗', error);
+                showToast('接受失敗：' + error.message, 'error');
+            });
+    };
+
+    /**
+     * 拒絕審核
+     */
+    window.declinePeerReview = function() {
+        if (!currentReviewData) return;
+        
+        //按鈕鎖定，防止重複點擊
+        const acceptButton = document.getElementById('acceptReviewButton');
+        const declineButton = document.getElementById('declineReviewButton');
+        
+        if (acceptButton) {
+            acceptButton.disabled = true;
+            acceptButton.textContent = processingText; 
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定接受按鈕，請檢查 HTML 中 ID 是否為 acceptReviewButton！');
+        }
+
+        
+        if (declineButton) {
+            declineButton.disabled = true;
+            declineButton.textContent = processingText;
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定拒絕按鈕，請檢查 HTML 中 ID 是否為 declineReviewButton！');
+        }
+        shownReviewTasks.delete(currentReviewData.taskProgressId);
+
+        // 清除通知倒數計時器
+        if (reviewNotificationTimer) {
+            clearInterval(reviewNotificationTimer);
+            reviewNotificationTimer = null;
+        }
+
+        const params = new URLSearchParams({
+            action: 'declinePeerReview',
+            reviewId: currentReviewData.reviewId,
+            reviewerEmail: currentStudent.email
+        });
+
+        showLoading('mainLoading');
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(data) {
+                hideLoading('mainLoading');
+
+                document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                currentReviewData = null;
+
+                if (data.success) {
+                    if (data.reassigned) {
+                        showToast(`已拒絕，改為 ${data.newReviewerName} 審核`, 'info');
+                    } else {
+                        showToast(data.message || '已拒絕，改為教師審核', 'info');
                     }
+                } else {
+                    showToast(data.message || '拒絕失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                hideLoading('mainLoading');
+                APP_CONFIG.error('拒絕審核失敗', error);
+                document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                
+                // ✅ 清除當前任務的記錄
+                if (currentTaskProgressInReview) {
+                    delete lastShownReviewForTask[currentTaskProgressInReview];
+                    currentTaskProgressInReview = null;
+                }
+                currentReviewData = null;
+                
+                showToast('拒絕失敗：' + error.message, 'error');
+            });
+    };
+
+    /**
+     * 顯示審核界面
+     */
+    function showPeerReviewInterface(reviewData) {
+        currentReviewData = reviewData;
+
+        const modal = document.getElementById('peerReviewModal');
+        document.getElementById('revieweeName').textContent = reviewData.revieweeName;
+        document.getElementById('revieweeEmail').textContent = reviewData.revieweeEmail;
+        document.getElementById('reviewTaskName').textContent = reviewData.taskName || reviewData.taskId;
+
+        modal.style.display = 'flex';
+
+        // 開始審核倒數計時（3分鐘）
+        let remaining = reviewData.timeRemaining || 180;
+
+        if (reviewTimer) {
+            clearInterval(reviewTimer);
+        }
+
+        reviewTimer = setInterval(function() {
+            remaining--;
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            document.getElementById('reviewTimeRemaining').textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            if (remaining <= 0) {
+                clearInterval(reviewTimer);
+                modal.style.display = 'none';
+                currentReviewData = null;
+                showToast('審核時間已到，已改為教師審核', 'warning');
+            }
+        }, 1000);
+    }
+
+    /**
+     * 顯示退回理由輸入框
+     */
+    window.showRejectReason = function() {
+        document.getElementById('rejectReasonSection').style.display = 'block';
+        document.getElementById('showRejectBtn').style.display = 'none';
+        document.getElementById('passReviewBtn').style.display = 'none';
+        document.getElementById('cancelRejectBtn').style.display = 'inline-block';
+        document.getElementById('confirmRejectBtn').style.display = 'inline-block';
+    };
+
+    /**
+     * 隱藏退回理由輸入框
+     */
+    window.hideRejectReason = function() {
+        document.getElementById('rejectReasonSection').style.display = 'none';
+        document.getElementById('rejectReasonInput').value = '';
+        document.getElementById('showRejectBtn').style.display = 'inline-block';
+        document.getElementById('passReviewBtn').style.display = 'inline-block';
+        document.getElementById('cancelRejectBtn').style.display = 'none';
+        document.getElementById('confirmRejectBtn').style.display = 'none';
+    };
+
+    /**
+     * 提交審核結果
+     */
+    window.submitPeerReview = function(result) {
+        if (!currentReviewData) return;
+
+        let rejectReason = '';
+        if (result === 'reject') {
+            rejectReason = document.getElementById('rejectReasonInput').value.trim();
+            if (!rejectReason) {
+                showToast('請填寫退回理由', 'warning');
+                return;
+            }
+        }
+
+        if (reviewTimer) {
+            clearInterval(reviewTimer);
+        }
+
+        const params = new URLSearchParams({
+            action: 'completePeerReview',
+            reviewId: currentReviewData.reviewId,
+            reviewerEmail: currentStudent.email,
+            result: result,
+            rejectReason: rejectReason
+        });
+
+        showLoading('mainLoading');
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(data) {
+                hideLoading('mainLoading');
+
+                if (data.success) {
+                    document.getElementById('peerReviewModal').style.display = 'none';
+                    currentReviewData = null;
+                    window.hideRejectReason();
+
+                    const message = result === 'pass' ?
+                        '✅ 已通過審核！你獲得了 50 金幣' :
+                        '✅ 已退回任務';
+                    showToast(message, 'success');
 
                     // 重新載入任務列表
                     if (selectedTier) {
-                        setTimeout(() => {
-                            loadTierTasks(true);
-                        }, 1500);
+                        loadTierTasks(true);
                     }
+                } else if (data.timeout) {
+                    document.getElementById('peerReviewModal').style.display = 'none';
+                    currentReviewData = null;
+                    showToast(data.message, 'warning');
                 } else {
                     showToast(data.message || '提交失敗', 'error');
                 }
             })
             .catch(function(error) {
-                APP_CONFIG.error('提交測驗答案失敗', error);
-                showToast('提交失敗', 'error');
+                hideLoading('mainLoading');
+                APP_CONFIG.error('提交審核失敗', error);
+                showToast('提交失敗：' + error.message, 'error');
             });
+    };
+
+    /**
+     * 檢查自己提交的任務的審核狀態
+     */
+    function checkMyTaskReviewStatus(taskProgressId) {
+    const params = new URLSearchParams({
+        action: 'getReviewStatus',
+        taskProgressId: taskProgressId
+    });
+
+    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+        .then(response => response.json())
+        .then(function(data) {
+            APP_CONFIG.log('📥 審核狀態回應:', data); // ✅ 加入除錯日誌
+            
+            if (!data.success) {
+                APP_CONFIG.error('查詢審核狀態失敗:', data.message);
+                return;
+            }
+
+            // ✅ 檢查任務狀態（包含所有可能改為教師審核的狀態）
+            const teacherReviewStatuses = ['pending_review', 'completed'];
+            if (data.taskStatus && teacherReviewStatuses.includes(data.taskStatus)) {
+                APP_CONFIG.log('📝 任務狀態變為教師審核或已完成:', data.taskStatus);
+
+                // 停止所有計時器
+                if (waitingReviewCheckInterval) {
+                    clearInterval(waitingReviewCheckInterval);
+                    waitingReviewCheckInterval = null;
+                    APP_CONFIG.log('✅ 已停止輪詢計時器');
+                }
+                if (waitingReviewTimeout) {
+                    clearTimeout(waitingReviewTimeout);
+                    waitingReviewTimeout = null;
+                    APP_CONFIG.log('✅ 已停止超時計時器');
+                }
+
+                // 關閉等待視窗
+                const waitingModal = document.getElementById('waitingReviewModal');
+                if (waitingModal && waitingModal.style.display === 'flex') {
+                    waitingModal.style.display = 'none';
+                    APP_CONFIG.log('✅ 已關閉等待視窗');
+                }
+
+                // 顯示提示訊息
+                if (data.taskStatus === 'pending_review') {
+                    showToast('所有同學都無法審核，已改為教師審核', 'info');
+                } else if (data.taskStatus === 'completed') {
+                    showToast('✅ 任務已通過審核！', 'success');
+                }
+
+                // 重新載入任務列表
+                if (selectedTier) {
+                    setTimeout(() => {
+                        APP_CONFIG.log('🔄 重新載入任務列表');
+                        loadTierTasks(true);
+                    }, 1000);
+                }
+                
+                return; // ✅ 停止後續處理
+            }
+            
+            // 檢查審核記錄
+            if (data.reviews && data.reviews.length > 0) {
+                const review = data.reviews[0];
+                updateWaitingReviewUI(review);
+            } else {
+                APP_CONFIG.log('ℹ️ 沒有審核記錄');
+            }
+        })
+        .catch(function(error) {
+            APP_CONFIG.error('檢查審核狀態失敗', error);
+        });
+}
+
+    /**
+     * 更新等待審核的UI
+     */
+    function updateWaitingReviewUI(review) {
+        APP_CONFIG.log('📝 更新等待審核UI', review);
+
+        const messageElement = document.getElementById('waitingReviewMessage');
+        const waitingModal = document.getElementById('waitingReviewModal');
+
+        if (!messageElement) {
+            APP_CONFIG.error('找不到 waitingReviewMessage 元素');
+            return;
+        }
+
+        if (review.status === 'assigned') {
+            // 更新訊息（可能是新的審核者）
+            messageElement.textContent = `正在等待 ${review.reviewerName} 接受審核...`;
+            if (waitingModal) {
+                waitingModal.style.display = 'flex';
+            }
+            APP_CONFIG.log('⏳ 狀態：assigned - 等待接受', review.reviewerName);
+
+            // 如果是重新分配，顯示提示（只有在 reviewerName 改變時）
+            if (review.reassigned) {
+                showToast(`正在尋找下一位審核者：${review.reviewerName}`, 'info');
+            }
+        } else if (review.status === 'accepted') {
+            // 檢查是否已處理過此狀態
+            if (lastProcessedReviewStatus === 'accepted') {
+                APP_CONFIG.log('⚠️ 已處理過 accepted 狀態，跳過');
+                return;
+            }
+            lastProcessedReviewStatus = 'accepted';
+
+            // 審核者已接受，停止30秒超時計時器，但繼續輪詢等待結果
+            APP_CONFIG.log('👀 狀態：accepted - 審核者已接受，繼續等待審核結果');
+
+            // 停止30秒超時計時器（不再需要等待接受）
+            if (waitingReviewTimeout) {
+                clearTimeout(waitingReviewTimeout);
+                waitingReviewTimeout = null;
+                APP_CONFIG.log('✅ 已停止超時計時器（審核者已接受）');
+            }
+
+            // 保持視窗開啟，但更新訊息
+            messageElement.textContent = `${review.reviewerName} 將進行審核，請稍候...`;
+            if (waitingModal) {
+                waitingModal.style.display = 'flex';
+            }
+
+            // 提示用戶（僅一次）
+            showToast(`✅ ${review.reviewerName} 已接受審核，正在審核中...`, 'success');
+
+            // 繼續輪詢檢查，等待 completed 狀態（不停止 waitingReviewCheckInterval）
+        } else if (review.status === 'completed') {
+            // 檢查是否已處理過此狀態
+            if (lastProcessedReviewStatus === 'completed') {
+                APP_CONFIG.log('⚠️ 已處理過 completed 狀態，跳過');
+                return;
+            }
+            lastProcessedReviewStatus = 'completed';
+
+            // 審核完成，停止輪詢並關閉視窗
+            APP_CONFIG.log('✅ 狀態：completed - 審核完成', { result: review.result });
+
+            // 停止輪詢計時器
+            if (waitingReviewCheckInterval) {
+                clearInterval(waitingReviewCheckInterval);
+                waitingReviewCheckInterval = null;
+            }
+            if (waitingReviewTimeout) {
+                clearTimeout(waitingReviewTimeout);
+                waitingReviewTimeout = null;
+            }
+
+            // 關閉等待視窗
+            if (waitingModal) {
+                waitingModal.style.display = 'none';
+            }
+
+            // 顯示審核結果
+            if (review.result === 'pass') {
+                showToast('✅ 任務審核通過！你也獲得了 50 金幣', 'success');
+            } else {
+                showToast(`❌ 任務被退回：${review.rejectReason}`, 'warning');
+            }
+
+            // 重新載入任務列表
+            if (selectedTier) {
+                loadTierTasks(true);
+            }
+        } else {
+            APP_CONFIG.log('⚠️ 未知狀態:', review.status);
+        }
     }
-})(); // IIFE
+
+})(); // IIFE 結尾
