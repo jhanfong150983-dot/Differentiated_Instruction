@@ -1009,6 +1009,7 @@ function addImagePreview(url) {
     
     const img = document.createElement('img');
     img.src = url;
+    img.referrerPolicy = "no-referrer";
     img.style.cssText = 'width:120px; height:80px; object-fit:cover; border:1px solid #ddd; border-radius:6px; display:block;';
     
     // 添加刪除按鈕
