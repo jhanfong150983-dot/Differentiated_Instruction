@@ -778,12 +778,12 @@
         }
 
         #selfCheckModal .modal-body {
-            height: 75vh !important;       /* 強制設定高度為螢幕的 75% */
-            max-height: 80vh !important;   /* 設定最大高度 */
-            display: flex !important;      /* 啟用 Flex 排版 */
+            height: 70vh !important;       /* 🔥 關鍵：鎖死高度 */
+            max-height: 800px !important;  
+            display: flex !important;      /* 確保內部可以排版 */
             flex-direction: column !important;
-            padding: 0 !important;         /* 清除內距，讓內容滿版 */
-            overflow: hidden !important;   /* 禁止外層捲動 */
+            padding: 0 !important;
+            overflow: hidden !important;   /* 禁止爺爺層出現捲軸 */
         }
 
         .task-detail-section {
@@ -956,11 +956,10 @@
         /* 兩欄佈局容器 */
         .self-check-layout {
            display: flex !important;
-            flex-direction: row !important; /* 左右排列 */
-            flex: 1 1 auto !important;      /* 自動填滿剩餘空間 */
+            flex-direction: row !important;
             width: 100% !important;
-            height: 100% !important;
-            min-height: 0 !important;       /* 🔥 關鍵魔法：防止 Flex 子元素溢出父容器 */
+            height: 100% !important;       /* 🔥 關鍵：填滿爺爺的高度 */
+            min-height: 0 !important;      /* 🔥 超級關鍵：防止 Flex 子元素撐爆容器 */
         }
 
         @media (min-width: 768px) {
@@ -1047,14 +1046,11 @@
         
         /* 右側：檢核清單區 */
         .checklist-section {
-            flex: 1 !important;            /* 50% 寬度 */
-            height: 100% !important;       /* 填滿高度 */
-            overflow-y: auto !important;   /* 🔥 關鍵：內容超過時顯示捲軸 */
-            
-            /* 外觀設定 */
-            background: var(--game-bg-dark, #fff);
+            flex: 1 !important;
+            height: 100% !important;
+            overflow-y: auto !important;   /* 這裡也要能捲動 */
+            background: var(--game-bg-dark);
             padding: 20px;
-            box-shadow: inset 5px 0 10px -5px rgba(0,0,0,0.1);
         }
 
         /* 單個檢核項目卡片 */
@@ -1393,6 +1389,7 @@
     <script src="student.js"></script>
 </body>
 </html>
+
 
 
 
