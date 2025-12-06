@@ -897,7 +897,6 @@ function handleUploadReferenceImages() {
             showLoading('taskLoading');
             fetch(APP_CONFIG.API_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'uploadReferenceImage', fileName: file.name, fileData: b64, fileMime: mime })
             }).then(r=>r.json()).then(resp=>{
                 hideLoading('taskLoading');
