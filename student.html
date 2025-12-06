@@ -1310,6 +1310,17 @@
         height: 50% !important;
     }
 }
+
+/* =========================================
+   補上缺失的拼圖：中間容器的高度鎖定
+   ========================================= */
+#selfCheckModal #checkStageContainer {
+    width: 100% !important;
+    height: 100% !important;       /* 🔥 關鍵：填滿 modal-body */
+    min-height: 0 !important;      /* 防止被撐開 */
+    display: flex !important;      /* 讓內部的 layout 可以運作 */
+    flex-direction: column !important;
+}
     </style>
 </head>
 <body>
@@ -1503,6 +1514,7 @@
     <script src="student.js"></script>
 </body>
 </html>
+
 
 
 
