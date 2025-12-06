@@ -2745,59 +2745,104 @@
     };
 
     /**
-     * 渲染第一階段：參考資料與檢核列表
-     */
-    function renderCheckStage(data) {
-        // 1. 渲染參考資料
-        const refDiv = document.getElementById('referenceDisplay');
-        let refHtml = `<p>${escapeHtml(data.referenceAnswer || '無文字說明')}</p>`;
-        
-        // 如果有圖片，解析並顯示
-        if (data.referenceImages && data.referenceImages.length > 0) {
-            data.referenceImages.forEach(imgUrl => {
-                if(imgUrl.trim()){
-                    refHtml += `<div class="ref-image-container" style="margin-top:10px;">
-                                    <img src="${imgUrl}" alt="參考圖片">
-                                </div>`;
-                }
-            });
-        }
-        refDiv.innerHTML = refHtml;
-
-        // 2. 渲染檢核列表
-        const listDiv = document.getElementById('checklistDynamicContainer');
-        listDiv.innerHTML = ''; // 清空
-        currentCheckData.checklists = data.checklists || [];
-
-        if (currentCheckData.checklists.length === 0) {
-            listDiv.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">此任務無需檢核，請直接下一步</div>';
-            return;
-        }
-
-        currentCheckData.checklists.forEach((item, index) => {
-            // 修改點：按鈕文字與提示語
-            const itemHtml = `
-                <div class="check-item-card" id="checkItem_${index}">
-                    <div class="check-item-header">
-                        <div class="check-desc">
-                            <span style="color:var(--game-accent); font-weight:bold; margin-right:5px;">${index + 1}.</span>
-                            ${escapeHtml(item.itemTitle || item.description)}
-                        </div>
-                        <div class="status-toggle">
-                            <button class="status-btn pass active" onclick="toggleCheckStatus(${index}, 'pass')">✅ 符合</button>
-                            <button class="status-btn fail" onclick="toggleCheckStatus(${index}, 'fail')">⚠️ 未符合</button>
-                        </div>
-                    </div>
-                    <div class="improvement-box" id="improvementBox_${index}">
-                        <label style="font-size:12px; color:#ef4444; margin-bottom:4px; display:block;">錯誤原因 / 修正說明：</label>
-                        <textarea class="improvement-input" id="improveInput_${index}" 
-                            placeholder="請記錄哪裡與參考答案不符，以及您做了什麼修正..." rows="2"></textarea>
-                    </div>
-                </div>
-            `;
-            listDiv.insertAdjacentHTML('beforeend', itemHtml);
-        });
-    }
+    * 渲染第一階段：參考資料與檢核列表 (支援比例調整與圖片放大)
+    */
+   function renderCheckStage(data) {
+       // 1. 渲染參考文字
+       const refDiv = document.getElementById('referenceDisplay');
+       
+       // 簡單的文字處理，這裡不需要太複雜，因為 CSS pre-wrap 會處理換行
+       const textContent = escapeHtml(data.referenceAnswer || data.answerText || '無文字說明');
+       
+       let refHtml = `<div style="margin-bottom:20px;">${textContent}</div>`;
+       
+       // 2. 圖片處理 (生成縮圖與點擊事件)
+       let rawImages = data.referenceImages || data.answerImages;
+       let imageList = [];
+   
+       if (Array.isArray(rawImages)) {
+           imageList = rawImages;
+       } else if (typeof rawImages === 'string' && rawImages.trim() !== '') {
+           if (rawImages.includes('|')) imageList = rawImages.split('|');
+           else imageList = [rawImages];
+       }
+   
+       if (imageList.length > 0) {
+           refHtml += `<div class="ref-images-wrapper">`;
+           imageList.forEach(imgUrl => {
+               let cleanUrl = imgUrl.trim();
+               if (cleanUrl) {
+                   // onclick="openLightbox(...)" 負責打開大圖
+                   refHtml += `
+                       <div class="ref-image-container" onclick="openLightbox('${cleanUrl}')">
+                           <img src="${cleanUrl}" class="ref-thumbnail" alt="點擊放大" 
+                                onerror="this.parentElement.style.display='none'" />
+                           <div style="text-align:center; color:#aaa; font-size:12px; padding:5px; background:#222;">
+                               🔍 點擊圖片放大
+                           </div>
+                       </div>`;
+               }
+           });
+           refHtml += `</div>`;
+       }
+   
+       refDiv.innerHTML = refHtml;
+   
+       // 3. 渲染檢核列表 (保持不變)
+       const listDiv = document.getElementById('checklistDynamicContainer');
+       listDiv.innerHTML = ''; 
+       currentCheckData.checklists = data.checklists || [];
+   
+       if (currentCheckData.checklists.length === 0) {
+           listDiv.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">無需檢核，請直接下一步</div>';
+           return;
+       }
+   
+       currentCheckData.checklists.forEach((item, index) => {
+           const itemHtml = `
+               <div class="check-item-card" id="checkItem_${index}">
+                   <div class="check-item-header">
+                       <div class="check-desc">
+                           <span style="color:var(--game-accent); font-weight:bold; margin-right:5px;">${index + 1}.</span>
+                           ${escapeHtml(item.itemTitle || item.description)}
+                       </div>
+                       <div class="status-toggle">
+                           <button class="status-btn pass active" onclick="toggleCheckStatus(${index}, 'pass')">✅ 符合</button>
+                           <button class="status-btn fail" onclick="toggleCheckStatus(${index}, 'fail')">⚠️ 未符合</button>
+                       </div>
+                   </div>
+                   <div class="improvement-box" id="improvementBox_${index}">
+                       <label style="font-size:12px; color:#ef4444; margin-bottom:4px; display:block;">錯誤原因 / 修正說明：</label>
+                       <textarea class="improvement-input" id="improveInput_${index}" 
+                           placeholder="請記錄哪裡與參考答案不符，以及您做了什麼修正..." rows="2"></textarea>
+                   </div>
+               </div>
+           `;
+           listDiv.insertAdjacentHTML('beforeend', itemHtml);
+       });
+   }
+   
+   // --- 圖片放大功能 ---
+   
+   window.openLightbox = function(url) {
+       const lightbox = document.getElementById('imageLightbox');
+       const img = document.getElementById('lightboxImage');
+       if (lightbox && img) {
+           img.src = url;
+           lightbox.classList.add('active'); // 顯示燈箱
+       }
+   };
+   
+   window.closeLightbox = function() {
+       const lightbox = document.getElementById('imageLightbox');
+       if (lightbox) {
+           lightbox.classList.remove('active'); // 隱藏燈箱
+           setTimeout(() => {
+               const img = document.getElementById('lightboxImage');
+               if(img) img.src = ''; 
+           }, 300);
+       }
+   };
 
     /**
      * 切換單項檢核狀態
@@ -3017,5 +3062,6 @@
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
