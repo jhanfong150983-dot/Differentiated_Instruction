@@ -1953,7 +1953,7 @@
     // ==========================================
 
     /**
-     * 開啟任務詳情 Modal
+     * 開啟任務詳情 Modal (已移除連結區塊顯示邏輯)
      */
     window.openTaskModal = function(task, progress) {
         selectedTask = task;
@@ -1961,18 +1961,23 @@
         const modal = document.getElementById('taskModal');
         if (!modal) return;
 
-        // --- 1. 填入任務基本資訊 ---
-        document.getElementById('modalTaskName').textContent = task.name || task.taskName;
+        // --- 1. 填入任務基本資訊 (使用 ?. 安全讀取) ---
+        const nameEl = document.getElementById('modalTaskName');
+        if (nameEl) nameEl.textContent = task.name || task.taskName;
 
         let taskTypeName = '教學';
         if (task.type === 'practice') taskTypeName = '練習';
         else if (task.type === 'assessment') taskTypeName = '評量';
 
-        document.getElementById('modalTaskType').textContent = taskTypeName;
-        document.getElementById('modalTaskTier').textContent = task.tier === 'mixed' ? selectedTier : task.tier;
-        document.getElementById('modalTaskReward').textContent = `💰 ${task.tokenReward || 0} 代幣`;
+        const typeEl = document.getElementById('modalTaskType');
+        const tierEl = document.getElementById('modalTaskTier');
+        const rewardEl = document.getElementById('modalTaskReward');
 
-        // --- 2. 處理任務內容與連結 ---
+        if (typeEl) typeEl.textContent = taskTypeName;
+        if (tierEl) tierEl.textContent = task.tier === 'mixed' ? (selectedTier || '混合') : task.tier;
+        if (rewardEl) rewardEl.textContent = `💰 ${task.tokenReward || 0} 代幣`;
+
+        // --- 2. 處理任務內容與連結數據 ---
         let taskContent = '';
         let taskLink = '';
 
@@ -1992,74 +1997,53 @@
             taskLink = task.link || '';
         }
 
-        // 顯示內容區塊
+        // --- 3. 顯示文字內容區塊 ---
         const contentSection = document.getElementById('modalContentSection');
-        const linkSection = document.getElementById('modalLinkSection');
         const contentText = document.getElementById('modalTaskContent');
-        const linkEl = document.getElementById('modalTaskLink');
 
-        if (taskContent) {
-            contentSection.style.display = 'block';
-            contentText.textContent = taskContent;
-        } else {
-            // 如果沒內容但有連結，還是顯示區塊文字為暫無內容，避免全空
-            contentSection.style.display = 'block';
-            contentText.textContent = '暫無詳細說明';
+        // 防呆：確保 HTML 元素存在
+        if (contentSection && contentText) {
+            contentSection.style.display = 'block'; // 永遠顯示內容區塊
+            contentText.textContent = taskContent || '暫無詳細說明';
         }
 
-        // Modal 裡面的靜態連結顯示邏輯 (可選：是否要一開始就讓學生看到連結?)
-        // 這裡維持你原本的邏輯：有連結就顯示
-        if (taskLink) {
-            linkSection.style.display = 'block';
-            linkEl.href = taskLink;
-            linkEl.textContent = '開啟任務連結 →';
-        } else {
-            linkSection.style.display = 'none';
-        }
+        // ❌ 已移除：原本這裡有控制 modalLinkSection 的程式碼，現在刪掉了，
+        // 這樣就不會因為找不到 HTML 而報錯。
 
-
-        // --- 3. 按鈕狀態控制 (這是你要修改的核心) ---
+        // --- 4. 按鈕狀態控制 ---
         const startBtn = document.getElementById('startTaskBtn');
         const completeBtn = document.getElementById('completeTaskBtn');
         const reopenBtn = document.getElementById('reopenMaterialBtn');
 
-        // 先重置所有按鈕為隱藏 (初始化)
+        // 先重置所有按鈕 (如果按鈕存在)
         if (startBtn) startBtn.style.display = 'none';
         if (completeBtn) completeBtn.style.display = 'none';
         if (reopenBtn) reopenBtn.style.display = 'none';
 
+        // 檢查是否有連結 (雖然不顯示在 Modal 內，但「重新打開教材」按鈕可能還是需要它)
         const hasMaterialLink = taskLink && taskLink.trim() !== '';
 
-        // 根據進度狀態決定顯示哪個按鈕
+        // 根據進度顯示
         if (progress.status === 'completed') {
             // [已完成]
-            // 隱藏開始、隱藏完成
-            // 顯示重新打開 (如果有連結)
             if (hasMaterialLink && reopenBtn) reopenBtn.style.display = 'inline-block';
 
-        } else if (progress.status === 'pending_review') {
-            // [待審核]
-            // 隱藏開始、隱藏完成
-            // 顯示重新打開 (如果有連結) - 方便學生複習
+        } else if (progress.status === 'pending_review' || progress.status === 'self_checking') {
+            // [待審核 / 自主檢查中]
             if (hasMaterialLink && reopenBtn) reopenBtn.style.display = 'inline-block';
 
         } else if (progress.status === 'in_progress') {
             // [進行中]
-            // 隱藏開始
-            // 顯示完成按鈕
             if (completeBtn) completeBtn.style.display = 'inline-block';
-            // 顯示重新打開 (如果有連結) - 因為已經開始了
             if (hasMaterialLink && reopenBtn) reopenBtn.style.display = 'inline-block';
 
         } else {
-            // [未開始] (預設狀態)
-            // 顯示開始按鈕
+            // [未開始]
             if (startBtn) {
                 startBtn.style.display = 'inline-block';
                 startBtn.disabled = false;
                 startBtn.textContent = '開始任務';
             }
-            // ❌ 這裡不顯示 reopenBtn，達成你的需求：開始前看不到按鈕
         }
 
         modal.classList.add('active');
