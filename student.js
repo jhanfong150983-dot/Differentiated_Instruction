@@ -2396,7 +2396,6 @@
       
           const startBtn = document.getElementById('startTaskBtn');
           const reopenBtn = document.getElementById('reopenMaterialBtn');
-          // ✅ 新增：取得提交按鈕
           const completeBtn = document.getElementById('completeTaskBtn'); 
       
           // 防呆：如果按鈕不存在就不往下執行 UI 操作
@@ -2452,7 +2451,8 @@
                   const params = new URLSearchParams({
                       action: 'startTask',
                       userEmail: currentStudent.email,
-                      taskId: selectedTask.taskId
+                      taskId: selectedTask.taskId,
+                      classId: selectedClass.classId
                   });
       
                   APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId });
@@ -3062,6 +3062,7 @@
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
