@@ -28,7 +28,7 @@ const APP_CONFIG = {
    * 3. 部署 → 管理部署作業
    * 4. 複製網址貼到這裡
    */
-  API_URL: 'https://script.google.com/macros/s/AKfycbwngAD79VvvM2znovJeclK6mQlYk2cwF4v3xp7Ffuq8BxwkZxqEgm3AzMgjoAZIV-ghxw/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbyGjDb69iAKjqPYImrXPnoIe6nAifO5UevXHdO05aEAhOjCm3RNoobEDpEqg_kEu6e_qQ/exec',
   
   
   // ==========================================
@@ -190,6 +190,7 @@ if (!APP_CONFIG.isDevelopment()) {
   Object.freeze(APP_CONFIG);
 
 }
+
 
 
 
