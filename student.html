@@ -778,9 +778,10 @@
         }
 
         #selfCheckModal .modal-body {
-            height: 70vh; /* 固定高度 (螢幕的 70%) */
+            height: 70vh; /* 固定佔螢幕 70% 高度 */
+            max-height: 800px; /* 避免在大螢幕太高 */
             padding: 0;   /* 清除內距，讓左右欄位滿版 */
-            overflow: hidden; /* 隱藏外層捲軸 */
+            overflow: hidden; /* 隱藏外層捲軸，避免雙重捲軸 */
             display: flex;
             flex-direction: column;
         }
@@ -956,7 +957,9 @@
         .self-check-layout {
             display: flex;
             flex-direction: row; /* 左右排列 */
-            height: 100%;        /* 填滿高度 */
+            height: 100%;        /* 🔥 關鍵：填滿父容器高度 */
+            width: 100%;
+            overflow: hidden;    /* 確保內容不溢出這個容器 */
         }
 
         @media (min-width: 768px) {
@@ -968,18 +971,19 @@
 
         /* 左側：參考答案區 */
         .ref-section {
-            flex: 1.6; /* 🔥 調整比例：佔約 62% 寬度 */
+            flex: 1; /* 🔥 回歸 50% */
+            height: 100%; /* 🔥 關鍵：強迫高度受限 */
             background: var(--game-bg-medium);
             padding: 20px;
-            overflow-y: auto; /* ✅ 內容多時，只有這裡會捲動 */
+            overflow-y: auto; /* 🔥 關鍵：內容多時，這裡出現捲軸 */
             border-right: 1px solid var(--game-border);
             
-            /* 文字排版優化 */
-            white-space: pre-wrap; /* ✅ 關鍵：保留 Sheet 裡的換行 */
-            line-height: 1.8;      /* 增加行高，閱讀更舒適 */
-            font-size: 15px;       /* 字體適中 */
+            /* 文字排版 */
+            white-space: pre-wrap;
+            line-height: 1.8;
+            font-size: 15px;
             color: var(--game-text-light);
-            text-align: justify;   /* 左右對齊，看起來較整齊 */
+            text-align: justify;
         }
 
         .ref-image-container {
@@ -987,14 +991,16 @@
             border: 1px solid var(--game-border);
             border-radius: 8px;
             overflow: hidden;
-            cursor: zoom-in; /* 滑鼠游標變放大鏡 */
+            cursor: zoom-in;
             background: #000;
             transition: transform 0.2s;
+            /* 防止圖片容器被撐大導致跑版 */
+            flex-shrink: 0;
         }
 
         .ref-image-container:hover {
-            border-color: var(--game-accent);
-            transform: translateY(-2px);
+           border-color: var(--game-accent);
+           transform: translateY(-2px);
         }
         
         .ref-thumbnail {
@@ -1040,11 +1046,11 @@
         
         /* 右側：檢核清單區 */
         .checklist-section {
-            flex: 1; /* 🔥 調整比例：佔約 38% 寬度 */
+            flex: 1; /* 🔥 回歸 50% */
+            height: 100%; /* 🔥 關鍵：強迫高度受限 */
             padding: 20px;
-            overflow-y: auto; /* ✅ 這裡也可以獨立捲動 */
+            overflow-y: auto; /* 🔥 關鍵：內容多時，這裡出現捲軸 */
             background: var(--game-bg-dark);
-            box-shadow: inset 10px 0 20px -10px rgba(0,0,0,0.3); /* 加點陰影區隔 */
         }
 
         /* 單個檢核項目卡片 */
@@ -1383,5 +1389,6 @@
     <script src="student.js"></script>
 </body>
 </html>
+
 
 
