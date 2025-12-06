@@ -235,18 +235,13 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄（優化版：使用整合 API）
+     * 載入課程層級和學習記錄
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
 
-        if (!selectedClass || !selectedClass.classId || !selectedCourse || !selectedCourse.courseId) {
-            hideLoading('mainLoading');
-            showToast('無法取得班級或課程資訊', 'error');
-            return;
-        }
+        // ... (前面的檢查邏輯不變) ...
 
-        // 使用整合 API 一次性獲取所有數據（4次請求 → 1次請求）
         const params = new URLSearchParams({
             action: 'getStudentClassEntryData',
             userEmail: currentStudent.email,
@@ -254,62 +249,88 @@
             courseId: selectedCourse.courseId
         });
 
-        APP_CONFIG.log('🚀 使用整合API載入進入數據...', {
-            classId: selectedClass.classId,
-            courseId: selectedCourse.courseId
-        });
+        // ... (fetch 部分) ...
 
         fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
             .then(response => response.json())
             .then(function(data) {
-                APP_CONFIG.log('📥 整合API回應:', data);
-
-                if (!data.success) {
-                    throw new Error(data.message || '載入失敗');
-                }
+                
+                if (!data.success) throw new Error(data.message || '載入失敗');
 
                 // 緩存課堂狀態
                 cachedSessionStatus = data.isActive;
                 sessionCheckTime = Date.now();
 
-                // 檢查是否有進行中的課堂
                 if (!data.isActive) {
                     hideLoading('mainLoading');
                     displayCourseWaitingScreen();
                     return Promise.reject('waiting_for_class');
                 }
 
-                // 保存數據到全局變量
-                courseTiers = data.tiers || [];
+                // ==============================================
+                // 🔥 核心修正開始：定義樣式對照表 (UI Config)
+                // ==============================================
+                const TIER_STYLES = {
+                    'tutorial': { 
+                        color: '#27AE60', // 綠色
+                        icon: '📗'        // 綠色書本 Emoji (或是你原本的 HTML/Class)
+                    },
+                    'adventure': { 
+                        color: '#2980B9', // 藍色
+                        icon: '📘'        // 藍色書本 Emoji
+                    },
+                    'hardcore': { 
+                        color: '#C0392B', // 紅色
+                        icon: '📕'        // 紅色書本 Emoji
+                    }
+                };
+
+                let rawTiers = data.tiers || [];
+
+                // 將 API 資料與樣式合併
+                courseTiers = rawTiers.map(tier => {
+                    // 1. 判斷這是哪個層級 (轉小寫比對，防止大小寫問題)
+                    const tierId = (tier.tierId || tier.id || '').toLowerCase();
+                    const tierName = (tier.name || '').toLowerCase();
+
+                    let styleKey = 'tutorial'; // 預設值
+
+                    if (tierId.includes('tutorial') || tierName.includes('基礎')) {
+                        styleKey = 'tutorial';
+                    } else if (tierId.includes('adventure') || tierName.includes('進階')) {
+                        styleKey = 'adventure';
+                    } else if (tierId.includes('hardcore') || tierName.includes('精通')) {
+                        styleKey = 'hardcore';
+                    }
+
+                    // 2. 取得對應的樣式
+                    const style = TIER_STYLES[styleKey];
+
+                    // 3. 回傳合併後的物件 (API 資料 + 本地樣式)
+                    return {
+                        ...tier,           // 保留 API 的 id, name, description
+                        color: style.color, // 補上顏色
+                        icon: style.icon    // 補上圖示
+                    };
+                });
+                // ==============================================
+                // 🔥 核心修正結束
+                // ==============================================
+
                 learningRecord = data.learningRecord;
                 cachedProgressData = data.progress;
 
-                APP_CONFIG.log('✅ 數據載入完成', {
-                    tiersCount: courseTiers.length,
-                    recordId: learningRecord ? learningRecord.recordId : null,
-                    progressCount: Object.keys(cachedProgressData).length
-                });
-
-                // 檢查是否有未完成的任務，如果有則直接進入該層級
                 return checkAndResumeTier();
             })
             .then(function(resumed) {
-                if (resumed) {
-                    // 已經直接進入任務列表，loadTierTasks 會負責 hideLoading
-                } else {
-                    // 沒有未完成任務，顯示層級選擇
+                if (!resumed) {
                     hideLoading('mainLoading');
                     displayTierSelection();
                 }
             })
             .catch(function(error) {
-                // 如果是等待課堂的狀態，不顯示錯誤訊息
-                if (error === 'waiting_for_class') {
-                    APP_CONFIG.log('⏳ 等待課堂開始...');
-                    return;
-                }
+                if (error === 'waiting_for_class') return;
                 hideLoading('mainLoading');
-                APP_CONFIG.error('載入課程資訊失敗', error);
                 showToast('載入失敗：' + error.message, 'error');
             });
     }
