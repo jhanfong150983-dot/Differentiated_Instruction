@@ -871,7 +871,7 @@ function saveReferenceToBackend() {
 }
 
 /**
- * 使用 POST 將圖片(base64)上傳到後端,後端會儲存到 Google Drive 並回傳可嵌入的連結
+ * 使用 GET + JSONP 方式上傳圖片(完全避開 CORS)
  */
 function handleUploadReferenceImages() {
     const input = document.getElementById('editorImageFiles');
@@ -882,79 +882,122 @@ function handleUploadReferenceImages() {
 
     const files = Array.from(input.files);
     let uploadedCount = 0;
+    let totalFiles = files.length;
+    
+    showToast(`準備上傳 ${totalFiles} 張圖片...`, 'info');
     
     // 逐一上傳
-    files.forEach(file => {
+    files.forEach((file, index) => {
+        // 檢查檔案大小(限制 1MB,因為要透過 URL 傳送)
+        if (file.size > 1 * 1024 * 1024) {
+            showToast(`檔案「${file.name}」過大(超過1MB),請壓縮後再上傳`, 'warning');
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = function(e) {
-            const dataUrl = e.target.result; // data:<mime>;base64,xxxx
+            const dataUrl = e.target.result;
             const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
             if (!matches) {
-                showToast('檔案讀取失敗:格式不正確', 'error');
+                showToast(`檔案「${file.name}」格式錯誤`, 'error');
                 return;
             }
             const mime = matches[1];
             const b64 = matches[2];
 
-            showLoading('taskLoading');
+            if (index === 0) showLoading('taskLoading');
             
-            // 使用 FormData 來發送 POST 請求
-            const payload = {
-                action: 'uploadReferenceImage',
-                fileName: file.name,
-                fileData: b64,
-                fileMime: mime
-            };
-
-            fetch(APP_CONFIG.API_URL, {
-                method: 'POST',
-                mode: 'cors',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload)
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(resp => {
-                hideLoading('taskLoading');
-                
-                if (resp && resp.success && resp.url) {
+            // 使用 JSONP 方式上傳
+            uploadImageViaJSONP(file.name, b64, mime, function(success, url, message) {
+                if (success && url) {
                     // 把回傳連結加入到 textarea
                     const ta = document.getElementById('editorReferenceImages');
                     if (ta.value && ta.value.trim() !== '') {
-                        ta.value = ta.value.trim() + '\n' + resp.url;
+                        ta.value = ta.value.trim() + '\n' + url;
                     } else {
-                        ta.value = resp.url;
+                        ta.value = url;
                     }
 
                     // 顯示預覽
-                    addImagePreview(resp.url);
+                    addImagePreview(url);
                     
                     uploadedCount++;
-                    showToast(`圖片上傳成功 (${uploadedCount}/${files.length})`, 'success');
+                    
+                    if (uploadedCount === totalFiles) {
+                        hideLoading('taskLoading');
+                        showToast(`✅ 全部 ${totalFiles} 張圖片上傳完成!`, 'success');
+                    } else {
+                        showToast(`上傳進度: ${uploadedCount}/${totalFiles}`, 'info');
+                    }
                 } else {
-                    console.error('uploadReferenceImage 回應:', resp);
-                    showToast(resp.message || '上傳失敗', 'error');
+                    hideLoading('taskLoading');
+                    showToast(message || `圖片「${file.name}」上傳失敗`, 'error');
                 }
-            })
-            .catch(err => {
-                hideLoading('taskLoading');
-                console.error('上傳錯誤:', err);
-                showToast('上傳失敗:' + err.message, 'error');
             });
         };
         
         reader.onerror = function() {
-            showToast('檔案讀取失敗', 'error');
+            showToast(`檔案「${file.name}」讀取失敗`, 'error');
         };
         
         reader.readAsDataURL(file);
     });
+}
+
+/**
+ * 使用 JSONP 上傳(真正的 GET 請求,完全避開 CORS)
+ */
+function uploadImageViaJSONP(fileName, base64Data, mimeType, callback) {
+    // 建立唯一的 callback 函數名稱
+    const callbackName = 'uploadCallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    // 註冊全域 callback
+    window[callbackName] = function(response) {
+        // 清理
+        delete window[callbackName];
+        
+        if (response && response.success && response.url) {
+            callback(true, response.url, null);
+        } else {
+            callback(false, null, response.message || '上傳失敗');
+        }
+    };
+    
+    // 建立 GET 請求參數
+    const params = new URLSearchParams({
+        action: 'uploadReferenceImage',
+        fileName: fileName,
+        fileData: base64Data,
+        fileMime: mimeType,
+        callback: callbackName  // JSONP callback 參數
+    });
+    
+    // 建立 script 標籤來發送 GET 請求(不會觸發 CORS)
+    const script = document.createElement('script');
+    script.src = `${APP_CONFIG.API_URL}?${params.toString()}`;
+    
+    script.onerror = function() {
+        delete window[callbackName];
+        callback(false, null, '網路請求失敗');
+        script.remove();
+    };
+    
+    // 設定超時
+    const timeout = setTimeout(() => {
+        if (window[callbackName]) {
+            delete window[callbackName];
+            callback(false, null, '上傳逾時(超過30秒)');
+        }
+        script.remove();
+    }, 30000); // 30 秒超時
+    
+    script.onload = function() {
+        clearTimeout(timeout);
+        // 延遲移除,確保 callback 已執行
+        setTimeout(() => script.remove(), 100);
+    };
+    
+    document.head.appendChild(script);
 }
 
 function addImagePreview(url) {
