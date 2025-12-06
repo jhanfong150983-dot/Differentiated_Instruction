@@ -347,6 +347,7 @@ function displayTasks(tasks) {
                </div>
            </div>
            <div class="task-actions">
+               <button class="btn-icon" onclick="openTaskEditor('${task.taskId}')">📚</button>
                <button class="btn-icon" onclick="editTask('${task.taskId}')">✏️</button>
                <button class="btn-icon" onclick="deleteTask('${task.taskId}', '${escapeHtml(task.taskName || task.name || '')}')">🗑️</button>
            </div>
