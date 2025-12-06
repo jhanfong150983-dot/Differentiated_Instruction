@@ -1196,6 +1196,89 @@
             from { opacity: 0; }
             to { opacity: 1; }
         }
+
+        /* =======================================================
+           自主檢查 Modal - 捲動衝突終極修復
+           ======================================================= */
+        
+        /* 1. 針對這個特定的 Modal，關閉最外層 (.modal-content) 的捲動 */
+        #selfCheckModal .modal-content {
+            overflow: hidden !important;   /* 🔥 關鍵：禁止外層產生捲軸 */
+            height: 85vh !important;       /* 🔥 關鍵：鎖定一個固定高度 */
+            display: flex !important;      /* 讓內部可以用 Flex 排版 */
+            flex-direction: column !important;
+            padding: 0 !important;         /* 移除內距，交給內部控制 */
+        }
+        
+        /* 2. 確保 Modal Header 不會被壓縮 */
+        #selfCheckModal .modal-header {
+            flex-shrink: 0 !important;     /* 禁止 Header 被擠扁 */
+            padding: 20px 30px !important; /* 補回一些內距 */
+            margin: 0 !important;
+            border-bottom: 1px solid #ddd;
+            background: var(--game-bg-medium); /* 確保 Header 有背景色 */
+        }
+        
+        /* 3. Modal Body：填滿剩餘空間 */
+        #selfCheckModal .modal-body {
+            flex: 1 !important;            /* 🔥 自動填滿剩餘高度 */
+            height: auto !important;       /* 覆寫之前的固定高度，改用 flex 自適應 */
+            overflow: hidden !important;   /* 禁止 Body 本身捲動 */
+            padding: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        
+        /* 4. 佈局容器：填滿 Modal Body */
+        .self-check-layout {
+            flex: 1 !important;            /* 🔥 填滿父容器 */
+            display: flex !important;
+            flex-direction: row !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;      /* 防止溢出 */
+        }
+        
+        /* 5. 左側：參考資料 (50%) */
+        .ref-section {
+            flex: 1 !important;
+            height: 100% !important;       /* 填滿高度 */
+            overflow-y: auto !important;   /* 🔥 這裡產生捲軸 */
+            background: #f0f4f8;           /* 淺灰底色區隔 */
+            padding: 30px;                 /* 增加閱讀舒適度 */
+            border-right: 2px solid #ddd;
+            
+            /* 文字排版 */
+            white-space: pre-wrap !important;
+            line-height: 1.8 !important;
+            font-size: 16px;
+            text-align: justify;
+            color: #333;                   /* 確保深色文字易讀 */
+        }
+        
+        /* 6. 右側：檢核清單 (50%) */
+        .checklist-section {
+            flex: 1 !important;
+            height: 100% !important;       /* 填滿高度 */
+            overflow-y: auto !important;   /* 🔥 這裡產生捲軸 */
+            background: #fff;
+            padding: 30px;
+        }
+        
+        /* 手機版適配 */
+        @media (max-width: 768px) {
+            .self-check-layout {
+                flex-direction: column !important;
+            }
+            .ref-section {
+                height: 50% !important;
+                border-right: none !important;
+                border-bottom: 2px solid #ddd;
+            }
+            .checklist-section {
+                height: 50% !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1389,6 +1472,7 @@
     <script src="student.js"></script>
 </body>
 </html>
+
 
 
 
