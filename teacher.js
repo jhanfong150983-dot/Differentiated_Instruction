@@ -333,6 +333,9 @@ function displayClasses(classes) {
                 <button class="btn btn-secondary" onclick="event.stopPropagation(); viewClassMembers('${classData.classId}', '${escapeHtml(classData.className)}')">
                     👀 查看名單
                 </button>
+                <button class="btn btn-secondary" onclick="event.stopPropagation(); openCoTeacherModal('${classData.classId}', '${escapeHtml(classData.className)}')">
+                    👥 代課教師
+                </button>
             </div>
         `;
         
@@ -1327,3 +1330,4 @@ function handleSaveCoTeachers() {
             showToast('系統錯誤：' + err.message, 'error');
         });
 }
+
