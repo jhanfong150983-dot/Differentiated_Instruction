@@ -2537,105 +2537,113 @@
               });
       };
 
-        /**
- * 提交任務：進入自主檢查階段 (修復 btn is not defined 錯誤)
- */
-window.handleCompleteTask = function() {
-    if (!selectedTask) return;
-
-    const taskToSubmit = selectedTask;
-
-    if (!confirm('確定要提交此任務嗎？\n提交後將進行自主檢查，通過後才會獲得 ' + (taskToSubmit.tokenReward || 0) + ' 個代幣！')) {
-        return;
-    }
-
-    // 1. 定義按鈕變數
-    const completeBtn = document.getElementById('completeTaskBtn');
-    
-    // 2. 鎖定按鈕
-    if (completeBtn) {
-        completeBtn.disabled = true;
-        completeBtn.textContent = '處理中...';
-    }
-
-    const params = new URLSearchParams({
-        action: 'submitTask',
-        userEmail: currentStudent.email,
-        taskId: taskToSubmit.taskId,
-        classId: selectedClass.classId // ✅ 這裡有保留 classId，很好
-    });
-
-    APP_CONFIG.log('📤 提交任務...', { 
-        taskId: taskToSubmit.taskId,
-        classId: selectedClass.classId
-    });
-
-    // 使用重試機制
-    fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
-        .then(response => response.json())
-        .then(function(response) {
-            // 🔥 修正點 1：將 btn 改為 completeBtn，並加上存在檢查
-            if (completeBtn) {
-                completeBtn.disabled = false;
-                completeBtn.textContent = '提交完成';
-            }
-
-            APP_CONFIG.log('📥 提交任務回應:', response);
-
-            if (response.success) {
-                // 停止時間限制檢查
-                if (typeof stopTaskTimeLimitCheck === 'function') {
-                    stopTaskTimeLimitCheck();
-                }
-
-                // 關閉任務 Modal
-                closeTaskModal();
-
-                // 進入自主檢查階段
-                APP_CONFIG.log('🔄 進入自主檢查階段', response);
-                showToast('✅ 任務已提交，開始自主檢查...', 'success');
-
-                // 更新進度狀態為自主檢查中
-                if (currentTasksProgress) {
-                    currentTasksProgress[taskToSubmit.taskId] = { status: 'self_checking' };
-                }
-
-                // 呼叫自主檢查面板 (確保有傳入 taskId)
-                // 注意：後端 response.taskProgressId 必須要有回傳，否則這裡會 undefined
-                showSelfCheckPanel(response.taskProgressId || taskToSubmit.taskId, taskToSubmit.taskId);
-
-                // 重新顯示任務列表
-                try {
-                    if (typeof displayQuestList === 'function') {
-                        displayQuestList();
-                    }
-                } catch (error) {
-                    APP_CONFIG.error('顯示任務列表失敗', error);
-                }
-
-                // 太快的學生：在提交時建議提高難度
-                try {
-                    if (typeof checkAndSuggestDifficultyChange === 'function') {
-                        checkAndSuggestDifficultyChange(taskToSubmit, 'fast');
-                    }
-                } catch (error) {
-                    APP_CONFIG.error('檢查難度建議失敗', error);
-                }
-            } else {
-                showToast(response.message || '提交失敗', 'error');
-            }
-        })
-        .catch(function(error) {
-            // 🔥 修正點 2：將 btn 改為 completeBtn
-            if (completeBtn) {
-                completeBtn.disabled = false;
-                completeBtn.textContent = '提交完成';
-            }
-
-            APP_CONFIG.error('提交任務失敗', error);
-            showToast('提交失敗，請重試：' + error.message, 'error');
-        });
-};
+    /**
+    * 提交任務：智慧判斷下一步 (自主檢查 / 評量 / 直接完成)
+    */
+   window.handleCompleteTask = function() {
+       if (!selectedTask) return;
+   
+       const taskToSubmit = selectedTask;
+   
+       if (!confirm('確定要提交此任務嗎？')) {
+           return;
+       }
+   
+       const completeBtn = document.getElementById('completeTaskBtn');
+       
+       if (completeBtn) {
+           completeBtn.disabled = true;
+           completeBtn.textContent = '處理中...';
+       }
+   
+       const params = new URLSearchParams({
+           action: 'submitTask',
+           userEmail: currentStudent.email,
+           taskId: taskToSubmit.taskId,
+           classId: selectedClass.classId
+       });
+   
+       APP_CONFIG.log('📤 提交任務...', { taskId: taskToSubmit.taskId });
+   
+       fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
+           .then(response => response.json())
+           .then(function(response) {
+               
+               if (completeBtn) {
+                   completeBtn.disabled = false;
+                   completeBtn.textContent = '提交完成';
+               }
+   
+               APP_CONFIG.log('📥 提交回應:', response);
+   
+               if (response.success) {
+                   // 停止時間限制檢查
+                   if (typeof stopTaskTimeLimitCheck === 'function') stopTaskTimeLimitCheck();
+                   
+                   // 關閉任務詳情 Modal
+                   closeTaskModal();
+   
+                   // 更新前端進度ID (很重要，後續評量需要)
+                   if (response.taskProgressId) {
+                       currentCheckData.progressId = response.taskProgressId;
+                       currentCheckData.taskId = taskToSubmit.taskId;
+                   }
+   
+                   // 🔥 核心路由邏輯 🔥
+                   switch (response.nextStep) {
+                       case 'checklist':
+                           // 情況 A: 進入自主檢查
+                           showToast('✅ 任務已提交，請進行自主檢查...', 'success');
+                           if (currentTasksProgress) currentTasksProgress[taskToSubmit.taskId] = { status: 'self_checking' };
+                           showSelfCheckPanel(response.taskProgressId, taskToSubmit.taskId);
+                           break;
+   
+                       case 'assessment':
+                           // 情況 B: 跳過檢查，直接進入評量
+                           showToast('✅ 此任務無需檢查，直接進入評量！', 'success');
+                           if (currentTasksProgress) currentTasksProgress[taskToSubmit.taskId] = { status: 'self_checking' };
+                           
+                           // 先開啟 Modal (因為 loadAssessment 依賴 Modal 元素)
+                           // 我們這裡藉用 showSelfCheckPanel 但不 fetch 資料，或者手動開 Modal
+                           // 最簡單的方法：直接操作 Modal 顯示，然後 loadAssessment
+                           const modal = document.getElementById('selfCheckModal');
+                           if(modal) modal.style.display = 'flex';
+                           
+                           // 直接載入題目
+                           loadAssessment(response.scenarioType, response.question);
+                           break;
+   
+                       case 'completed':
+                           // 情況 C: 直接完成
+                           const rewardMsg = response.tokenReward ? `獲得 ${response.tokenReward} 代幣` : '';
+                           showToast(`🎉 任務完成！${rewardMsg}`, 'success');
+                           
+                           // 更新列表
+                           if (typeof displayQuestList === 'function') displayQuestList();
+                           if (typeof loadTierTasks === 'function') loadTierTasks(true);
+                           break;
+                   }
+   
+                   // 重新顯示任務列表 (確保狀態更新)
+                   try {
+                       if (typeof displayQuestList === 'function') displayQuestList();
+                   } catch (error) {
+                       console.error(error);
+                   }
+   
+               } else {
+                   showToast(response.message || '提交失敗', 'error');
+               }
+           })
+           .catch(function(error) {
+               if (completeBtn) {
+                   completeBtn.disabled = false;
+                   completeBtn.textContent = '提交完成';
+               }
+               APP_CONFIG.error('提交任務失敗', error);
+               showToast('提交失敗，請重試：' + error.message, 'error');
+           });
+   };
 
     // ==========================================
     // 工具函數
@@ -3245,6 +3253,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
