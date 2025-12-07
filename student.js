@@ -1942,87 +1942,154 @@
     // 任務 Modal
     // ==========================================
 
-      /**
-       * 開啟任務詳情 Modal (狀態回復版)
-       */
-      window.openTaskModal = function(task, progress) {
-          selectedTask = task;
-          const modal = document.getElementById('taskModal');
-          if (!modal) return;
-      
-          // ... (設定標題、內容等 UI 程式碼保持不變) ...
-          document.getElementById('modalTaskName').textContent = task.name || task.taskName;
-          // ...
-      
-          // --- 按鈕狀態控制 ---
-          const startBtn = document.getElementById('startTaskBtn');
-          const completeBtn = document.getElementById('completeTaskBtn');
-          const reopenBtn = document.getElementById('reopenMaterialBtn');
-          
-          // 隱藏所有按鈕
-          if (startBtn) startBtn.style.display = 'none';
-          if (completeBtn) completeBtn.style.display = 'none';
-          if (reopenBtn) reopenBtn.style.display = 'none';
-      
-          // 取得當前狀態
-          const currentStatus = progress ? progress.status : 'not_started';
-      
-          if (currentStatus === 'completed') {
-              // [已完成]
-              if (reopenBtn) reopenBtn.style.display = 'inline-block';
-              if (completeBtn) {
-                  completeBtn.style.display = 'inline-block';
-                  completeBtn.textContent = '已完成';
-                  completeBtn.disabled = true;
-                  completeBtn.className = 'btn btn-secondary';
-              }
-      
-          } else if (currentStatus === 'self_checking') {
-              // 🔥 [自主檢查中] - 關鍵邏輯 🔥
-              // 顯示「繼續檢查」按鈕
-              if (completeBtn) {
-                  completeBtn.style.display = 'inline-block';
-                  completeBtn.textContent = '📋 繼續自主檢查';
-                  completeBtn.className = 'btn btn-warning'; // 黃色提醒
-                  completeBtn.disabled = false;
-                  
-                  // 點擊後，不呼叫 submitTask，而是直接嘗試開啟檢查面板
-                  // 注意：因為我們不知道是 Checklist 還是 Assessment，
-                  // 最穩妥的方式是再次呼叫 submitTask (它會判斷 nextStep)
-                  // 或者直接開啟檢查面板 (通常先開這個，因為評量也是從這轉過去)
-                  
-                  completeBtn.onclick = function() {
-                      // 方法 A: 直接呼叫 submitTask 讓後端判斷 (最保險，但多一次請求)
-                      handleCompleteTask(); 
-                      
-                      // 方法 B: 如果你確定有緩存，可以直接 showSelfCheckPanel
-                      // showSelfCheckPanel(progress.taskProgressId, task.taskId);
-                  };
-              }
-              if (reopenBtn) reopenBtn.style.display = 'inline-block';
-      
-          } else if (currentStatus === 'in_progress') {
-              // [進行中]
-              if (completeBtn) {
-                  completeBtn.style.display = 'inline-block';
-                  completeBtn.textContent = '提交完成';
-                  completeBtn.className = 'btn btn-success';
-                  completeBtn.disabled = false;
-                  completeBtn.onclick = handleCompleteTask; // 正常提交流程
-              }
-              if (reopenBtn) reopenBtn.style.display = 'inline-block';
-      
-          } else {
-              // [未開始]
-              if (startBtn) {
-                  startBtn.style.display = 'inline-block';
-                  startBtn.disabled = false;
-                  startBtn.textContent = '開始任務';
-              }
-          }
-      
-          modal.classList.add('active');
-      };
+/**
+ * 開啟任務詳情 Modal (支援四狀態：進行中 / 自主檢查 / 評量 / 已完成)
+ */
+window.openTaskModal = function(task, progress) {
+    selectedTask = task; // 設定當前選中任務
+    const modal = document.getElementById('taskModal');
+    if (!modal) return;
+
+    // --- 1. 填入任務基本資訊 (UI 渲染) ---
+    const setText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+
+    setText('modalTaskName', task.name || task.taskName);
+
+    // 判斷任務類型顯示名稱
+    let taskTypeName = '教學';
+    if (task.type === 'practice') taskTypeName = '練習';
+    else if (task.type === 'assessment') taskTypeName = '評量';
+
+    // 處理混合層級顯示
+    let displayTier = task.tier;
+    if (task.tier === 'mixed') {
+        displayTier = selectedTier || '混合';
+    }
+    
+    setText('modalTaskType', taskTypeName);
+    setText('modalTaskTier', displayTier);
+    setText('modalTaskReward', `💰 ${task.tokenReward || 0} 代幣`);
+
+    // --- 2. 處理任務內容說明 ---
+    let taskContent = '';
+    let taskLink = '';
+
+    if (task.tier === 'mixed') {
+        if (selectedTier === '基礎層' || selectedTier === 'tutorial') {
+            taskContent = task.tutorialDesc;
+            taskLink = task.tutorialLink;
+        } else if (selectedTier === '進階層' || selectedTier === 'adventure') {
+            taskContent = task.adventureDesc;
+            taskLink = task.adventureLink;
+        } else if (selectedTier === '精通層' || selectedTier === 'hardcore') {
+            taskContent = task.hardcoreDesc;
+            taskLink = task.hardcoreLink;
+        }
+    } else {
+        taskContent = task.content;
+        taskLink = task.link;
+    }
+
+    const contentSection = document.getElementById('modalContentSection');
+    const contentText = document.getElementById('modalTaskContent');
+
+    if (contentSection && contentText) {
+        contentSection.style.display = 'block';
+        contentText.textContent = taskContent || '暫無詳細說明';
+    }
+
+    // --- 3. 按鈕狀態控制 (核心邏輯) ---
+    const startBtn = document.getElementById('startTaskBtn');
+    const completeBtn = document.getElementById('completeTaskBtn');
+    const reopenBtn = document.getElementById('reopenMaterialBtn');
+    
+    // 初始化：先全部隱藏
+    if(startBtn) startBtn.style.display = 'none';
+    if(completeBtn) completeBtn.style.display = 'none';
+    if(reopenBtn) reopenBtn.style.display = 'none';
+
+    const hasMaterialLink = taskLink && taskLink.trim() !== '';
+    const currentStatus = progress ? progress.status : 'not_started';
+
+    // 依據四種狀態顯示對應按鈕
+    if (currentStatus === 'completed') {
+        // [狀態 4: 已完成]
+        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
+        
+        if (completeBtn) {
+            completeBtn.style.display = 'inline-block';
+            completeBtn.textContent = '已完成';
+            completeBtn.className = 'btn btn-secondary'; // 灰色
+            completeBtn.disabled = true; // 禁止點擊
+        }
+
+    } else if (currentStatus === 'assessment') {
+        // [狀態 3: 評量中] 🔥
+        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
+
+        if (completeBtn) {
+            completeBtn.style.display = 'inline-block';
+            completeBtn.textContent = '✍️ 繼續評量';
+            completeBtn.className = 'btn btn-warning'; // 黃色
+            completeBtn.disabled = false;
+            
+            // 點擊後：重新觸發 handleCompleteTask 流程
+            // 因為 handleCompleteTask 會呼叫 submitTask，後端會判斷 "HasQuestion" -> 回傳題目 -> 前端自動開評量
+            completeBtn.onclick = function() {
+                // 這裡我們可以做一個小優化：跳過 confirm 對話框，直接送出
+                // 但為了程式碼一致性，直接呼叫 handleCompleteTask 最穩
+                handleCompleteTask();
+            };
+        }
+
+    } else if (currentStatus === 'self_checking') {
+        // [狀態 2: 自主檢查中] 🔥
+        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
+        
+        if (completeBtn) {
+            completeBtn.style.display = 'inline-block';
+            completeBtn.textContent = '📋 繼續自主檢查';
+            completeBtn.className = 'btn btn-warning'; // 黃色
+            completeBtn.disabled = false;
+            
+            completeBtn.onclick = function() {
+                closeTaskModal();
+                // 直接打開檢查面板 (Checklist)
+                // 需確保有 progressId，若無則傳送 taskId 讓 function 內部處理
+                const pid = (progress && progress.taskProgressId) ? progress.taskProgressId : task.taskId;
+                showSelfCheckPanel(pid, task.taskId);
+            };
+        }
+
+    } else if (currentStatus === 'in_progress') {
+        // [狀態 1: 進行中]
+        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
+        
+        if (completeBtn) {
+            completeBtn.style.display = 'inline-block';
+            completeBtn.textContent = '提交完成';
+            completeBtn.className = 'btn btn-success'; // 綠色
+            completeBtn.disabled = false;
+            completeBtn.onclick = handleCompleteTask; // 標準提交流程
+        }
+
+    } else {
+        // [狀態 0: 未開始]
+        if (startBtn) {
+            startBtn.style.display = 'inline-block';
+            startBtn.disabled = false;
+            startBtn.textContent = '開始任務';
+            // onclick 已經在 HTML 中綁定 handleStartTask，或在此綁定
+            startBtn.onclick = handleStartTask;
+        }
+    }
+
+    // 顯示 Modal
+    modal.classList.add('active');
+};
 
     /**
      * 顯示「接續任務」Modal
@@ -2887,121 +2954,152 @@
    };
 
    /**
-    * 提交自主檢查 (修正版：正確收集 checklistData)
-    */
-   window.submitSelfCheck = function() {
-       const total = currentCheckData.checklists.length;
-       const submitBtn = document.getElementById('finishCheckBtn');
-       
-       // 準備要傳給後端的資料容器
-       const checklistData = [];
-       let hasFail = false;
-       let errorExplanation = ""; // 串接所有錯誤說明
-   
-       // --- 統一迴圈：檢查全選 + 驗證理由 + 收集資料 ---
-       for (let i = 0; i < total; i++) {
-           const status = currentCheckData.results ? currentCheckData.results[i] : null;
-           
-           // 1. 檢查是否未選
-           if (!status) {
-               showToast(`⚠️ 第 ${i + 1} 項尚未確認！請選擇符合或未符合。`, 'warning');
-               const el = document.getElementById(`checkItem_${i}`);
-               if (el) {
-                   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                   el.style.border = '2px solid #F59E0B';
-                   setTimeout(() => el.style.border = '1px solid var(--game-border)', 1000);
-               }
-               return; // 阻擋提交
-           }
-   
-           const isChecked = (status === 'pass');
-           const item = currentCheckData.checklists[i];
-           let reason = "";
-   
-           // 2. 如果是 Fail，檢查有無填寫理由
-           if (!isChecked) {
-               hasFail = true;
-               const input = document.getElementById(`improveInput_${i}`);
-               reason = input ? input.value.trim() : "";
-               
-               if (!reason) {
-                   showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
-                   if(input) input.focus();
-                   return; // 阻擋提交
-               }
-               
-               // 串接錯誤說明 (格式: [項目名]: 原因)
-               if (errorExplanation) errorExplanation += " | ";
-               errorExplanation += `[${item.itemTitle}]: ${reason}`;
-           }
-   
-           // 3. 🔥 關鍵：將資料加入 checklistData
-           checklistData.push({
-               checklistId: item.checklistId,
-               isChecked: isChecked
-           });
-       }
-   
-       // --- 發送請求 ---
-       if (submitBtn) {
-           submitBtn.disabled = true;
-           submitBtn.textContent = '處理中...';
-       }
-   
-       // 根據 hasFail 決定情境
-       const scenarioType = hasFail ? 'B' : 'A';
-       
-       const params = new URLSearchParams({
-           action: 'submitSelfCheck', 
-           taskProgressId: currentCheckData.progressId,
-           userEmail: currentStudent.email,
-           checklistData: JSON.stringify(checklistData), // 這裡現在有資料了！
-           scenarioType: scenarioType,
-           errorExplanation: errorExplanation
-       });
-   
-       APP_CONFIG.log('📤 提交自主檢查...', Object.fromEntries(params)); // Debug Log
+ * 提交自主檢查 (最終版：支援四狀態路由)
+ */
+window.submitSelfCheck = function() {
+    // 安全檢查：確保資料存在
+    if (!currentCheckData || !currentCheckData.checklists) {
+        console.error('無檢查資料');
+        return;
+    }
 
-      console.log('🚀 [Frontend Debug] 準備發送 API 請求:', Object.fromEntries(params));
+    const total = currentCheckData.checklists.length;
+    const submitBtn = document.getElementById('finishCheckBtn');
+    
+    // 準備資料容器
+    const checklistData = [];
+    let hasFail = false;
+    let errorExplanation = "";
 
-       // 4. 呼叫後端
-       fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-           .then(response => response.json())
-           .then(data => {
-               // 🔥🔥🔥 關鍵 Debug 點：印出後端回傳的原始資料 🔥🔥🔥
-               console.log('📥 [Frontend Debug] 後端 API 回傳原始資料:', data);
-   
-               if (data.success) {
-                   console.log('❓ [Frontend Debug] 檢查回傳的題目物件:', data.question);
-   
-                   if (!data.question) {
-                       console.error('❌ [Frontend Debug] 嚴重警告：data.question 為 null 或 undefined！後端沒抓到題目！');
-                   } else {
-                       console.log('✅ [Frontend Debug] 成功取得題目，準備載入...');
-                   }
-   
-                   currentCheckData.scenario = data.scenarioType; 
-                   currentCheckData.question = data.question; 
-                   
-                   loadAssessment(data.scenarioType, data.question);
-               } else {
-                   console.error('❌ [Frontend Debug] API 回傳 success: false', data.message);
-                   showToast(data.message || '提交失敗', 'error');
-                   if (submitBtn) {
-                       submitBtn.disabled = false;
-                       submitBtn.textContent = '完成檢查，進入評量 →';
-                   }
-               }
-           })
-           .catch(error => {
-               console.error('❌ [Frontend Debug] 網路或解析錯誤:', error);
-               showToast('連線錯誤，請重試', 'error');
-               if (submitBtn) {
-                   submitBtn.disabled = false;
-                   submitBtn.textContent = '完成檢查，進入評量 →';
-               }
-           });
-   };
+    // ============================================================
+    // 1. 統一迴圈：驗證全選 + 檢查理由 + 收集資料
+    // ============================================================
+    for (let i = 0; i < total; i++) {
+        // 取得該項目的狀態 (pass / fail / undefined)
+        const status = currentCheckData.results ? currentCheckData.results[i] : null;
+        
+        // 驗證 A: 是否未選擇
+        if (!status) {
+            showToast(`⚠️ 第 ${i + 1} 項尚未確認！請選擇符合或未符合。`, 'warning');
+            const el = document.getElementById(`checkItem_${i}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.style.border = '2px solid #F59E0B'; // 黃色邊框提示
+                setTimeout(() => el.style.border = '1px solid var(--game-border)', 1000);
+            }
+            return; // 阻擋提交
+        }
+
+        const isChecked = (status === 'pass');
+        const item = currentCheckData.checklists[i];
+        let reason = "";
+
+        // 驗證 B: 如果是 Fail，檢查有無填寫理由
+        if (!isChecked) {
+            hasFail = true;
+            const input = document.getElementById(`improveInput_${i}`);
+            reason = input ? input.value.trim() : "";
+            
+            if (!reason) {
+                showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
+                if(input) input.focus();
+                return; // 阻擋提交
+            }
+            
+            // 串接錯誤說明
+            if (errorExplanation) errorExplanation += " | ";
+            errorExplanation += `[${item.itemTitle}]: ${reason}`;
+        }
+
+        // 收集資料
+        checklistData.push({
+            checklistId: item.checklistId,
+            isChecked: isChecked
+        });
+    }
+
+    // ============================================================
+    // 2. 鎖定按鈕與準備參數
+    // ============================================================
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '處理中...';
+    }
+
+    // 根據有無錯誤決定情境 (A=完美, B=修正)
+    const scenarioType = hasFail ? 'B' : 'A';
+    
+    const params = new URLSearchParams({
+        action: 'submitSelfCheck', 
+        taskProgressId: currentCheckData.progressId,
+        userEmail: currentStudent.email,
+        checklistData: JSON.stringify(checklistData),
+        scenarioType: scenarioType,
+        errorExplanation: errorExplanation
+    });
+
+    console.log('🚀 [Frontend] 提交自主檢查:', Object.fromEntries(params));
+
+    // ============================================================
+    // 3. 發送請求與處理路由
+    // ============================================================
+    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+        .then(response => response.json())
+        .then(data => {
+            console.log('📥 [Frontend] 檢查回傳:', data);
+
+            if (data.success) {
+                // 更新本地暫存的情境
+                currentCheckData.scenario = data.scenarioType;
+
+                // 🔥🔥🔥 核心路由判斷 🔥🔥🔥
+                if (data.nextStep === 'assessment') {
+                    // 情況 1: 還有評量 -> 載入題目介面
+                    console.log('➡️ 進入評量階段');
+                    
+                    if (!data.question) {
+                        showToast('系統錯誤：找不到題目資料', 'error');
+                        return;
+                    }
+                    
+                    // 更新題目資料
+                    currentCheckData.question = data.question; 
+                    
+                    // 呼叫 loadAssessment 進行轉場
+                    loadAssessment(data.scenarioType, data.question);
+
+                } else if (data.nextStep === 'completed') {
+                    // 情況 2: 任務直接結束
+                    console.log('🎉 任務完成');
+                    
+                    showToast(data.message || '🎉 檢查完成，任務結束！', 'success');
+                    closeSelfCheckModal();
+                    
+                    // 重新整理外部列表
+                    setTimeout(() => {
+                        if (typeof loadTierTasks === 'function') loadTierTasks(true);
+                        if (typeof displayQuestList === 'function') displayQuestList();
+                    }, 500);
+                }
+
+            } else {
+                // 後端回傳失敗
+                showToast(data.message || '提交失敗', 'error');
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '完成檢查，進入評量 →';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('❌ [Frontend] 連線錯誤:', error);
+            showToast('連線錯誤，請重試', 'error');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '完成檢查，進入評量 →';
+            }
+        });
+};
    
    /**
     * 載入並顯示評量題目 (Debug 版)
@@ -3215,6 +3313,7 @@
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
