@@ -3138,20 +3138,20 @@ window.handleCompleteTask = function() {
    }
    
     /**
-    * 提交評量答案 (修正版：從 currentCheckData 讀取答案)
+    * 提交評量答案 (修正版：補上遺漏的 userEmail)
     */
    window.submitAssessmentAnswer = function() {
-       // 🔥 修正：從 currentCheckData 讀取
+       // 1. 檢查是否已選答案
        if (currentCheckData.selectedOptionIndex === null || currentCheckData.selectedOptionIndex === undefined) {
            showToast('請選擇一個答案', 'warning');
            return;
        }
    
-       // 獲取學生選擇的答案
+       // 2. 獲取答案內容
        const answerMap = ['A', 'B', 'C', 'D'];
-       // 🔥 修正：從 currentCheckData 讀取
        const myAnswer = answerMap[currentCheckData.selectedOptionIndex];
        
+       // 獲取題目 ID
        const quizQuestionId = currentCheckData.question ? currentCheckData.question.questionId : null;
        
        if (!quizQuestionId) {
@@ -3159,44 +3159,54 @@ window.handleCompleteTask = function() {
            return;
        }
    
-       // 鎖定按鈕
+       // 3. 鎖定按鈕
        const submitBtn = document.getElementById('submitAssessmentBtn');
        if (submitBtn) {
            submitBtn.disabled = true;
            submitBtn.textContent = '提交中...';
        }
    
-       // 準備參數
+       // 4. 準備參數 (🔥 這裡補上了 userEmail)
        const params = new URLSearchParams({
            action: 'submitAssessment',
            taskProgressId: currentCheckData.progressId,
            taskId: currentCheckData.taskId,
            questionId: quizQuestionId,
            studentAnswer: myAnswer,
-           scenario: currentCheckData.scenario // 使用之前存的 scenario
+           scenario: currentCheckData.scenario,
+           
+           // 👇👇👇 關鍵修正：補上這一行！ 👇👇👇
+           userEmail: currentStudent.email 
        });
    
+       // 補上 classId (保險起見)
        if (selectedClass && selectedClass.classId) {
            params.append('classId', selectedClass.classId);
        }
    
+       console.log('📤 [Frontend] 提交評量答案:', Object.fromEntries(params));
+   
+       // 5. 發送請求
        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
            .then(r => r.json())
            .then(data => {
+               console.log('📥 [Frontend] 評量結果:', data);
+               
                if (data.success) {
                    if (data.isCorrect) {
                        const tokenMsg = data.tokenReward ? `獲得 ${data.tokenReward} 代幣` : '';
-                       if (currentCheckData.scenario === 'B') { // 或是 check hasErrors
+                       if (currentCheckData.scenario === 'B') {
                            showToast(`🎉 答對了！獲得補救獎勵 ${tokenMsg}`, 'success');
                        } else {
                            showToast(`🎉 任務完成！${tokenMsg}`, 'success');
                        }
                    } else {
-                       showToast('❌ 答案錯誤，請重新複習任務內容。', 'error');
+                       showToast(data.message || '❌ 答案錯誤，請重新複習任務內容。', 'error');
                    }
    
                    closeSelfCheckModal();
                    
+                   // 重新整理列表
                    setTimeout(() => {
                        if (typeof loadTierTasks === 'function') loadTierTasks(true);
                        if (typeof displayQuestList === 'function') displayQuestList();
@@ -3212,7 +3222,7 @@ window.handleCompleteTask = function() {
            })
            .catch(err => {
                console.error(err);
-               showToast('系統錯誤', 'error');
+               showToast('系統錯誤，請檢查網路', 'error');
                if (submitBtn) {
                    submitBtn.disabled = false;
                    submitBtn.textContent = '提交答案';
@@ -3235,6 +3245,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
