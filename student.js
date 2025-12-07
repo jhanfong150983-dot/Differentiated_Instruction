@@ -2916,92 +2916,118 @@ window.handleCompleteTask = function() {
        currentCheckData.results[index] = status;
    };
 
-    /**
-    * 提交自主檢查 (最終修正版：全選驗證與修正說明檢查)
+   /**
+    * 提交自主檢查 (修正版：對接後端 submitSelfCheck API)
     */
    window.submitSelfCheck = function() {
        const total = currentCheckData.checklists.length;
-       let errors = [];
-       let isAllPass = true;
        const submitBtn = document.getElementById('finishCheckBtn');
        
-       // --- 1. 驗證所有項目是否都已選取 (解決誤判問題) ---
-       // 檢查 currentCheckData.results 裡是否每個索引 i 都有 'pass' 或 'fail' 的值
+       // 1. 驗證全選 (保持不變)
        for (let i = 0; i < total; i++) {
            if (!currentCheckData.results || !currentCheckData.results[i]) {
                showToast(`⚠️ 請確認所有 ${total} 個項目都已標記！`, 'warning');
-               
-               // 捲動到未選項目並給予視覺提示
                const el = document.getElementById(`checkItem_${i}`);
                if (el) {
                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                    el.style.border = '2px solid #F59E0B';
                    setTimeout(() => el.style.border = '1px solid var(--game-border)', 1000);
                }
-               return; // 阻擋提交
+               return;
            }
        }
-       
-       // --- 2. 檢查「未符合」項目是否有填寫說明 ---
+   
+       // 2. 收集資料 (準備傳給後端)
+       const checklistData = [];
+       let hasFail = false;
+       let errorExplanation = ""; // 如果有多個錯誤，串接起來
+   
        for (let i = 0; i < total; i++) {
-           // 統一透過 currentCheckData.results 檢查狀態
-           if (currentCheckData.results[i] === 'fail') {
-               isAllPass = false;
+           const status = currentCheckData.results[i];
+           const isChecked = (status === 'pass'); // true=pass, false=fail
+           const item = currentCheckData.checklists[i];
+           
+           // 檢查未符合項目的說明
+           if (!isChecked) {
+               hasFail = true;
                const input = document.getElementById(`improveInput_${i}`);
                const reason = input.value.trim();
                
-               // 判斷是否缺少修正說明
                if (!reason) {
                    showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
                    input.focus();
-                   return; // 阻擋提交
+                   return;
                }
                
-               // 記錄錯誤資訊
-               errors.push({
-                   checklistId: currentCheckData.checklists[i].checklistId,
-                   itemIndex: i,
-                   improvement: reason
-               });
+               // 串接錯誤說明 (格式: [項目名]: 原因)
+               if (errorExplanation) errorExplanation += " | ";
+               errorExplanation += `[${item.itemTitle}]: ${reason}`;
            }
+   
+           // 加入陣列
+           checklistData.push({
+               checklistId: item.checklistId,
+               isChecked: isChecked
+           });
        }
    
-       // --- 3. 處理後端記錄與轉場 ---
+       // 3. 鎖定按鈕
        if (submitBtn) {
            submitBtn.disabled = true;
-           submitBtn.textContent = '處理中...';
+           submitBtn.textContent = '提交中...';
        }
    
-       currentCheckData.hasErrors = !isAllPass;
+       // 4. 準備 API 參數
+       // 根據 hasFail 決定情境 (A=完美, B=修正)
+       const scenarioType = hasFail ? 'B' : 'A';
        
-       // Log Error
-       if (!isAllPass) {
-           APP_CONFIG.log('📝 記錄檢核修正項目', errors);
-           const params = new URLSearchParams({
-               action: 'logChecklistErrors', 
-               taskProgressId: currentCheckData.progressId,
-               errors: JSON.stringify(errors)
+       const params = new URLSearchParams({
+           action: 'submitSelfCheck', // 🔥 對應後端 case
+           taskProgressId: currentCheckData.progressId,
+           userEmail: currentStudent.email,
+           checklistData: JSON.stringify(checklistData), // 轉成 JSON 字串
+           scenarioType: scenarioType,
+           errorExplanation: errorExplanation // 傳送錯誤說明
+       });
+   
+       // 5. 呼叫後端
+       fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+           .then(response => response.json())
+           .then(data => {
+               if (data.success) {
+                   // 成功！後端回傳了題目 (data.question)
+                   // 儲存情境與題目
+                   currentCheckData.scenario = data.scenarioType; 
+                   currentCheckData.question = data.question; 
+                   
+                   // 進入評量階段 (傳入題目資料)
+                   loadAssessment(data.scenarioType, data.question);
+               } else {
+                   showToast(data.message || '提交失敗', 'error');
+                   if (submitBtn) {
+                       submitBtn.disabled = false;
+                       submitBtn.textContent = '完成檢查，進入評量 →';
+                   }
+               }
+           })
+           .catch(error => {
+               console.error(error);
+               showToast('連線錯誤，請重試', 'error');
+               if (submitBtn) {
+                   submitBtn.disabled = false;
+                   submitBtn.textContent = '完成檢查，進入評量 →';
+               }
            });
-           
-           fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-               .then(() => loadAssessment())
-               .catch((e) => {
-                   APP_CONFIG.log('Error logging checklist errors, proceeding anyway.', e);
-                   loadAssessment();
-               });
-       } else {
-           // 全對，直接轉場
-           loadAssessment();
-       }
    };
+   
    /**
-    * 載入並顯示評量題目 (極簡穩健版)
+    * 載入並顯示評量題目 (整合版)
     */
-   function loadAssessment(scenario) {
+   function loadAssessment(scenario, questionData) {
        // 1. 儲存情境
        currentCheckData.scenario = scenario;
    
-       // 2. UI 切換：簡單暴力的 display 切換
+       // 2. UI 切換 (包含 CSS 強制重置)
        const checkStage = document.getElementById('checkStageContainer');
        const assessmentStage = document.getElementById('assessmentStageContainer');
        const finishBtn = document.getElementById('finishCheckBtn');
@@ -3014,18 +3040,18 @@ window.handleCompleteTask = function() {
        // 顯示評量表
        if (assessmentStage) assessmentStage.style.display = 'block';
    
-       // 3. 確保 Modal 捲軸回到最上方 (因為是同一個視窗切換)
+       // 確保 Modal 捲軸回到最上方
        const modalBody = document.querySelector('#selfCheckModal .modal-body');
        if (modalBody) modalBody.scrollTop = 0;
    
-       // 4. 按鈕切換
+       // 3. 按鈕切換
        if (finishBtn) finishBtn.style.display = 'none';
        if (submitBtn) submitBtn.style.display = 'inline-block';
        if (cancelBtn) cancelBtn.style.display = 'none';
    
        document.getElementById('selfCheckTitle').textContent = '🧠 隨堂評量';
    
-       // 5. 顯示提示文字
+       // 4. 顯示提示文字
        const hintText = document.getElementById('assessmentHintText');
        if (scenario === 'B') {
            hintText.innerHTML = `💪 剛才雖然有小錯誤，但修正後就是學習！<br>請回答下列問題以完成任務。`;
@@ -3033,79 +3059,55 @@ window.handleCompleteTask = function() {
            hintText.innerHTML = `🎉 檢查完美通過！<br>請回答最後一個問題來領取獎勵。`;
        }
    
-       // 6. 載入題目 (邏輯不變)
-       const question = selectedTask.assessmentQuestion || "光敏電阻的 正極 應該要接在Arduino Uno的哪一個腳位?";
-       const options = selectedTask.assessmentOptions || ["5V", "數位腳位(D2~D13)", "GND", "類比腳位(A0~A5)"];
-       const correctAnswer = selectedTask.correctAnswer || "5V";
-       const questionId = selectedTask.questionId || "default_q_1"; 
+       // 5. 渲染題目 (這段取代了 renderAssessment)
+       if (questionData) {
+           currentCheckData.question = questionData;
+           
+           const qTextEl = document.getElementById('assessmentQuestionText');
+           const optionsEl = document.getElementById('assessmentOptionsContainer');
    
-       currentCheckData.question = {
-           questionId: questionId,
-           correctAnswer: correctAnswer
-       };
-   
-       const qTextEl = document.getElementById('assessmentQuestionText');
-       const optionsEl = document.getElementById('assessmentOptionsContainer');
-   
-       if (qTextEl) qTextEl.textContent = question;
-       if (optionsEl) {
-           optionsEl.innerHTML = '';
-           options.forEach((opt, idx) => {
-               const btn = document.createElement('div');
-               btn.className = 'assessment-option-btn';
-               btn.textContent = opt;
-               btn.onclick = function() {
-                   document.querySelectorAll('.assessment-option-btn').forEach(b => {
-                       b.style.borderColor = 'var(--game-border)';
-                       b.style.background = 'var(--game-bg-medium)';
-                       b.style.color = 'var(--game-text-light)';
-                   });
-                   this.style.borderColor = 'var(--game-accent)';
-                   this.style.background = 'rgba(245, 158, 11, 0.2)';
-                   this.style.color = 'white';
-                   selectedOptionIndex = idx;
-               };
-               optionsEl.appendChild(btn);
-           });
+           if (qTextEl) qTextEl.textContent = questionData.questionText;
+           
+           if (optionsEl) {
+               optionsEl.innerHTML = '';
+               // 後端回傳的是 options 陣列，這裡直接使用
+               const options = questionData.options || []; 
+               
+               options.forEach((opt, idx) => {
+                   const btn = document.createElement('div');
+                   btn.className = 'assessment-option-btn';
+                   btn.textContent = opt;
+                   
+                   // 這段取代了 selectOption
+                   btn.onclick = function() {
+                       // 1. 清除其他按鈕樣式
+                       document.querySelectorAll('.assessment-option-btn').forEach(b => {
+                           b.style.borderColor = 'var(--game-border)';
+                           b.style.background = 'var(--game-bg-medium)';
+                           b.style.color = 'var(--game-text-light)';
+                           b.classList.remove('selected');
+                       });
+                       
+                       // 2. 設定當前按鈕樣式
+                       this.style.borderColor = 'var(--game-accent)';
+                       this.style.background = 'rgba(245, 158, 11, 0.2)';
+                       this.style.color = 'white';
+                       this.classList.add('selected');
+                       
+                       // 3. 記錄選擇
+                       selectedOptionIndex = idx;
+                   };
+                   optionsEl.appendChild(btn);
+               });
+           }
+       } else {
+           showToast('無法載入題目資料', 'error');
        }
        
+       // 重置選擇狀態
        selectedOptionIndex = null;
    }
-
-    /**
-     * 渲染題目
-     */
-    function renderAssessment(question) {
-        currentCheckData.question = question;
-        document.getElementById('assessmentQuestionText').textContent = question.questionText || question.title;
-        
-        const optsDiv = document.getElementById('assessmentOptionsContainer');
-        optsDiv.innerHTML = '';
-
-        const options = [question.optionA, question.optionB, question.optionC, question.optionD].filter(o => o);
-
-        options.forEach((opt, idx) => {
-            // 將 A, B, C, D 轉為 0, 1, 2, 3
-            const btn = document.createElement('div');
-            btn.className = 'assessment-option-btn';
-            btn.textContent = opt;
-            btn.onclick = () => selectOption(btn, idx);
-            optsDiv.appendChild(btn);
-        });
-
-        document.getElementById('submitAssessmentBtn').style.display = 'inline-block';
-    }
-
-    let selectedOptionIndex = null;
-
-    function selectOption(btn, index) {
-        // 移除其他選取狀態
-        document.querySelectorAll('.assessment-option-btn').forEach(b => b.classList.remove('selected'));
-        // 選取當前
-        btn.classList.add('selected');
-        selectedOptionIndex = index;
-    }
-
+   
     /**
      * 提交評量答案 (最終提交)
      */
@@ -3192,6 +3194,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
