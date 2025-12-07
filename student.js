@@ -2917,46 +2917,47 @@ window.handleCompleteTask = function() {
    };
 
    /**
-    * 提交自主檢查 (修正版：對接後端 submitSelfCheck API)
+    * 提交自主檢查 (修正版：正確收集 checklistData)
     */
    window.submitSelfCheck = function() {
        const total = currentCheckData.checklists.length;
        const submitBtn = document.getElementById('finishCheckBtn');
        
-       // 1. 驗證全選 (保持不變)
+       // 準備要傳給後端的資料容器
+       const checklistData = [];
+       let hasFail = false;
+       let errorExplanation = ""; // 串接所有錯誤說明
+   
+       // --- 統一迴圈：檢查全選 + 驗證理由 + 收集資料 ---
        for (let i = 0; i < total; i++) {
-           if (!currentCheckData.results || !currentCheckData.results[i]) {
-               showToast(`⚠️ 請確認所有 ${total} 個項目都已標記！`, 'warning');
+           const status = currentCheckData.results ? currentCheckData.results[i] : null;
+           
+           // 1. 檢查是否未選
+           if (!status) {
+               showToast(`⚠️ 第 ${i + 1} 項尚未確認！請選擇符合或未符合。`, 'warning');
                const el = document.getElementById(`checkItem_${i}`);
                if (el) {
                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                    el.style.border = '2px solid #F59E0B';
                    setTimeout(() => el.style.border = '1px solid var(--game-border)', 1000);
                }
-               return;
+               return; // 阻擋提交
            }
-       }
    
-       // 2. 收集資料 (準備傳給後端)
-       const checklistData = [];
-       let hasFail = false;
-       let errorExplanation = ""; // 如果有多個錯誤，串接起來
-   
-       for (let i = 0; i < total; i++) {
-           const status = currentCheckData.results[i];
-           const isChecked = (status === 'pass'); // true=pass, false=fail
+           const isChecked = (status === 'pass');
            const item = currentCheckData.checklists[i];
-           
-           // 檢查未符合項目的說明
+           let reason = "";
+   
+           // 2. 如果是 Fail，檢查有無填寫理由
            if (!isChecked) {
                hasFail = true;
                const input = document.getElementById(`improveInput_${i}`);
-               const reason = input.value.trim();
+               reason = input ? input.value.trim() : "";
                
                if (!reason) {
                    showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
-                   input.focus();
-                   return;
+                   if(input) input.focus();
+                   return; // 阻擋提交
                }
                
                // 串接錯誤說明 (格式: [項目名]: 原因)
@@ -2964,43 +2965,40 @@ window.handleCompleteTask = function() {
                errorExplanation += `[${item.itemTitle}]: ${reason}`;
            }
    
-           // 加入陣列
+           // 3. 🔥 關鍵：將資料加入 checklistData
            checklistData.push({
                checklistId: item.checklistId,
                isChecked: isChecked
            });
        }
    
-       // 3. 鎖定按鈕
+       // --- 發送請求 ---
        if (submitBtn) {
            submitBtn.disabled = true;
-           submitBtn.textContent = '提交中...';
+           submitBtn.textContent = '處理中...';
        }
    
-       // 4. 準備 API 參數
-       // 根據 hasFail 決定情境 (A=完美, B=修正)
+       // 根據 hasFail 決定情境
        const scenarioType = hasFail ? 'B' : 'A';
        
        const params = new URLSearchParams({
-           action: 'submitSelfCheck', // 🔥 對應後端 case
+           action: 'submitSelfCheck', 
            taskProgressId: currentCheckData.progressId,
            userEmail: currentStudent.email,
-           checklistData: JSON.stringify(checklistData), // 轉成 JSON 字串
+           checklistData: JSON.stringify(checklistData), // 這裡現在有資料了！
            scenarioType: scenarioType,
-           errorExplanation: errorExplanation // 傳送錯誤說明
+           errorExplanation: errorExplanation
        });
    
-       // 5. 呼叫後端
+       APP_CONFIG.log('📤 提交自主檢查...', Object.fromEntries(params)); // Debug Log
+   
        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
            .then(response => response.json())
            .then(data => {
                if (data.success) {
-                   // 成功！後端回傳了題目 (data.question)
-                   // 儲存情境與題目
+                   // 成功，進入評量
                    currentCheckData.scenario = data.scenarioType; 
                    currentCheckData.question = data.question; 
-                   
-                   // 進入評量階段 (傳入題目資料)
                    loadAssessment(data.scenarioType, data.question);
                } else {
                    showToast(data.message || '提交失敗', 'error');
@@ -3194,6 +3192,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
