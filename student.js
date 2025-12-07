@@ -3015,9 +3015,11 @@ window.handleCompleteTask = function() {
        // 💥 3. 關鍵修正：重置 modal-body 的 Flexbox 樣式 💥
        if (modalBody) {
            // 清除 Flexbox 相關設定，讓它恢復標準的 block 模式
-           modalBody.style.flex = 'initial'; 
-           modalBody.style.height = 'initial'; 
-           modalBody.style.minHeight = 'initial'; 
+           modalBody.style.flex = 'initial';         // 清除 flex: 1 1 auto
+           modalBody.style.height = 'initial';       // 清除 height: 0
+           modalBody.style.minHeight = 'initial';    // 清除 min-height: 0
+           modalBody.style.display = 'block';        // 清除 display: flex
+           modalBody.style.flexDirection = 'initial';// 清除 flex-direction: column
            
            // 恢復捲動！讓整個 Modal 視窗可以捲動，而不是 Body 內部
            modalBody.style.overflow = 'auto'; // 或直接設置為 'initial'
@@ -3173,6 +3175,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
