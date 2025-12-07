@@ -1889,6 +1889,9 @@
         } else if (progress.status === 'in_progress') {
             statusBadge = '⏳ 進行中';
             statusClass = 'status-in-progress';
+        } else if (progress.status === 'assessment') {
+            statusBadge = '⏱️ 評量中';
+            statusClass = 'assessment';
         } else {
             statusBadge = '⭕ 未開始';
             statusClass = 'status-not-started';
@@ -3356,6 +3359,7 @@ window.submitSelfCheck = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
