@@ -3009,8 +3009,22 @@ window.handleCompleteTask = function() {
        // 假設 currentCheckData.scenario 已經設置
    
        // 2. UI 切換：徹底隱藏檢查表，顯示評量區
-       if (checkStage) checkStage.style.display = 'none';
-       if (assessmentStage) assessmentStage.style.display = 'block';
+       if (checkStage) {
+           checkStage.style.display = 'none';
+           
+           // 🔥 關鍵清除：確保不佔用任何空間 🔥
+           checkStage.style.height = '0';
+           checkStage.style.padding = '0';
+           checkStage.style.margin = '0';
+           checkStage.style.border = 'none';
+           
+           // 如果 checkStageContainer 內部使用了 Flexbox 分欄 (self-check-layout)，
+           // 確保它們也徹底隱藏
+           const layout = checkStage.querySelector('.self-check-layout');
+           if (layout) {
+                layout.style.display = 'none';
+           }
+       }
    
        // 💥 3. 關鍵修正：重置 modal-body 的 Flexbox 樣式 💥
        if (modalBody) {
@@ -3023,13 +3037,11 @@ window.handleCompleteTask = function() {
            
            // 恢復捲動！讓整個 Modal 視窗可以捲動，而不是 Body 內部
            modalBody.style.overflow = 'auto'; // 或直接設置為 'initial'
-           
-           // 恢復預設的 display block 模式
-           modalBody.style.display = 'block';
-           
            // 評量模式下，我們通常會恢復一些內邊距，讓內容看起來不貼邊
-           modalBody.style.padding = '20px'; 
+           modalBody.style.padding = '20px';
        }
+       
+       if (assessmentStage) assessmentStage.style.display = 'block';
        
        // 4. 按鈕切換 (保持不變)
        if (finishCheckBtn) finishCheckBtn.style.display = 'none';
@@ -3175,6 +3187,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
