@@ -3093,7 +3093,7 @@ window.handleCompleteTask = function() {
                        this.classList.add('selected');
                        
                        // 3. 記錄選擇
-                       selectedOptionIndex = idx;
+                       currentCheckData.selectedOptionIndex = idx;
                    };
                    optionsEl.appendChild(btn);
                });
@@ -3103,79 +3103,91 @@ window.handleCompleteTask = function() {
        }
        
        // 重置選擇狀態
-       selectedOptionIndex = null;
+       currentCheckData.selectedOptionIndex = null;
    }
    
     /**
-     * 提交評量答案 (最終提交)
-     */
-    window.submitAssessmentAnswer = function() {
-        if (selectedOptionIndex === null) {
-            showToast('請選擇一個答案', 'warning');
-            return;
-        }
-
-        // 將 0,1,2,3 轉回 A,B,C,D
-        const answerMap = ['A', 'B', 'C', 'D'];
-        const myAnswer = answerMap[selectedOptionIndex];
-        const isCorrect = (myAnswer === currentCheckData.question.correctAnswer);
-        const quizQuestionId = currentCheckData.question.questionId;
-        if (!quizQuestionId) {
+    * 提交評量答案 (修正版：從 currentCheckData 讀取答案)
+    */
+   window.submitAssessmentAnswer = function() {
+       // 🔥 修正：從 currentCheckData 讀取
+       if (currentCheckData.selectedOptionIndex === null || currentCheckData.selectedOptionIndex === undefined) {
+           showToast('請選擇一個答案', 'warning');
+           return;
+       }
+   
+       // 獲取學生選擇的答案
+       const answerMap = ['A', 'B', 'C', 'D'];
+       // 🔥 修正：從 currentCheckData 讀取
+       const myAnswer = answerMap[currentCheckData.selectedOptionIndex];
+       
+       const quizQuestionId = currentCheckData.question ? currentCheckData.question.questionId : null;
+       
+       if (!quizQuestionId) {
            showToast('系統錯誤：找不到題目 ID', 'error');
            return;
-        }
-
-
-       if (submitAssessmentBtn) {
-           submitAssessmentBtn.disabled = true;
-           submitAssessmentBtn.textContent = '處理中...';
        }
-       
-        // 準備後端參數
-        const params = new URLSearchParams({
-            action: 'submitAssessment',
-            taskProgressId: currentCheckData.progressId,
-            taskId: currentCheckData.taskId,
-            questionId: quizQuestionId, 
-            studentAnswer: myAnswer,
-            // 關鍵邏輯：根據是否曾有錯誤 (hasErrors) 決定是否給獎勵
-            // hasErrors = true -> Imperfect (Stage 1 有錯) -> Pass gets Bonus
-            // hasErrors = false -> Perfect (Stage 1 無錯) -> Pass gets nothing/standard
-            scenario: currentCheckData.hasErrors ? 'B' : 'A' 
-        });
-
-        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    if (isCorrect) {
-                        // 根據你的邏輯顯示不同訊息
-                        if (currentCheckData.hasErrors) {
-                            showToast(`🎉 答對了！獲得補救獎勵 ${data.tokensAwarded} 代幣`, 'success');
-                        } else {
-                            showToast('🎉 任務完成！(完美檢查模式)', 'success');
-                        }
-                    } else {
-                        showToast('❌ 答案錯誤，任務結束', 'error');
-                    }
-
-                    closeSelfCheckModal();
-                    
-                    // 重新整理列表
-                    setTimeout(() => {
-                        if (typeof loadTierTasks === 'function') loadTierTasks(true);
-                        if (typeof displayQuestList === 'function') displayQuestList();
-                    }, 1000);
-
-                } else {
-                    showToast(data.message || '提交失敗', 'error');
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                showToast('系統錯誤', 'error');
-            });
-    };
+   
+       // 鎖定按鈕
+       const submitBtn = document.getElementById('submitAssessmentBtn');
+       if (submitBtn) {
+           submitBtn.disabled = true;
+           submitBtn.textContent = '提交中...';
+       }
+   
+       // 準備參數
+       const params = new URLSearchParams({
+           action: 'submitAssessment',
+           taskProgressId: currentCheckData.progressId,
+           taskId: currentCheckData.taskId,
+           questionId: quizQuestionId,
+           studentAnswer: myAnswer,
+           scenario: currentCheckData.scenario // 使用之前存的 scenario
+       });
+   
+       if (selectedClass && selectedClass.classId) {
+           params.append('classId', selectedClass.classId);
+       }
+   
+       fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+           .then(r => r.json())
+           .then(data => {
+               if (data.success) {
+                   if (data.isCorrect) {
+                       const tokenMsg = data.tokenReward ? `獲得 ${data.tokenReward} 代幣` : '';
+                       if (currentCheckData.scenario === 'B') { // 或是 check hasErrors
+                           showToast(`🎉 答對了！獲得補救獎勵 ${tokenMsg}`, 'success');
+                       } else {
+                           showToast(`🎉 任務完成！${tokenMsg}`, 'success');
+                       }
+                   } else {
+                       showToast('❌ 答案錯誤，請重新複習任務內容。', 'error');
+                   }
+   
+                   closeSelfCheckModal();
+                   
+                   setTimeout(() => {
+                       if (typeof loadTierTasks === 'function') loadTierTasks(true);
+                       if (typeof displayQuestList === 'function') displayQuestList();
+                   }, 1000);
+   
+               } else {
+                   showToast(data.message || '提交失敗', 'error');
+                   if (submitBtn) {
+                       submitBtn.disabled = false;
+                       submitBtn.textContent = '提交答案';
+                   }
+               }
+           })
+           .catch(err => {
+               console.error(err);
+               showToast('系統錯誤', 'error');
+               if (submitBtn) {
+                   submitBtn.disabled = false;
+                   submitBtn.textContent = '提交答案';
+               }
+           });
+   };
 
       /**
     * 關閉自主檢查面板
@@ -3192,6 +3204,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
