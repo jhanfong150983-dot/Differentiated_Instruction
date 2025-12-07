@@ -3126,13 +3126,25 @@ window.handleCompleteTask = function() {
         const answerMap = ['A', 'B', 'C', 'D'];
         const myAnswer = answerMap[selectedOptionIndex];
         const isCorrect = (myAnswer === currentCheckData.question.correctAnswer);
+        const quizQuestionId = currentCheckData.question.questionId;
+        if (!quizQuestionId) {
+           showToast('系統錯誤：找不到題目 ID', 'error');
+           return;
+        }
 
+
+       if (submitAssessmentBtn) {
+           submitAssessmentBtn.disabled = true;
+           submitAssessmentBtn.textContent = '處理中...';
+       }
+       
         // 準備後端參數
         const params = new URLSearchParams({
             action: 'submitAssessment',
             taskProgressId: currentCheckData.progressId,
             taskId: currentCheckData.taskId,
-            isCorrect: isCorrect,
+            questionId: quizQuestionId, 
+            studentAnswer: myAnswer,
             // 關鍵邏輯：根據是否曾有錯誤 (hasErrors) 決定是否給獎勵
             // hasErrors = true -> Imperfect (Stage 1 有錯) -> Pass gets Bonus
             // hasErrors = false -> Perfect (Stage 1 無錯) -> Pass gets nothing/standard
@@ -3187,6 +3199,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
