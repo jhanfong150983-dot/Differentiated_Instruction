@@ -2766,19 +2766,17 @@ window.handleCompleteTask = function() {
             });
     };
 
-    /**
-    * 渲染第一階段：參考資料與檢核列表 (支援比例調整與圖片放大)
+   /**
+    * 渲染第一階段：參考資料與檢核列表 (修正版：預設不勾選)
     */
    function renderCheckStage(data) {
        // 1. 渲染參考文字
        const refDiv = document.getElementById('referenceDisplay');
-       
-       // 簡單的文字處理，這裡不需要太複雜，因為 CSS pre-wrap 會處理換行
        const textContent = escapeHtml(data.referenceAnswer || data.answerText || '無文字說明');
        
        let refHtml = `<div style="margin-bottom:20px;">${textContent}</div>`;
        
-       // 2. 圖片處理 (生成縮圖與點擊事件)
+       // 2. 圖片處理
        let rawImages = data.referenceImages || data.answerImages;
        let imageList = [];
    
@@ -2794,7 +2792,6 @@ window.handleCompleteTask = function() {
            imageList.forEach(imgUrl => {
                let cleanUrl = imgUrl.trim();
                if (cleanUrl) {
-                   // onclick="openLightbox(...)" 負責打開大圖
                    refHtml += `
                        <div class="ref-image-container" onclick="openLightbox('${cleanUrl}')">
                            <img src="${cleanUrl}" class="ref-thumbnail" alt="點擊放大" 
@@ -2810,10 +2807,15 @@ window.handleCompleteTask = function() {
    
        refDiv.innerHTML = refHtml;
    
-       // 3. 渲染檢核列表 (保持不變)
+       // 3. 渲染檢核列表 (🔥 重點修改區)
        const listDiv = document.getElementById('checklistDynamicContainer');
        listDiv.innerHTML = ''; 
        currentCheckData.checklists = data.checklists || [];
+   
+       // 初始化結果容器 (如果還沒有的話)
+       if (!currentCheckData.results) {
+           currentCheckData.results = {};
+       }
    
        if (currentCheckData.checklists.length === 0) {
            listDiv.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">無需檢核，請直接下一步</div>';
@@ -2821,6 +2823,16 @@ window.handleCompleteTask = function() {
        }
    
        currentCheckData.checklists.forEach((item, index) => {
+           // 🔥 檢查目前的狀態 (pass, fail, 或 undefined)
+           const currentStatus = currentCheckData.results[index];
+           
+           // 動態決定誰要有顏色 (預設兩個都是空的)
+           const passClass = currentStatus === 'pass' ? 'active' : '';
+           const failClass = currentStatus === 'fail' ? 'active' : '';
+           
+           // 只有在 fail 時才顯示輸入框
+           const showImprovement = currentStatus === 'fail' ? 'block' : 'none';
+   
            const itemHtml = `
                <div class="check-item-card" id="checkItem_${index}">
                    <div class="check-item-header">
@@ -2829,11 +2841,11 @@ window.handleCompleteTask = function() {
                            ${escapeHtml(item.itemTitle || item.description)}
                        </div>
                        <div class="status-toggle">
-                           <button class="status-btn pass active" onclick="toggleCheckStatus(${index}, 'pass')">✅ 符合</button>
-                           <button class="status-btn fail" onclick="toggleCheckStatus(${index}, 'fail')">⚠️ 未符合</button>
+                           <button class="status-btn pass ${passClass}" onclick="toggleCheckStatus(${index}, 'pass')">✅ 符合</button>
+                           <button class="status-btn fail ${failClass}" onclick="toggleCheckStatus(${index}, 'fail')">⚠️ 未符合</button>
                        </div>
                    </div>
-                   <div class="improvement-box" id="improvementBox_${index}">
+                   <div class="improvement-box" id="improvementBox_${index}" style="display: ${showImprovement};">
                        <label style="font-size:12px; color:#ef4444; margin-bottom:4px; display:block;">錯誤原因 / 修正說明：</label>
                        <textarea class="improvement-input" id="improveInput_${index}" 
                            placeholder="請記錄哪裡與參考答案不符，以及您做了什麼修正..." rows="2"></textarea>
@@ -2889,58 +2901,81 @@ window.handleCompleteTask = function() {
     };
 
     /**
-     * 提交自主檢查 (用語修正版)
-     */
-    window.submitSelfCheck = function() {
-        const total = currentCheckData.checklists.length;
-        let errors = [];
-        let isAllPass = true;
-
-        // 檢查每一項
-        for (let i = 0; i < total; i++) {
-            const card = document.getElementById(`checkItem_${i}`);
-            // 檢查是否標記為「未符合」(fail active)
-            const isFail = card.querySelector('.fail').classList.contains('active');
-            
-            if (isFail) {
-                isAllPass = false;
-                const input = document.getElementById(`improveInput_${i}`);
-                const reason = input.value.trim();
-                
-                if (!reason) {
-                    // 修改點：提示語氣調整
-                    showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
-                    input.focus();
-                    return; // 阻擋提交
-                }
-                
-                // 記錄錯誤資訊
-                errors.push({
-                    checklistId: currentCheckData.checklists[i].checklistId,
-                    itemIndex: i,
-                    improvement: reason
-                });
-            }
-        }
-
-        // 記錄狀態供評量階段使用
-        currentCheckData.hasErrors = !isAllPass;
-        
-        // 如果有錯誤，先將錯誤資訊送回後端記錄 (Log Error)
-        if (!isAllPass) {
-            APP_CONFIG.log('📝 記錄檢核修正項目', errors);
-            const params = new URLSearchParams({
-                action: 'logChecklistErrors', 
-                taskProgressId: currentCheckData.progressId,
-                errors: JSON.stringify(errors)
-            });
-            fetch(`${APP_CONFIG.API_URL}?${params.toString()}`); 
-        }
-
-        // 轉場到評量階段
-        loadAssessment();
-    };
-
+    * 提交自主檢查 (修正版：加入強制全選驗證)
+    */
+   window.submitSelfCheck = function() {
+       const total = currentCheckData.checklists.length;
+       let errors = [];
+       let isAllPass = true;
+       const submitBtn = document.getElementById('finishCheckBtn');
+       
+       // --- 1. 驗證所有項目是否都已選取 ---
+       for (let i = 0; i < total; i++) {
+           // currentCheckData.results[i] 應該是 'pass' 或 'fail'
+           if (!currentCheckData.results || !currentCheckData.results[i]) {
+               showToast(`⚠️ 還有 ${total - i} 個項目尚未確認！請逐一檢查。`, 'warning');
+               
+               // 捲動到未選項目
+               const el = document.getElementById(`checkItem_${i}`);
+               if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+               return; // 阻擋提交
+           }
+       }
+       
+       // --- 2. 檢查「未符合」項目是否有填寫說明 ---
+       for (let i = 0; i < total; i++) {
+           // 從 currentCheckData.results 中檢查狀態
+           if (currentCheckData.results[i] === 'fail') {
+               isAllPass = false;
+               const input = document.getElementById(`improveInput_${i}`);
+               const reason = input.value.trim();
+               
+               if (!reason) {
+                   showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
+                   input.focus();
+                   return; // 阻擋提交
+               }
+               
+               // 記錄錯誤資訊
+               errors.push({
+                   checklistId: currentCheckData.checklists[i].checklistId,
+                   itemIndex: i,
+                   improvement: reason
+               });
+           }
+       }
+   
+       // --- 3. 處理後端記錄與轉場 ---
+       if (submitBtn) {
+           submitBtn.disabled = true;
+           submitBtn.textContent = '處理中...';
+       }
+   
+       currentCheckData.hasErrors = !isAllPass;
+       
+       // 如果有錯誤，先將錯誤資訊送回後端記錄 (Log Error)
+       if (!isAllPass) {
+           APP_CONFIG.log('📝 記錄檢核修正項目', errors);
+           const params = new URLSearchParams({
+               action: 'logChecklistErrors', 
+               taskProgressId: currentCheckData.progressId,
+               errors: JSON.stringify(errors)
+           });
+           
+           // 使用 .then() 確保 Log 記錄後再呼叫 loadAssessment()
+           fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+               .then(() => {
+                   loadAssessment();
+               })
+               .catch((e) => {
+                   APP_CONFIG.log('Error logging checklist errors, proceeding anyway.', e);
+                   loadAssessment(); // 網路錯誤時仍繼續
+               });
+       } else {
+           // 全對，直接轉場
+           loadAssessment();
+       }
+   };
     /**
      * 載入並顯示評量題目
      */
@@ -3084,6 +3119,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
