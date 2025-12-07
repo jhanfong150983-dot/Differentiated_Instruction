@@ -1885,7 +1885,7 @@
             statusClass = 'status-completed';
         } else if (progress.status === 'self_checking') {
             statusBadge = '⏱️ 檢查中';
-            statusClass = 'self_checking';
+            statusClass = 'self-checking';
         } else if (progress.status === 'in_progress') {
             statusBadge = '⏳ 進行中';
             statusClass = 'status-in-progress';
@@ -3061,6 +3061,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
