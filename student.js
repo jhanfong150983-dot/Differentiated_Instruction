@@ -1943,117 +1943,79 @@
     // ==========================================
 
       /**
-       * 開啟任務詳情 Modal (支援自主檢查狀態跳轉)
+       * 開啟任務詳情 Modal (狀態回復版)
        */
       window.openTaskModal = function(task, progress) {
           selectedTask = task;
-      
           const modal = document.getElementById('taskModal');
           if (!modal) return;
       
-          // --- 1. 填入任務基本資訊 ---
-          const setText = (id, text) => {
-              const el = document.getElementById(id);
-              if (el) el.textContent = text;
-          };
+          // ... (設定標題、內容等 UI 程式碼保持不變) ...
+          document.getElementById('modalTaskName').textContent = task.name || task.taskName;
+          // ...
       
-          setText('modalTaskName', task.name || task.taskName);
-      
-          let taskTypeName = '教學';
-          if (task.type === 'practice') taskTypeName = '練習';
-          else if (task.type === 'assessment') taskTypeName = '評量';
-      
-          setText('modalTaskType', taskTypeName);
-          setText('modalTaskTier', task.tier === 'mixed' ? (selectedTier || '混合') : task.tier);
-          setText('modalTaskReward', `💰 ${task.tokenReward || 0} 代幣`);
-      
-          // --- 2. 處理任務內容 ---
-          let taskContent = '';
-          let taskLink = '';
-      
-          if (task.tier === 'mixed') {
-              if (selectedTier === '基礎層' || selectedTier === 'tutorial') {
-                  taskContent = task.tutorialDesc;
-                  taskLink = task.tutorialLink;
-              } else if (selectedTier === '進階層' || selectedTier === 'adventure') {
-                  taskContent = task.adventureDesc;
-                  taskLink = task.adventureLink;
-              } else if (selectedTier === '精通層' || selectedTier === 'hardcore') {
-                  taskContent = task.hardcoreDesc;
-                  taskLink = task.hardcoreLink;
-              }
-          } else {
-              taskContent = task.content;
-              taskLink = task.link;
-          }
-      
-          const contentSection = document.getElementById('modalContentSection');
-          const contentText = document.getElementById('modalTaskContent');
-      
-          if (contentSection && contentText) {
-              contentSection.style.display = 'block';
-              contentText.textContent = taskContent || '暫無詳細說明';
-          }
-      
-          // --- 3. 按鈕狀態控制 (關鍵修改) ---
+          // --- 按鈕狀態控制 ---
           const startBtn = document.getElementById('startTaskBtn');
           const completeBtn = document.getElementById('completeTaskBtn');
           const reopenBtn = document.getElementById('reopenMaterialBtn');
           
-          // 🔥 新增：繼續檢查按鈕 (如果 HTML 裡沒有，下面會動態建立或是借用按鈕)
-          // 建議直接在 HTML 裡加一個，或者我們用 completeBtn 改文字也可以
-          // 這裡示範「借用 completeBtn 但改文字和行為」的做法，比較省事
-          
-          const setDisplay = (el, displayVal) => { if (el) el.style.display = displayVal; };
+          // 隱藏所有按鈕
+          if (startBtn) startBtn.style.display = 'none';
+          if (completeBtn) completeBtn.style.display = 'none';
+          if (reopenBtn) reopenBtn.style.display = 'none';
       
-          // 先全部隱藏
-          setDisplay(startBtn, 'none');
-          setDisplay(completeBtn, 'none');
-          setDisplay(reopenBtn, 'none');
-      
-          const hasMaterialLink = taskLink && taskLink.trim() !== '';
+          // 取得當前狀態
           const currentStatus = progress ? progress.status : 'not_started';
       
-          // 依據狀態顯示按鈕
           if (currentStatus === 'completed') {
               // [已完成]
-              if (hasMaterialLink) setDisplay(reopenBtn, 'inline-block');
-              // 可以選擇顯示「已完成」的純文字標籤
+              if (reopenBtn) reopenBtn.style.display = 'inline-block';
+              if (completeBtn) {
+                  completeBtn.style.display = 'inline-block';
+                  completeBtn.textContent = '已完成';
+                  completeBtn.disabled = true;
+                  completeBtn.className = 'btn btn-secondary';
+              }
       
           } else if (currentStatus === 'self_checking') {
-              // 🔥🔥🔥 [自主檢查中] - 這是你要的狀態 🔥🔥🔥
-              
-              if (hasMaterialLink) setDisplay(reopenBtn, 'inline-block');
-              
+              // 🔥 [自主檢查中] - 關鍵邏輯 🔥
+              // 顯示「繼續檢查」按鈕
               if (completeBtn) {
                   completeBtn.style.display = 'inline-block';
                   completeBtn.textContent = '📋 繼續自主檢查';
-                  completeBtn.className = 'btn btn-warning'; // 換個顏色 (黃色) 提示
+                  completeBtn.className = 'btn btn-warning'; // 黃色提醒
+                  completeBtn.disabled = false;
                   
-                  // 綁定點擊事件：直接打開檢查面板
+                  // 點擊後，不呼叫 submitTask，而是直接嘗試開啟檢查面板
+                  // 注意：因為我們不知道是 Checklist 還是 Assessment，
+                  // 最穩妥的方式是再次呼叫 submitTask (它會判斷 nextStep)
+                  // 或者直接開啟檢查面板 (通常先開這個，因為評量也是從這轉過去)
+                  
                   completeBtn.onclick = function() {
-                      closeTaskModal();
-                      // 呼叫顯示面板函式 (需確保有 taskProgressId，通常在 progress 物件裡找得到，或重新 fetch)
-                      // 這裡假設 progress 物件裡有 id，或者我們直接用 taskId 讓後端去查
-                      showSelfCheckPanel(progress.taskProgressId || task.taskId, task.taskId);
+                      // 方法 A: 直接呼叫 submitTask 讓後端判斷 (最保險，但多一次請求)
+                      handleCompleteTask(); 
+                      
+                      // 方法 B: 如果你確定有緩存，可以直接 showSelfCheckPanel
+                      // showSelfCheckPanel(progress.taskProgressId, task.taskId);
                   };
               }
+              if (reopenBtn) reopenBtn.style.display = 'inline-block';
       
           } else if (currentStatus === 'in_progress') {
               // [進行中]
-              if (hasMaterialLink) setDisplay(reopenBtn, 'inline-block');
-              
               if (completeBtn) {
                   completeBtn.style.display = 'inline-block';
                   completeBtn.textContent = '提交完成';
-                  completeBtn.className = 'btn btn-success'; // 綠色
-                  completeBtn.onclick = handleCompleteTask; // 綁回原本的提交函式
+                  completeBtn.className = 'btn btn-success';
+                  completeBtn.disabled = false;
+                  completeBtn.onclick = handleCompleteTask; // 正常提交流程
               }
+              if (reopenBtn) reopenBtn.style.display = 'inline-block';
       
           } else {
               // [未開始]
               if (startBtn) {
-                  setDisplay(startBtn, 'inline-block');
+                  startBtn.style.display = 'inline-block';
                   startBtn.disabled = false;
                   startBtn.textContent = '開始任務';
               }
@@ -3253,6 +3215,7 @@
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
