@@ -777,15 +777,6 @@
             transform: rotate(90deg);
         }
 
-        #selfCheckModal .modal-body {
-            height: 70vh !important;       /* 🔥 關鍵：鎖死高度 */
-            max-height: 800px !important;  
-            display: flex !important;      /* 確保內部可以排版 */
-            flex-direction: column !important;
-            padding: 0 !important;
-            overflow: hidden !important;   /* 禁止爺爺層出現捲軸 */
-        }
-
         .task-detail-section {
             margin-bottom: 24px;
         }
@@ -951,41 +942,6 @@
             display: block !important;
         }
 
-        /* --- 自主檢查 Modal 優化樣式 --- */
-
-        /* 兩欄佈局容器 */
-        .self-check-layout {
-           display: flex !important;
-            flex-direction: row !important;
-            width: 100% !important;
-            height: 100% !important;       /* 🔥 關鍵：填滿爺爺的高度 */
-            min-height: 0 !important;      /* 🔥 超級關鍵：防止 Flex 子元素撐爆容器 */
-        }
-
-        @media (min-width: 768px) {
-            .self-check-layout {
-                flex-direction: row; /* 電腦版改為左右 */
-                align-items: flex-start;
-            }
-        }
-
-        /* 左側：參考答案區 */
-        .ref-section {
-            flex: 1 !important;            /* 50% 寬度 */
-            height: 100% !important;       /* 填滿高度 */
-            overflow-y: auto !important;   /* 🔥 關鍵：內容超過時顯示捲軸 */
-            
-            /* 外觀設定 */
-            background: var(--game-bg-medium, #f0f4f8);
-            padding: 20px;
-            border-right: 1px solid #ddd;
-            
-            /* 文字排版優化 */
-            white-space: pre-wrap !important; /* 保留換行 */
-            line-height: 1.6 !important;
-            font-size: 15px;
-            text-align: justify;
-        }
 
         .ref-image-container {
             margin: 15px 0;
@@ -1205,75 +1161,6 @@
         
         .btn-warning:hover { background: #D97706; }
 
-        /* =======================================================
-   自主檢查 Modal - 深色主題 & 捲動終極修復
-   ======================================================= */
-
-/* 1. 最外層容器 (.modal-content) */
-/* 必須鎖定一個固定高度 (例如 85vh)，並禁止外層捲動 */
-#selfCheckModal .modal-content {
-    height: 85vh !important;       /* 🔥 關鍵：固定高度 */
-    max-height: none !important;   /* 移除最大高度限制 */
-    overflow: hidden !important;   /* 🔥 關鍵：禁止外層產生捲軸 */
-    display: flex !important;
-    flex-direction: column !important;
-    padding: 0 !important;
-    
-    /* 恢復你的深色背景設定 */
-    background: linear-gradient(135deg, var(--game-bg-medium), var(--game-bg-light)) !important;
-    border: 2px solid var(--game-border) !important;
-    color: var(--game-text-light) !important;
-}
-
-/* 2. 標題區塊 (.modal-header) */
-/* 固定在頂部，不隨內容捲動 */
-#selfCheckModal .modal-header {
-    flex-shrink: 0 !important;     /* 禁止被壓縮 */
-    padding: 24px 32px !important;
-    border-bottom: 2px solid var(--game-border) !important;
-    background: var(--game-bg-medium) !important;
-}
-
-/* 3. 內容區塊 (.modal-body) */
-/* 自動填滿剩餘空間，並且鎖死溢出 */
-#selfCheckModal .modal-body {
-    flex: 1 1 auto !important;     /* 自動填滿剩餘高度 */
-    height: 0 !important;          /* 🔥 CSS Trick: 強制讓 flex-grow 生效 */
-    min-height: 0 !important;      /* 防止內容撐開容器 */
-    overflow: hidden !important;   /* 禁止 Body 捲動，交給內部 */
-    padding: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-
-/* 4. 左右佈局容器 (.self-check-layout) */
-/* 填滿 Body */
-.self-check-layout {
-    flex: 1 !important;            /* 填滿父容器 */
-    display: flex !important;
-    flex-direction: row !important;
-    width: 100% !important;
-    height: 100% !important;
-}
-
-/* 5. 左側：參考資料區 (50%) */
-.ref-section {
-    flex: 1 !important;            /* 50% 寬度 */
-    height: 100% !important;       /* 填滿高度 */
-    overflow-y: auto !important;   /* 🔥 這裡產生捲軸 */
-    
-    /* 深色主題外觀 */
-    background: var(--game-bg-medium) !important; 
-    border-right: 2px solid var(--game-border) !important;
-    padding: 30px !important;
-    
-    /* 文字排版 */
-    white-space: pre-wrap !important;
-    line-height: 1.8 !important;
-    font-size: 16px !important;
-    color: var(--game-text-light) !important;
-    text-align: justify;
-}
 
 /* 6. 右側：檢核清單區 (50%) */
 .checklist-section {
@@ -1303,32 +1190,111 @@
     object-fit: contain;
     display: block;
 }
-
-/* --- 手機版適配 --- */
-@media (max-width: 768px) {
-    .self-check-layout {
-        flex-direction: column !important;
-    }
-    .ref-section {
-        height: 50% !important;
-        border-right: none !important;
-        border-bottom: 2px solid var(--game-border) !important;
-    }
     .checklist-section {
         height: 50% !important;
     }
 }
 
-/* =========================================
-   補上缺失的拼圖：中間容器的高度鎖定
-   ========================================= */
-#selfCheckModal #checkStageContainer {
-    width: 100% !important;
-    height: 100% !important;       /* 🔥 關鍵：填滿 modal-body */
-    min-height: 0 !important;      /* 防止被撐開 */
-    display: flex !important;      /* 讓內部的 layout 可以運作 */
-    flex-direction: column !important;
-}
+/* =======================================================
+自主檢查 Modal - 穩健版 (整體捲動，拒絕跑版)
+======================================================= */
+    
+    /* 1. Modal 容器：設定最大高度，並允許產生唯一的主捲軸 */
+    #selfCheckModal .modal-content {
+        max-height: 90vh !important;    /* 佔螢幕 90% */
+        height: auto !important;        /* 高度隨內容自動伸縮 */
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;    /* 外框不捲動 */
+        
+        /* 深色主題 */
+        background: #1E293B !important; 
+        border: 2px solid #475569 !important;
+        color: #F1F5F9 !important;
+    }
+    
+    /* 2. 標題區：固定在上方 */
+    #selfCheckModal .modal-header {
+        flex-shrink: 0 !important;
+        padding: 20px 30px !important;
+        background: #1E293B !important;
+        border-bottom: 2px solid #475569 !important;
+        z-index: 10;
+    }
+    
+    /* 3. 內容區：這是唯一產生捲軸的地方！ */
+    #selfCheckModal .modal-body {
+        flex: 1 1 auto !important;
+        overflow-y: auto !important;    /* 🔥 關鍵：唯一的捲軸在這裡 */
+        height: auto !important;
+        min-height: 300px !important;   /* 最小高度 */
+        display: block !important;      /* 回歸最單純的 block */
+        padding: 20px !important;
+    }
+    
+    /* 4. 底部按鈕區：固定在下方 */
+    #selfCheckModal .modal-footer {
+        flex-shrink: 0 !important;
+        background: #1E293B !important;
+        border-top: 2px solid #475569 !important;
+        padding: 15px 30px !important;
+        z-index: 10;
+    }
+    
+    /* =========================================
+       自主檢查佈局 (Flex 排版，但高度自適應)
+       ========================================= */
+    .self-check-layout {
+        display: flex !important;
+        flex-direction: row !important; /* 電腦版左右並排 */
+        gap: 30px;                      /* 兩欄間距 */
+        align-items: stretch;           /* 等高對齊 */
+    }
+    
+    /* 左側與右側區塊：不再鎖定高度，讓內容撐開 */
+    .ref-section, 
+    .checklist-section {
+        flex: 1 !important;             /* 各佔 50% */
+        width: 50% !important;          /* 確保寬度 */
+        height: auto !important;        /* 🔥 關鍵：高度自動，不要鎖死 */
+        overflow: visible !important;   /* 🔥 關鍵：不要內部捲動 */
+    }
+    
+    /* 左側樣式優化 */
+    .ref-section {
+        background: #253346;            /* 稍微深一點的背景區隔 */
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #475569;
+        white-space: pre-wrap;
+    }
+    
+    /* 右側樣式優化 */
+    .checklist-section {
+        padding: 10px;
+    }
+    
+    /* 手機版：自動變為上下堆疊 */
+    @media (max-width: 768px) {
+        .self-check-layout {
+            flex-direction: column !important;
+        }
+        .ref-section, .checklist-section {
+            width: 100% !important;
+            flex: none !important;
+        }
+    }
+    
+    /* =========================================
+       評量階段樣式 (簡單明瞭)
+       ========================================= */
+    #assessmentStageContainer {
+        width: 100%;
+        max-width: 600px;
+        margin: 40px auto; /* 上下留白，置中 */
+        text-align: center;
+    }
+
     </style>
 </head>
 <body>
@@ -1522,6 +1488,7 @@
     <script src="student.js"></script>
 </body>
 </html>
+
 
 
 
