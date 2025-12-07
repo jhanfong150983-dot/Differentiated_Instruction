@@ -325,6 +325,12 @@ function displayClasses(classes) {
                     <span class="card-meta-icon">🔑</span>
                     <span>${classData.classId.substring(0, 8)}...</span>
                 </div>
+                ${classData.isCoTeacher ? `
+                <div class="card-meta-item" style="color: #F59E0B;">
+                    <span class="card-meta-icon">👥</span>
+                    <span>代課教師</span>
+                </div>
+                ` : ''}
             </div>
             <div class="card-actions">
                 <button class="btn btn-primary" onclick="event.stopPropagation(); openImportSection('${classData.classId}', '${escapeHtml(classData.className)}')">
@@ -1330,4 +1336,5 @@ function handleSaveCoTeachers() {
             showToast('系統錯誤：' + err.message, 'error');
         });
 }
+
 
