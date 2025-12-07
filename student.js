@@ -2613,7 +2613,7 @@ window.openTaskModal = function(task, progress) {
       };
 
     /**
-    * 提交任務：智慧判斷下一步 (自主檢查 / 評量 / 直接完成)
+    * 提交任務：智慧判斷下一步 + 同步前端狀態
     */
    window.handleCompleteTask = function() {
        if (!selectedTask) return;
@@ -2658,53 +2658,76 @@ window.openTaskModal = function(task, progress) {
                    // 關閉任務詳情 Modal
                    closeTaskModal();
    
-                   // 更新前端進度ID (很重要，後續評量需要)
+                   // 更新 CheckData 的基礎資訊
                    if (response.taskProgressId) {
+                       // 初始化物件
+                       if (!window.currentCheckData) window.currentCheckData = {};
                        currentCheckData.progressId = response.taskProgressId;
                        currentCheckData.taskId = taskToSubmit.taskId;
                    }
    
-                   // 🔥 核心路由邏輯 🔥
+                   // ==========================================
+                   // 🔥🔥🔥 關鍵修正：立刻同步前端狀態 🔥🔥🔥
+                   // ==========================================
+                   if (!window.currentTasksProgress) window.currentTasksProgress = {};
+                   if (!window.currentTasksProgress[taskToSubmit.taskId]) {
+                       window.currentTasksProgress[taskToSubmit.taskId] = {};
+                   }
+   
+                   // 根據後端回傳的 nextStep，直接修改本地變數
+                   const targetTaskProgress = window.currentTasksProgress[taskToSubmit.taskId];
+                   
+                   // 順便存入 ProgressID，這非常重要
+                   if (response.taskProgressId) {
+                       targetTaskProgress.taskProgressId = response.taskProgressId;
+                   }
+   
+                   if (response.nextStep === 'checklist') {
+                       targetTaskProgress.status = 'self_checking';
+                   } else if (response.nextStep === 'assessment') {
+                       targetTaskProgress.status = 'assessment';
+                   } else if (response.nextStep === 'completed') {
+                       targetTaskProgress.status = 'completed';
+                   }
+                   // ==========================================
+   
+                   // 核心路由邏輯
                    switch (response.nextStep) {
                        case 'checklist':
-                           // 情況 A: 進入自主檢查
                            showToast('✅ 任務已提交，請進行自主檢查...', 'success');
-                           if (currentTasksProgress) currentTasksProgress[taskToSubmit.taskId] = { status: 'self_checking' };
                            showSelfCheckPanel(response.taskProgressId, taskToSubmit.taskId);
                            break;
    
                        case 'assessment':
-                           // 情況 B: 跳過檢查，直接進入評量
                            showToast('✅ 此任務無需檢查，直接進入評量！', 'success');
-                           if (currentTasksProgress) currentTasksProgress[taskToSubmit.taskId] = { status: 'self_checking' };
                            
-                           // 先開啟 Modal (因為 loadAssessment 依賴 Modal 元素)
-                           // 我們這裡藉用 showSelfCheckPanel 但不 fetch 資料，或者手動開 Modal
-                           // 最簡單的方法：直接操作 Modal 顯示，然後 loadAssessment
+                           // 手動顯示 Modal
                            const modal = document.getElementById('selfCheckModal');
-                           if(modal) modal.style.display = 'flex';
+                           if(modal) {
+                               modal.style.display = 'flex';
+                               modal.classList.add('active');
+                           }
                            
                            // 直接載入題目
-                           loadAssessment(response.scenarioType, response.question);
+                           if (window.loadAssessment) {
+                                loadAssessment(response.scenarioType, response.question);
+                           }
                            break;
    
                        case 'completed':
-                           // 情況 C: 直接完成
                            const rewardMsg = response.tokenReward ? `獲得 ${response.tokenReward} 代幣` : '';
                            showToast(`🎉 任務完成！${rewardMsg}`, 'success');
                            
-                           // 更新列表
-                           if (typeof displayQuestList === 'function') displayQuestList();
-                           if (typeof loadTierTasks === 'function') loadTierTasks(true);
+                           // 強制刷新列表 (雙重保險)
+                           setTimeout(() => {
+                               if (typeof loadTierTasks === 'function') loadTierTasks(true);
+                               if (typeof displayQuestList === 'function') displayQuestList();
+                           }, 500);
                            break;
                    }
    
-                   // 重新顯示任務列表 (確保狀態更新)
-                   try {
-                       if (typeof displayQuestList === 'function') displayQuestList();
-                   } catch (error) {
-                       console.error(error);
-                   }
+                   // 嘗試刷新列表顯示 (讓卡片狀態變色)
+                   if (typeof displayQuestList === 'function') displayQuestList();
    
                } else {
                    showToast(response.message || '提交失敗', 'error');
@@ -2999,153 +3022,146 @@ window.openTaskModal = function(task, progress) {
        currentCheckData.results[index] = status;
    };
 
-   /**
- * 提交自主檢查 (最終版：支援四狀態路由)
- */
-window.submitSelfCheck = function() {
-    // 安全檢查：確保資料存在
-    if (!currentCheckData || !currentCheckData.checklists) {
-        console.error('無檢查資料');
-        return;
-    }
-
-    const total = currentCheckData.checklists.length;
-    const submitBtn = document.getElementById('finishCheckBtn');
-    
-    // 準備資料容器
-    const checklistData = [];
-    let hasFail = false;
-    let errorExplanation = "";
-
-    // ============================================================
-    // 1. 統一迴圈：驗證全選 + 檢查理由 + 收集資料
-    // ============================================================
-    for (let i = 0; i < total; i++) {
-        // 取得該項目的狀態 (pass / fail / undefined)
-        const status = currentCheckData.results ? currentCheckData.results[i] : null;
-        
-        // 驗證 A: 是否未選擇
-        if (!status) {
-            showToast(`⚠️ 第 ${i + 1} 項尚未確認！請選擇符合或未符合。`, 'warning');
-            const el = document.getElementById(`checkItem_${i}`);
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                el.style.border = '2px solid #F59E0B'; // 黃色邊框提示
-                setTimeout(() => el.style.border = '1px solid var(--game-border)', 1000);
-            }
-            return; // 阻擋提交
-        }
-
-        const isChecked = (status === 'pass');
-        const item = currentCheckData.checklists[i];
-        let reason = "";
-
-        // 驗證 B: 如果是 Fail，檢查有無填寫理由
-        if (!isChecked) {
-            hasFail = true;
-            const input = document.getElementById(`improveInput_${i}`);
-            reason = input ? input.value.trim() : "";
-            
-            if (!reason) {
-                showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
-                if(input) input.focus();
-                return; // 阻擋提交
-            }
-            
-            // 串接錯誤說明
-            if (errorExplanation) errorExplanation += " | ";
-            errorExplanation += `[${item.itemTitle}]: ${reason}`;
-        }
-
-        // 收集資料
-        checklistData.push({
-            checklistId: item.checklistId,
-            isChecked: isChecked
-        });
-    }
-
-    // ============================================================
-    // 2. 鎖定按鈕與準備參數
-    // ============================================================
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = '處理中...';
-    }
-
-    // 根據有無錯誤決定情境 (A=完美, B=修正)
-    const scenarioType = hasFail ? 'B' : 'A';
-    
-    const params = new URLSearchParams({
-        action: 'submitSelfCheck', 
-        taskProgressId: currentCheckData.progressId,
-        userEmail: currentStudent.email,
-        checklistData: JSON.stringify(checklistData),
-        scenarioType: scenarioType,
-        errorExplanation: errorExplanation
-    });
-
-    console.log('🚀 [Frontend] 提交自主檢查:', Object.fromEntries(params));
-
-    // ============================================================
-    // 3. 發送請求與處理路由
-    // ============================================================
-    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-        .then(response => response.json())
-        .then(data => {
-            console.log('📥 [Frontend] 檢查回傳:', data);
-
-            if (data.success) {
-                // 更新本地暫存的情境
-                currentCheckData.scenario = data.scenarioType;
-
-                // 🔥🔥🔥 核心路由判斷 🔥🔥🔥
-                if (data.nextStep === 'assessment') {
-                    // 情況 1: 還有評量 -> 載入題目介面
-                    console.log('➡️ 進入評量階段');
-                    
-                    if (!data.question) {
-                        showToast('系統錯誤：找不到題目資料', 'error');
-                        return;
-                    }
-                    
-                    // 更新題目資料
-                    currentCheckData.question = data.question; 
-                    
-                    // 呼叫 loadAssessment 進行轉場
-                    loadAssessment(data.scenarioType, data.question);
-
-                } else if (data.nextStep === 'completed') {
-                    // 情況 2: 任務直接結束
-                    console.log('🎉 任務完成');
-                    
-                    showToast(data.message || '🎉 檢查完成，任務結束！', 'success');
-                    closeSelfCheckModal();
-                    
-                    // 重新整理外部列表
-                    setTimeout(() => {
-                        if (typeof loadTierTasks === 'function') loadTierTasks(true);
-                        if (typeof displayQuestList === 'function') displayQuestList();
-                    }, 500);
-                }
-
-            } else {
-                // 後端回傳失敗
-                showToast(data.message || '提交失敗', 'error');
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = '完成檢查，進入評量 →';
-                }
-            }
-        })
-        .catch(error => {
-            console.error('❌ [Frontend] 連線錯誤:', error);
-            showToast('連線錯誤，請重試', 'error');
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = '完成檢查，進入評量 →';
-            }
-        });
-};
+    /**
+    * 提交自主檢查：驗證 + 路由 + 同步前端狀態
+    */
+   window.submitSelfCheck = function() {
+       // 安全檢查
+       if (!currentCheckData || !currentCheckData.checklists) {
+           console.error('無檢查資料');
+           return;
+       }
+   
+       const total = currentCheckData.checklists.length;
+       const submitBtn = document.getElementById('finishCheckBtn');
+       
+       // 準備資料
+       const checklistData = [];
+       let hasFail = false;
+       let errorExplanation = "";
+   
+       // 驗證迴圈
+       for (let i = 0; i < total; i++) {
+           const status = currentCheckData.results ? currentCheckData.results[i] : null;
+           
+           if (!status) {
+               showToast(`⚠️ 第 ${i + 1} 項尚未確認！請選擇符合或未符合。`, 'warning');
+               const el = document.getElementById(`checkItem_${i}`);
+               if (el) {
+                   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                   el.style.border = '2px solid #F59E0B';
+                   setTimeout(() => el.style.border = '1px solid var(--game-border)', 1000);
+               }
+               return;
+           }
+   
+           const isChecked = (status === 'pass');
+           const item = currentCheckData.checklists[i];
+           let reason = "";
+   
+           if (!isChecked) {
+               hasFail = true;
+               const input = document.getElementById(`improveInput_${i}`);
+               reason = input ? input.value.trim() : "";
+               
+               if (!reason) {
+                   showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
+                   if(input) input.focus();
+                   return;
+               }
+               if (errorExplanation) errorExplanation += " | ";
+               errorExplanation += `[${item.itemTitle}]: ${reason}`;
+           }
+   
+           checklistData.push({
+               checklistId: item.checklistId,
+               isChecked: isChecked
+           });
+       }
+   
+       if (submitBtn) {
+           submitBtn.disabled = true;
+           submitBtn.textContent = '處理中...';
+       }
+   
+       const scenarioType = hasFail ? 'B' : 'A';
+       
+       const params = new URLSearchParams({
+           action: 'submitSelfCheck', 
+           taskProgressId: currentCheckData.progressId,
+           userEmail: currentStudent.email,
+           checklistData: JSON.stringify(checklistData),
+           scenarioType: scenarioType,
+           errorExplanation: errorExplanation
+       });
+   
+       console.log('🚀 [Frontend] 提交自主檢查:', Object.fromEntries(params));
+   
+       fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+           .then(response => response.json())
+           .then(data => {
+               console.log('📥 [Frontend] 檢查回傳:', data);
+   
+               if (data.success) {
+                   currentCheckData.scenario = data.scenarioType;
+   
+                   // ==========================================
+                   // 🔥🔥🔥 關鍵修正：立刻同步前端狀態 🔥🔥🔥
+                   // ==========================================
+                   const taskId = currentCheckData.taskId;
+                   if (taskId && window.currentTasksProgress && window.currentTasksProgress[taskId]) {
+                       if (data.nextStep === 'assessment') {
+                           window.currentTasksProgress[taskId].status = 'assessment';
+                       } else if (data.nextStep === 'completed') {
+                           window.currentTasksProgress[taskId].status = 'completed';
+                       }
+                   }
+                   // ==========================================
+   
+                   // 路由判斷
+                   if (data.nextStep === 'assessment') {
+                       console.log('➡️ 進入評量階段');
+                       
+                       if (!data.question) {
+                           showToast('系統錯誤：找不到題目資料', 'error');
+                           return;
+                       }
+                       
+                       currentCheckData.question = data.question; 
+                       if (window.loadAssessment) {
+                           loadAssessment(data.scenarioType, data.question);
+                       }
+   
+                   } else if (data.nextStep === 'completed') {
+                       console.log('🎉 任務完成');
+                       
+                       showToast(data.message || '🎉 檢查完成，任務結束！', 'success');
+                       closeSelfCheckModal();
+                       
+                       // 強制刷新列表
+                       setTimeout(() => {
+                           if (typeof loadTierTasks === 'function') loadTierTasks(true);
+                           if (typeof displayQuestList === 'function') displayQuestList();
+                       }, 500);
+                   }
+   
+               } else {
+                   showToast(data.message || '提交失敗', 'error');
+                   if (submitBtn) {
+                       submitBtn.disabled = false;
+                       submitBtn.textContent = '完成檢查，進入評量 →';
+                   }
+               }
+           })
+           .catch(error => {
+               console.error('❌ [Frontend] 連線錯誤:', error);
+               showToast('連線錯誤，請重試', 'error');
+               if (submitBtn) {
+                   submitBtn.disabled = false;
+                   submitBtn.textContent = '完成檢查，進入評量 →';
+               }
+           });
+   };
    
    /**
     * 載入並顯示評量題目 (Debug 版)
@@ -3359,6 +3375,7 @@ window.submitSelfCheck = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
