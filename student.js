@@ -2643,6 +2643,27 @@ window.openTaskModal = function(task, progress) {
        fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
            .then(response => response.json())
            .then(function(response) {
+
+              console.log('📥 [Response]', response);
+
+               // 🔥🔥🔥 顯示後端傳回來的診斷報告 🔥🔥🔥
+               if (response.debugLogs && response.debugLogs.length > 0) {
+                   console.group("🕵️‍♂️ 後端資料庫診斷報告 (Backend Logs)");
+                   console.log("%c 這是後端在比對資料庫時看到的實際內容：", "color: #ff00de; font-weight: bold;");
+                   
+                   response.debugLogs.forEach(log => {
+                       if (log.includes('Row')) {
+                           console.log(`%c ${log}`, "color: #2b95ff;"); // 藍色顯示比對細節
+                       } else if (log.includes('✅')) {
+                           console.log(`%c ${log}`, "color: green; font-weight: bold;");
+                       } else if (log.includes('❌')) {
+                           console.log(`%c ${log}`, "color: red; font-weight: bold;");
+                       } else {
+                           console.log(log);
+                       }
+                   });
+                   console.groupEnd();
+               }
                
                if (completeBtn) {
                    completeBtn.disabled = false;
@@ -3375,6 +3396,7 @@ window.openTaskModal = function(task, progress) {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
