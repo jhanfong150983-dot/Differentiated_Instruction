@@ -2980,6 +2980,42 @@ window.handleCompleteTask = function() {
      * 載入並顯示評量題目
      */
     function loadAssessment() {
+          // 獲取需要操作的元素
+       const modalBody = document.querySelector('#selfCheckModal .modal-body'); // 確保選到正確的 body
+       const checkStage = document.getElementById('checkStageContainer');
+       const assessmentStage = document.getElementById('assessmentStageContainer');
+       const submitBtn = document.getElementById('submitAssessmentBtn');
+       const finishCheckBtn = document.getElementById('finishCheckBtn');
+   
+       // 1. 儲存情境代碼 (需在 submitSelfCheck 內設置)
+       // 假設 currentCheckData.scenario 已經設置
+   
+       // 2. UI 切換：徹底隱藏檢查表，顯示評量區
+       if (checkStage) checkStage.style.display = 'none';
+       if (assessmentStage) assessmentStage.style.display = 'block';
+   
+       // 💥 3. 關鍵修正：重置 modal-body 的 Flexbox 樣式 💥
+       if (modalBody) {
+           // 清除 Flexbox 相關設定，讓它恢復標準的 block 模式
+           modalBody.style.flex = 'initial'; 
+           modalBody.style.height = 'initial'; 
+           modalBody.style.minHeight = 'initial'; 
+           
+           // 恢復捲動！讓整個 Modal 視窗可以捲動，而不是 Body 內部
+           modalBody.style.overflow = 'auto'; // 或直接設置為 'initial'
+           
+           // 恢復預設的 display block 模式
+           modalBody.style.display = 'block';
+           
+           // 評量模式下，我們通常會恢復一些內邊距，讓內容看起來不貼邊
+           modalBody.style.padding = '20px'; 
+       }
+       
+       // 4. 按鈕切換 (保持不變)
+       if (finishCheckBtn) finishCheckBtn.style.display = 'none';
+       if (submitBtn) submitBtn.style.display = 'inline-block';
+       document.getElementById('selfCheckTitle').textContent = '🧠 隨堂評量';
+       
         // UI 切換
         document.getElementById('checkStageContainer').style.display = 'none';
         document.getElementById('finishCheckBtn').style.display = 'none';
@@ -3119,6 +3155,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
