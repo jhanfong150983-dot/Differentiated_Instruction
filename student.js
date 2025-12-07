@@ -2991,16 +2991,31 @@ window.handleCompleteTask = function() {
        });
    
        APP_CONFIG.log('📤 提交自主檢查...', Object.fromEntries(params)); // Debug Log
-   
+
+      console.log('🚀 [Frontend Debug] 準備發送 API 請求:', Object.fromEntries(params));
+
+       // 4. 呼叫後端
        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
            .then(response => response.json())
            .then(data => {
+               // 🔥🔥🔥 關鍵 Debug 點：印出後端回傳的原始資料 🔥🔥🔥
+               console.log('📥 [Frontend Debug] 後端 API 回傳原始資料:', data);
+   
                if (data.success) {
-                   // 成功，進入評量
+                   console.log('❓ [Frontend Debug] 檢查回傳的題目物件:', data.question);
+   
+                   if (!data.question) {
+                       console.error('❌ [Frontend Debug] 嚴重警告：data.question 為 null 或 undefined！後端沒抓到題目！');
+                   } else {
+                       console.log('✅ [Frontend Debug] 成功取得題目，準備載入...');
+                   }
+   
                    currentCheckData.scenario = data.scenarioType; 
                    currentCheckData.question = data.question; 
+                   
                    loadAssessment(data.scenarioType, data.question);
                } else {
+                   console.error('❌ [Frontend Debug] API 回傳 success: false', data.message);
                    showToast(data.message || '提交失敗', 'error');
                    if (submitBtn) {
                        submitBtn.disabled = false;
@@ -3009,7 +3024,7 @@ window.handleCompleteTask = function() {
                }
            })
            .catch(error => {
-               console.error(error);
+               console.error('❌ [Frontend Debug] 網路或解析錯誤:', error);
                showToast('連線錯誤，請重試', 'error');
                if (submitBtn) {
                    submitBtn.disabled = false;
@@ -3019,28 +3034,44 @@ window.handleCompleteTask = function() {
    };
    
    /**
-    * 載入並顯示評量題目 (整合版)
+    * 載入並顯示評量題目 (Debug 版)
     */
    function loadAssessment(scenario, questionData) {
+       console.log('🔄 [Frontend Debug] loadAssessment 啟動，傳入參數:', { scenario, questionData });
+   
        // 1. 儲存情境
        currentCheckData.scenario = scenario;
    
-       // 2. UI 切換 (包含 CSS 強制重置)
+       // 2. UI 切換 (CSS 重置)
        const checkStage = document.getElementById('checkStageContainer');
        const assessmentStage = document.getElementById('assessmentStageContainer');
        const finishBtn = document.getElementById('finishCheckBtn');
        const submitBtn = document.getElementById('submitAssessmentBtn');
        const cancelBtn = document.querySelector('.modal-footer .btn-secondary');
-   
-       // 隱藏檢查表
-       if (checkStage) checkStage.style.display = 'none';
        
-       // 顯示評量表
-       if (assessmentStage) assessmentStage.style.display = 'block';
-   
-       // 確保 Modal 捲軸回到最上方
+       // 重置 Modal Body
        const modalBody = document.querySelector('#selfCheckModal .modal-body');
-       if (modalBody) modalBody.scrollTop = 0;
+       const modalContent = document.querySelector('#selfCheckModal .modal-content');
+   
+       if (checkStage) {
+           checkStage.style.setProperty('display', 'none', 'important');
+           checkStage.style.height = '0';
+           checkStage.style.padding = '0';
+           checkStage.style.margin = '0';
+           checkStage.style.border = 'none';
+       }
+       
+       if (modalBody) {
+           modalBody.style.cssText = 'display: block !important; height: auto !important; min-height: 200px !important; overflow-y: auto !important; padding: 20px !important; flex: none !important;';
+           modalBody.scrollTop = 0;
+       }
+   
+       if (modalContent) {
+           modalContent.style.height = 'auto';
+           modalContent.style.maxHeight = '90vh';
+       }
+   
+       if (assessmentStage) assessmentStage.style.display = 'block';
    
        // 3. 按鈕切換
        if (finishBtn) finishBtn.style.display = 'none';
@@ -3049,7 +3080,7 @@ window.handleCompleteTask = function() {
    
        document.getElementById('selfCheckTitle').textContent = '🧠 隨堂評量';
    
-       // 4. 顯示提示文字
+       // 4. 顯示提示
        const hintText = document.getElementById('assessmentHintText');
        if (scenario === 'B') {
            hintText.innerHTML = `💪 剛才雖然有小錯誤，但修正後就是學習！<br>請回答下列問題以完成任務。`;
@@ -3057,28 +3088,30 @@ window.handleCompleteTask = function() {
            hintText.innerHTML = `🎉 檢查完美通過！<br>請回答最後一個問題來領取獎勵。`;
        }
    
-       // 5. 渲染題目 (這段取代了 renderAssessment)
+       // 5. 渲染題目
        if (questionData) {
+           console.log('✅ [Frontend Debug] 開始渲染題目 UI...');
            currentCheckData.question = questionData;
            
            const qTextEl = document.getElementById('assessmentQuestionText');
            const optionsEl = document.getElementById('assessmentOptionsContainer');
    
-           if (qTextEl) qTextEl.textContent = questionData.questionText;
+           if (qTextEl) {
+               qTextEl.textContent = questionData.questionText;
+               console.log('   - 題目文字已設定:', questionData.questionText);
+           }
            
            if (optionsEl) {
                optionsEl.innerHTML = '';
-               // 後端回傳的是 options 陣列，這裡直接使用
                const options = questionData.options || []; 
+               console.log('   - 選項列表:', options);
                
                options.forEach((opt, idx) => {
                    const btn = document.createElement('div');
                    btn.className = 'assessment-option-btn';
                    btn.textContent = opt;
                    
-                   // 這段取代了 selectOption
                    btn.onclick = function() {
-                       // 1. 清除其他按鈕樣式
                        document.querySelectorAll('.assessment-option-btn').forEach(b => {
                            b.style.borderColor = 'var(--game-border)';
                            b.style.background = 'var(--game-bg-medium)';
@@ -3086,23 +3119,21 @@ window.handleCompleteTask = function() {
                            b.classList.remove('selected');
                        });
                        
-                       // 2. 設定當前按鈕樣式
                        this.style.borderColor = 'var(--game-accent)';
                        this.style.background = 'rgba(245, 158, 11, 0.2)';
                        this.style.color = 'white';
                        this.classList.add('selected');
                        
-                       // 3. 記錄選擇
                        currentCheckData.selectedOptionIndex = idx;
                    };
                    optionsEl.appendChild(btn);
                });
            }
        } else {
+           console.error('❌ [Frontend Debug] 無法渲染：questionData 為空！');
            showToast('無法載入題目資料', 'error');
        }
        
-       // 重置選擇狀態
        currentCheckData.selectedOptionIndex = null;
    }
    
@@ -3204,6 +3235,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
