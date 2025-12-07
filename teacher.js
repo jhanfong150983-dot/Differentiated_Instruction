@@ -1277,3 +1277,53 @@ function printStudentList() {
         printWindow.print();
     }, 250);
 }
+
+let currentCoTeacherClassId = null;
+
+function openCoTeacherModal(classId, className) {
+    currentCoTeacherClassId = classId;
+    document.getElementById('coTeacherClassName').textContent = className;
+    
+    // TODO: 可選實作 - 載入現有代課教師名單
+    document.getElementById('coTeachersInput').value = '';
+    
+    openModal('coTeacherModal');
+}
+
+function handleSaveCoTeachers() {
+    const input = document.getElementById('coTeachersInput').value.trim();
+    const emails = input.split(',').map(e => e.trim()).filter(e => e);
+    const coTeachers = emails.join('|'); // 用 | 分隔
+    
+    if (!currentCoTeacherClassId) return;
+    
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '儲存中...';
+    
+    const params = new URLSearchParams({
+        action: 'updateCoTeachers',
+        classId: currentCoTeacherClassId,
+        coTeachers: coTeachers,
+        teacherEmail: getUserEmail()
+    });
+    
+    fetch(`${APP_CONFIG.API_URL}?${params}`)
+        .then(res => res.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.textContent = '儲存';
+            
+            if (data.success) {
+                showToast('代課教師設定成功！', 'success');
+                closeModal('coTeacherModal');
+            } else {
+                showToast(data.message || '設定失敗', 'error');
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.textContent = '儲存';
+            showToast('系統錯誤：' + err.message, 'error');
+        });
+}
