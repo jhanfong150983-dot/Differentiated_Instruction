@@ -3362,7 +3362,117 @@ window.loadAssessment = function(scenario, questionData) {
        // 選用：重置相關變數 (視需求而定)
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
+
+   /**
+ * 輔助函式：渲染檢查列表 DOM
+ * 負責將 currentCheckData.checklists 轉換為畫面上的勾選單
+ */
+function renderChecklistItems() {
+    // 1. 尋找容器 (嘗試多種選擇器以防萬一)
+    let listContainer = document.querySelector('#checkStageContainer .check-list-container');
+    
+    // 如果容器不存在，嘗試重新建立結構
+    if (!listContainer) {
+        const stage = document.getElementById('checkStageContainer');
+        if(stage) {
+            // 確保容器有被建立
+            if (!stage.querySelector('.check-list-container')) {
+                const containerDiv = document.createElement('div');
+                containerDiv.className = 'check-list-container';
+                stage.appendChild(containerDiv);
+            }
+            listContainer = stage.querySelector('.check-list-container');
+        }
+    }
+    
+    // 如果還是找不到，報錯並退出
+    if (!listContainer) {
+        console.error('❌ [Render] 找不到 .check-list-container 容器');
+        return;
+    }
+
+    // 2. 清空舊內容
+    listContainer.innerHTML = ''; 
+
+    // 3. 檢查是否有資料
+    if (!currentCheckData || !currentCheckData.checklists || currentCheckData.checklists.length === 0) {
+        listContainer.innerHTML = '<div class="text-center p-3 text-muted">沒有檢查項目</div>';
+        return;
+    }
+
+    // 4. 迴圈產生 HTML
+    currentCheckData.checklists.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'check-item';
+        div.id = `checkItem_${index}`;
+        div.style.cssText = "margin-bottom: 15px; padding: 15px; border: 1px solid #eee; border-radius: 8px; background: #fff; transition: all 0.2s;";
+
+        div.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 10px; display: flex; align-items: flex-start;">
+                <span style="margin-right: 8px;">${index + 1}.</span>
+                <span>${item.itemTitle || '未命名項目'}</span>
+            </div>
+            <div class="btn-group w-100" role="group">
+                <button type="button" class="btn btn-outline-success" onclick="updateCheckStatus(${index}, 'pass')">
+                    ✅ 符合
+                </button>
+                <button type="button" class="btn btn-outline-danger" onclick="updateCheckStatus(${index}, 'fail')">
+                    ❌ 未符合
+                </button>
+            </div>
+            <div id="improveSection_${index}" style="display:none; margin-top:10px;">
+                <input type="text" id="improveInput_${index}" class="form-control mt-2" placeholder="請填寫修正說明...">
+            </div>
+        `;
+        listContainer.appendChild(div);
+    });
+    
+    console.log(`✅ [Render] 已渲染 ${currentCheckData.checklists.length} 個檢查項目`);
+}
+
+/**
+ * 輔助函式：更新單項檢查狀態
+ * (這個也必須要有，按鈕點擊才會有反應)
+ */
+window.updateCheckStatus = function(index, status) {
+    // 確保結果陣列存在
+    if (!currentCheckData.results) {
+        currentCheckData.results = new Array(currentCheckData.checklists.length).fill(null);
+    }
+    
+    currentCheckData.results[index] = status;
+
+    const itemEl = document.getElementById(`checkItem_${index}`);
+    const improveSec = document.getElementById(`improveSection_${index}`);
+    
+    if (!itemEl) return;
+
+    const passBtn = itemEl.querySelector('.btn-outline-success, .btn-success');
+    const failBtn = itemEl.querySelector('.btn-outline-danger, .btn-danger');
+
+    // 重置按鈕樣式
+    passBtn.className = 'btn btn-outline-success';
+    failBtn.className = 'btn btn-outline-danger';
+    
+    // 設定選中樣式
+    if (status === 'pass') {
+        passBtn.className = 'btn btn-success text-white';
+        if (improveSec) improveSec.style.display = 'none';
+        itemEl.style.borderColor = '#28a745';
+        itemEl.style.backgroundColor = '#f0fff4'; // 淡綠色背景
+    } else {
+        failBtn.className = 'btn btn-danger text-white';
+        if (improveSec) {
+            improveSec.style.display = 'block';
+            const input = improveSec.querySelector('input');
+            if (input) setTimeout(() => input.focus(), 100);
+        }
+        itemEl.style.borderColor = '#dc3545';
+        itemEl.style.backgroundColor = '#fff5f5'; // 淡紅色背景
+    }
+};
 })(); // IIFE
+
 
 
 
