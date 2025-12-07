@@ -2878,30 +2878,46 @@ window.handleCompleteTask = function() {
        }
    };
 
-    /**
-     * 切換單項檢核狀態
-     */
-    window.toggleCheckStatus = function(index, status) {
-        const card = document.getElementById(`checkItem_${index}`);
-        const passBtn = card.querySelector('.pass');
-        const failBtn = card.querySelector('.fail');
-        const improveBox = document.getElementById(`improvementBox_${index}`);
+    * 切換檢核項目狀態 (包含資料更新與文字框顯示/隱藏)
+    * @param {number} index - 項目索引
+    * @param {string} status - 'pass' 或 'fail'
+    */
+   window.toggleCheckStatus = function(index, status) {
+       const itemCard = document.getElementById(`checkItem_${index}`);
+       const passBtn = itemCard.querySelector('.status-btn.pass');
+       const failBtn = itemCard.querySelector('.status-btn.fail');
+       const improvementBox = document.getElementById(`improvementBox_${index}`);
+   
+       if (!itemCard || !passBtn || !failBtn || !improvementBox) {
+           console.error('Checklist element not found for index:', index);
+           return;
+       }
+   
+       // 1. 更新 UI 樣式
+       if (status === 'pass') {
+           passBtn.classList.add('active');
+           failBtn.classList.remove('active');
+           
+           // 隱藏文字框 (選符合時，不需要填寫修正說明)
+           improvementBox.style.display = 'none';
+           
+       } else if (status === 'fail') {
+           failBtn.classList.add('active');
+           passBtn.classList.remove('active');
+           
+           // 顯示文字框 (選未符合時，需要填寫修正說明)
+           improvementBox.style.display = 'block';
+       }
+   
+       // 2. 更新資料結構 (🔥 這是提交時用來驗證的關鍵！)
+       if (!currentCheckData.results) {
+           currentCheckData.results = {};
+       }
+       currentCheckData.results[index] = status;
+   };
 
-        if (status === 'pass') {
-            passBtn.classList.add('active');
-            failBtn.classList.remove('active');
-            improveBox.classList.remove('show');
-        } else {
-            passBtn.classList.remove('active');
-            failBtn.classList.add('active');
-            improveBox.classList.add('show');
-            // 自動聚焦輸入框
-            setTimeout(() => document.getElementById(`improveInput_${index}`).focus(), 100);
-        }
-    };
-
     /**
-    * 提交自主檢查 (修正版：加入強制全選驗證)
+    * 提交自主檢查 (最終修正版：全選驗證與修正說明檢查)
     */
    window.submitSelfCheck = function() {
        const total = currentCheckData.checklists.length;
@@ -2909,27 +2925,32 @@ window.handleCompleteTask = function() {
        let isAllPass = true;
        const submitBtn = document.getElementById('finishCheckBtn');
        
-       // --- 1. 驗證所有項目是否都已選取 ---
+       // --- 1. 驗證所有項目是否都已選取 (解決誤判問題) ---
+       // 檢查 currentCheckData.results 裡是否每個索引 i 都有 'pass' 或 'fail' 的值
        for (let i = 0; i < total; i++) {
-           // currentCheckData.results[i] 應該是 'pass' 或 'fail'
            if (!currentCheckData.results || !currentCheckData.results[i]) {
-               showToast(`⚠️ 還有 ${total - i} 個項目尚未確認！請逐一檢查。`, 'warning');
+               showToast(`⚠️ 請確認所有 ${total} 個項目都已標記！`, 'warning');
                
-               // 捲動到未選項目
+               // 捲動到未選項目並給予視覺提示
                const el = document.getElementById(`checkItem_${i}`);
-               if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+               if (el) {
+                   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                   el.style.border = '2px solid #F59E0B';
+                   setTimeout(() => el.style.border = '1px solid var(--game-border)', 1000);
+               }
                return; // 阻擋提交
            }
        }
        
        // --- 2. 檢查「未符合」項目是否有填寫說明 ---
        for (let i = 0; i < total; i++) {
-           // 從 currentCheckData.results 中檢查狀態
+           // 統一透過 currentCheckData.results 檢查狀態
            if (currentCheckData.results[i] === 'fail') {
                isAllPass = false;
                const input = document.getElementById(`improveInput_${i}`);
                const reason = input.value.trim();
                
+               // 判斷是否缺少修正說明
                if (!reason) {
                    showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
                    input.focus();
@@ -2953,7 +2974,7 @@ window.handleCompleteTask = function() {
    
        currentCheckData.hasErrors = !isAllPass;
        
-       // 如果有錯誤，先將錯誤資訊送回後端記錄 (Log Error)
+       // Log Error
        if (!isAllPass) {
            APP_CONFIG.log('📝 記錄檢核修正項目', errors);
            const params = new URLSearchParams({
@@ -2962,14 +2983,11 @@ window.handleCompleteTask = function() {
                errors: JSON.stringify(errors)
            });
            
-           // 使用 .then() 確保 Log 記錄後再呼叫 loadAssessment()
            fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-               .then(() => {
-                   loadAssessment();
-               })
+               .then(() => loadAssessment())
                .catch((e) => {
                    APP_CONFIG.log('Error logging checklist errors, proceeding anyway.', e);
-                   loadAssessment(); // 網路錯誤時仍繼續
+                   loadAssessment();
                });
        } else {
            // 全對，直接轉場
@@ -3155,6 +3173,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
