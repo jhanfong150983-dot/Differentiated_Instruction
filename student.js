@@ -2994,75 +2994,38 @@ window.handleCompleteTask = function() {
            loadAssessment();
        }
    };
-    /**
-    * 載入並顯示評量題目 (終極修正版：強制覆蓋 CSS !important)
+   /**
+    * 載入並顯示評量題目 (極簡穩健版)
     */
    function loadAssessment(scenario) {
-       // 1. 儲存情境 (供後續提交使用)
+       // 1. 儲存情境
        currentCheckData.scenario = scenario;
    
-       // 獲取元素
-       const modalContent = document.querySelector('#selfCheckModal .modal-content');
-       const modalBody = document.querySelector('#selfCheckModal .modal-body');
+       // 2. UI 切換：簡單暴力的 display 切換
        const checkStage = document.getElementById('checkStageContainer');
        const assessmentStage = document.getElementById('assessmentStageContainer');
-       
        const finishBtn = document.getElementById('finishCheckBtn');
        const submitBtn = document.getElementById('submitAssessmentBtn');
        const cancelBtn = document.querySelector('.modal-footer .btn-secondary');
    
-       // ============================================================
-       // 🔥 步驟 1: 強制隱藏自主檢查表 (消除殘影)
-       // ============================================================
-       if (checkStage) {
-           // 使用 setProperty(..., 'important') 來無視 CSS 的設定
-           checkStage.style.setProperty('display', 'none', 'important');
-           checkStage.style.setProperty('height', '0', 'important');
-           checkStage.style.setProperty('padding', '0', 'important');
-       }
+       // 隱藏檢查表
+       if (checkStage) checkStage.style.display = 'none';
+       
+       // 顯示評量表
+       if (assessmentStage) assessmentStage.style.display = 'block';
    
-       // ============================================================
-       // 🔥 步驟 2: 解鎖 Modal Body 的高度與捲動限制 (解決截斷與無法滑動)
-       // ============================================================
-       if (modalBody) {
-           // 解除 Flex 鎖定
-           modalBody.style.setProperty('flex', 'none', 'important');
-           modalBody.style.setProperty('height', 'auto', 'important'); // 讓高度隨內容長高
-           modalBody.style.setProperty('min-height', 'auto', 'important');
-           
-           // 恢復捲動能力
-           modalBody.style.setProperty('overflow-y', 'auto', 'important');
-           modalBody.style.setProperty('overflow-x', 'hidden', 'important');
-           
-           // 恢復正常排版
-           modalBody.style.setProperty('display', 'block', 'important');
-           modalBody.style.setProperty('padding', '20px', 'important'); // 補回內距比較好看
-       }
+       // 3. 確保 Modal 捲軸回到最上方 (因為是同一個視窗切換)
+       const modalBody = document.querySelector('#selfCheckModal .modal-body');
+       if (modalBody) modalBody.scrollTop = 0;
    
-       // 如果 modal-content 也有被鎖死，也要解開
-       if (modalContent) {
-           modalContent.style.setProperty('overflow-y', 'auto', 'important'); // 允許外層捲動
-       }
-   
-       // ============================================================
-       // 步驟 3: 顯示評量區域
-       // ============================================================
-       if (assessmentStage) {
-           assessmentStage.style.setProperty('display', 'block', 'important');
-           // 確保評量區內容有足夠高度顯示
-           assessmentStage.style.setProperty('height', 'auto', 'important');
-           assessmentStage.style.setProperty('overflow', 'visible', 'important');
-       }
-   
-       // ============================================================
-       // 步驟 4: 按鈕與文字切換 (保持原樣)
-       // ============================================================
+       // 4. 按鈕切換
        if (finishBtn) finishBtn.style.display = 'none';
        if (submitBtn) submitBtn.style.display = 'inline-block';
        if (cancelBtn) cancelBtn.style.display = 'none';
    
        document.getElementById('selfCheckTitle').textContent = '🧠 隨堂評量';
    
+       // 5. 顯示提示文字
        const hintText = document.getElementById('assessmentHintText');
        if (scenario === 'B') {
            hintText.innerHTML = `💪 剛才雖然有小錯誤，但修正後就是學習！<br>請回答下列問題以完成任務。`;
@@ -3070,22 +3033,17 @@ window.handleCompleteTask = function() {
            hintText.innerHTML = `🎉 檢查完美通過！<br>請回答最後一個問題來領取獎勵。`;
        }
    
-       // ============================================================
-       // 步驟 5: 載入題目資料
-       // ============================================================
-       // 檢查是否有題目資料 (假設 selectedTask 裡已有)
+       // 6. 載入題目 (邏輯不變)
        const question = selectedTask.assessmentQuestion || "光敏電阻的 正極 應該要接在Arduino Uno的哪一個腳位?";
        const options = selectedTask.assessmentOptions || ["5V", "數位腳位(D2~D13)", "GND", "類比腳位(A0~A5)"];
        const correctAnswer = selectedTask.correctAnswer || "5V";
-       const questionId = selectedTask.questionId || "default_q_1"; // ⚠️ 確保這裡有 ID
+       const questionId = selectedTask.questionId || "default_q_1"; 
    
-       // 儲存資料供提交時比對
        currentCheckData.question = {
            questionId: questionId,
            correctAnswer: correctAnswer
        };
    
-       // 渲染畫面
        const qTextEl = document.getElementById('assessmentQuestionText');
        const optionsEl = document.getElementById('assessmentOptionsContainer');
    
@@ -3097,7 +3055,6 @@ window.handleCompleteTask = function() {
                btn.className = 'assessment-option-btn';
                btn.textContent = opt;
                btn.onclick = function() {
-                   // 選項樣式切換
                    document.querySelectorAll('.assessment-option-btn').forEach(b => {
                        b.style.borderColor = 'var(--game-border)';
                        b.style.background = 'var(--game-bg-medium)';
@@ -3106,15 +3063,12 @@ window.handleCompleteTask = function() {
                    this.style.borderColor = 'var(--game-accent)';
                    this.style.background = 'rgba(245, 158, 11, 0.2)';
                    this.style.color = 'white';
-                   
-                   // 記錄選擇 (存 index 0~3)
                    selectedOptionIndex = idx;
                };
                optionsEl.appendChild(btn);
            });
        }
        
-       // 重置選擇狀態
        selectedOptionIndex = null;
    }
 
@@ -3238,6 +3192,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
