@@ -222,6 +222,9 @@
             margin-top: var(--spacing-md);
             padding-top: var(--spacing-md);
             border-top: 1px solid var(--border-color);
+            <button class="btn btn-secondary" onclick="event.stopPropagation(); openCoTeacherModal('${classData.classId}', '${escapeHtml(classData.className)}')">
+                👥 代課教師
+            </button>
         }
 
         .btn-secondary {
@@ -2809,6 +2812,30 @@
         });
     </script>
 
-    
+    <!-- 代課教師管理 Modal -->
+<div id="coTeacherModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">管理代課教師</h2>
+            <button class="modal-close" onclick="closeModal('coTeacherModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="color: var(--text-medium); margin-bottom: 16px;">
+                班級：<strong id="coTeacherClassName"></strong>
+            </p>
+            <div class="form-group">
+                <label class="form-label">代課教師 Email（多位請用逗號分隔）</label>
+                <input type="text" class="form-input" id="coTeachersInput" 
+                       placeholder="例如：teacher2@gmail.com, teacher3@gmail.com">
+                <div class="form-hint">代課教師可完全操作此班級（上課、審核任務等）</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('coTeacherModal')">取消</button>
+            <button class="btn btn-primary" onclick="handleSaveCoTeachers()">儲存</button>
+        </div>
+    </div>
+</div>
 </body>
+
 </html>
