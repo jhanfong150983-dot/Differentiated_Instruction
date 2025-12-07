@@ -2995,89 +2995,128 @@ window.handleCompleteTask = function() {
        }
    };
     /**
-     * 載入並顯示評量題目
-     */
-    function loadAssessment() {
-          // 獲取需要操作的元素
-       const modalBody = document.querySelector('#selfCheckModal .modal-body'); // 確保選到正確的 body
+    * 載入並顯示評量題目 (終極修正版：強制覆蓋 CSS !important)
+    */
+   function loadAssessment(scenario) {
+       // 1. 儲存情境 (供後續提交使用)
+       currentCheckData.scenario = scenario;
+   
+       // 獲取元素
+       const modalContent = document.querySelector('#selfCheckModal .modal-content');
+       const modalBody = document.querySelector('#selfCheckModal .modal-body');
        const checkStage = document.getElementById('checkStageContainer');
        const assessmentStage = document.getElementById('assessmentStageContainer');
+       
+       const finishBtn = document.getElementById('finishCheckBtn');
        const submitBtn = document.getElementById('submitAssessmentBtn');
-       const finishCheckBtn = document.getElementById('finishCheckBtn');
+       const cancelBtn = document.querySelector('.modal-footer .btn-secondary');
    
-       // 1. 儲存情境代碼 (需在 submitSelfCheck 內設置)
-       // 假設 currentCheckData.scenario 已經設置
-   
-       // 2. UI 切換：徹底隱藏檢查表，顯示評量區
+       // ============================================================
+       // 🔥 步驟 1: 強制隱藏自主檢查表 (消除殘影)
+       // ============================================================
        if (checkStage) {
-           checkStage.style.display = 'none';
-           
-           // 🔥 關鍵清除：確保不佔用任何空間 🔥
-           checkStage.style.height = '0';
-           checkStage.style.padding = '0';
-           checkStage.style.margin = '0';
-           checkStage.style.border = 'none';
-           
-           // 如果 checkStageContainer 內部使用了 Flexbox 分欄 (self-check-layout)，
-           // 確保它們也徹底隱藏
-           const layout = checkStage.querySelector('.self-check-layout');
-           if (layout) {
-                layout.style.display = 'none';
-           }
+           // 使用 setProperty(..., 'important') 來無視 CSS 的設定
+           checkStage.style.setProperty('display', 'none', 'important');
+           checkStage.style.setProperty('height', '0', 'important');
+           checkStage.style.setProperty('padding', '0', 'important');
        }
    
-       // 💥 3. 關鍵修正：重置 modal-body 的 Flexbox 樣式 💥
+       // ============================================================
+       // 🔥 步驟 2: 解鎖 Modal Body 的高度與捲動限制 (解決截斷與無法滑動)
+       // ============================================================
        if (modalBody) {
-           // 清除 Flexbox 相關設定，讓它恢復標準的 block 模式
-           modalBody.style.flex = 'initial';         // 清除 flex: 1 1 auto
-           modalBody.style.height = 'initial';       // 清除 height: 0
-           modalBody.style.minHeight = 'initial';    // 清除 min-height: 0
-           modalBody.style.display = 'block';        // 清除 display: flex
-           modalBody.style.flexDirection = 'initial';// 清除 flex-direction: column
+           // 解除 Flex 鎖定
+           modalBody.style.setProperty('flex', 'none', 'important');
+           modalBody.style.setProperty('height', 'auto', 'important'); // 讓高度隨內容長高
+           modalBody.style.setProperty('min-height', 'auto', 'important');
            
-           // 恢復捲動！讓整個 Modal 視窗可以捲動，而不是 Body 內部
-           modalBody.style.overflow = 'auto'; // 或直接設置為 'initial'
-           // 評量模式下，我們通常會恢復一些內邊距，讓內容看起來不貼邊
-           modalBody.style.padding = '20px';
+           // 恢復捲動能力
+           modalBody.style.setProperty('overflow-y', 'auto', 'important');
+           modalBody.style.setProperty('overflow-x', 'hidden', 'important');
+           
+           // 恢復正常排版
+           modalBody.style.setProperty('display', 'block', 'important');
+           modalBody.style.setProperty('padding', '20px', 'important'); // 補回內距比較好看
+       }
+   
+       // 如果 modal-content 也有被鎖死，也要解開
+       if (modalContent) {
+           modalContent.style.setProperty('overflow-y', 'auto', 'important'); // 允許外層捲動
+       }
+   
+       // ============================================================
+       // 步驟 3: 顯示評量區域
+       // ============================================================
+       if (assessmentStage) {
+           assessmentStage.style.setProperty('display', 'block', 'important');
+           // 確保評量區內容有足夠高度顯示
+           assessmentStage.style.setProperty('height', 'auto', 'important');
+           assessmentStage.style.setProperty('overflow', 'visible', 'important');
+       }
+   
+       // ============================================================
+       // 步驟 4: 按鈕與文字切換 (保持原樣)
+       // ============================================================
+       if (finishBtn) finishBtn.style.display = 'none';
+       if (submitBtn) submitBtn.style.display = 'inline-block';
+       if (cancelBtn) cancelBtn.style.display = 'none';
+   
+       document.getElementById('selfCheckTitle').textContent = '🧠 隨堂評量';
+   
+       const hintText = document.getElementById('assessmentHintText');
+       if (scenario === 'B') {
+           hintText.innerHTML = `💪 剛才雖然有小錯誤，但修正後就是學習！<br>請回答下列問題以完成任務。`;
+       } else {
+           hintText.innerHTML = `🎉 檢查完美通過！<br>請回答最後一個問題來領取獎勵。`;
+       }
+   
+       // ============================================================
+       // 步驟 5: 載入題目資料
+       // ============================================================
+       // 檢查是否有題目資料 (假設 selectedTask 裡已有)
+       const question = selectedTask.assessmentQuestion || "光敏電阻的 正極 應該要接在Arduino Uno的哪一個腳位?";
+       const options = selectedTask.assessmentOptions || ["5V", "數位腳位(D2~D13)", "GND", "類比腳位(A0~A5)"];
+       const correctAnswer = selectedTask.correctAnswer || "5V";
+       const questionId = selectedTask.questionId || "default_q_1"; // ⚠️ 確保這裡有 ID
+   
+       // 儲存資料供提交時比對
+       currentCheckData.question = {
+           questionId: questionId,
+           correctAnswer: correctAnswer
+       };
+   
+       // 渲染畫面
+       const qTextEl = document.getElementById('assessmentQuestionText');
+       const optionsEl = document.getElementById('assessmentOptionsContainer');
+   
+       if (qTextEl) qTextEl.textContent = question;
+       if (optionsEl) {
+           optionsEl.innerHTML = '';
+           options.forEach((opt, idx) => {
+               const btn = document.createElement('div');
+               btn.className = 'assessment-option-btn';
+               btn.textContent = opt;
+               btn.onclick = function() {
+                   // 選項樣式切換
+                   document.querySelectorAll('.assessment-option-btn').forEach(b => {
+                       b.style.borderColor = 'var(--game-border)';
+                       b.style.background = 'var(--game-bg-medium)';
+                       b.style.color = 'var(--game-text-light)';
+                   });
+                   this.style.borderColor = 'var(--game-accent)';
+                   this.style.background = 'rgba(245, 158, 11, 0.2)';
+                   this.style.color = 'white';
+                   
+                   // 記錄選擇 (存 index 0~3)
+                   selectedOptionIndex = idx;
+               };
+               optionsEl.appendChild(btn);
+           });
        }
        
-       if (assessmentStage) assessmentStage.style.display = 'block';
-       
-       // 4. 按鈕切換 (保持不變)
-       if (finishCheckBtn) finishCheckBtn.style.display = 'none';
-       if (submitBtn) submitBtn.style.display = 'inline-block';
-       document.getElementById('selfCheckTitle').textContent = '🧠 隨堂評量';
-       
-        // UI 切換
-        document.getElementById('checkStageContainer').style.display = 'none';
-        document.getElementById('finishCheckBtn').style.display = 'none';
-        document.getElementById('assessmentStageContainer').style.display = 'block';
-        document.getElementById('selfCheckTitle').textContent = '🧠 隨堂評量';
-        
-        // 根據檢查結果顯示提示
-        const hintText = document.getElementById('assessmentHintText');
-        if (currentCheckData.hasErrors) {
-            hintText.innerHTML = '雖然檢查有缺失，但只要<strong style="color:#10B981">答對此題，將獲得額外代幣獎勵！</strong> 💪';
-        } else {
-            hintText.innerHTML = '檢查完美通過！請完成此題以結束任務。（此模式無額外獎勵）';
-        }
-
-        // 獲取題目
-        const params = new URLSearchParams({
-            action: 'getTaskQuestion',
-            taskId: currentCheckData.taskId
-        });
-
-        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success && data.question) {
-                    renderAssessment(data.question);
-                } else {
-                    showToast('無法獲取題目', 'error');
-                }
-            });
-    }
+       // 重置選擇狀態
+       selectedOptionIndex = null;
+   }
 
     /**
      * 渲染題目
@@ -3199,6 +3238,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
