@@ -1946,6 +1946,9 @@
  * 開啟任務詳情 Modal (修正版：支援 Assessment 斷點續傳)
  */
 window.openTaskModal = function(task, progress) {
+   // 🔥 Debug: 印出傳入的 progress 物件
+    console.log('🔍 [OpenModal] Task:', task.taskId, 'Progress:', progress);
+   
     selectedTask = task; 
     const modal = document.getElementById('taskModal');
     if (!modal) return;
@@ -3353,6 +3356,7 @@ window.submitSelfCheck = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
