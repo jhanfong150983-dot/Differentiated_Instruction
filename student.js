@@ -2878,7 +2878,7 @@ window.handleCompleteTask = function() {
        }
    };
 
-    * 切換檢核項目狀態 (包含資料更新與文字框顯示/隱藏)
+    /** 切換檢核項目狀態 (包含資料更新與文字框顯示/隱藏)
     * @param {number} index - 項目索引
     * @param {string} status - 'pass' 或 'fail'
     */
@@ -3173,6 +3173,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
