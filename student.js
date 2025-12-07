@@ -1942,102 +1942,125 @@
     // 任務 Modal
     // ==========================================
 
-    /**
-     * 開啟任務詳情 Modal (已移除連結區塊顯示邏輯)
-     */
-    window.openTaskModal = function(task, progress) {
-        selectedTask = task;
-
-        const modal = document.getElementById('taskModal');
-        if (!modal) return;
-
-        // --- 1. 填入任務基本資訊 (使用 ?. 安全讀取) ---
-        const nameEl = document.getElementById('modalTaskName');
-        if (nameEl) nameEl.textContent = task.name || task.taskName;
-
-        let taskTypeName = '教學';
-        if (task.type === 'practice') taskTypeName = '練習';
-        else if (task.type === 'assessment') taskTypeName = '評量';
-
-        const typeEl = document.getElementById('modalTaskType');
-        const tierEl = document.getElementById('modalTaskTier');
-        const rewardEl = document.getElementById('modalTaskReward');
-
-        if (typeEl) typeEl.textContent = taskTypeName;
-        if (tierEl) tierEl.textContent = task.tier === 'mixed' ? (selectedTier || '混合') : task.tier;
-        if (rewardEl) rewardEl.textContent = `💰 ${task.tokenReward || 0} 代幣`;
-
-        // --- 2. 處理任務內容與連結數據 ---
-        let taskContent = '';
-        let taskLink = '';
-
-        if (task.tier === 'mixed') {
-            if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
-                taskContent = task.tutorialDesc || '';
-                taskLink = task.tutorialLink || '';
-            } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
-                taskContent = task.adventureDesc || '';
-                taskLink = task.adventureLink || '';
-            } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
-                taskContent = task.hardcoreDesc || '';
-                taskLink = task.hardcoreLink || '';
-            }
-        } else {
-            taskContent = task.content || '';
-            taskLink = task.link || '';
-        }
-
-        // --- 3. 顯示文字內容區塊 ---
-        const contentSection = document.getElementById('modalContentSection');
-        const contentText = document.getElementById('modalTaskContent');
-
-        // 防呆：確保 HTML 元素存在
-        if (contentSection && contentText) {
-            contentSection.style.display = 'block'; // 永遠顯示內容區塊
-            contentText.textContent = taskContent || '暫無詳細說明';
-        }
-
-        // ❌ 已移除：原本這裡有控制 modalLinkSection 的程式碼，現在刪掉了，
-        // 這樣就不會因為找不到 HTML 而報錯。
-
-        // --- 4. 按鈕狀態控制 ---
-        const startBtn = document.getElementById('startTaskBtn');
-        const completeBtn = document.getElementById('completeTaskBtn');
-        const reopenBtn = document.getElementById('reopenMaterialBtn');
-
-        // 先重置所有按鈕 (如果按鈕存在)
-        if (startBtn) startBtn.style.display = 'none';
-        if (completeBtn) completeBtn.style.display = 'none';
-        if (reopenBtn) reopenBtn.style.display = 'none';
-
-        // 檢查是否有連結 (雖然不顯示在 Modal 內，但「重新打開教材」按鈕可能還是需要它)
-        const hasMaterialLink = taskLink && taskLink.trim() !== '';
-
-        // 根據進度顯示
-        if (progress.status === 'completed') {
-            // [已完成]
-            if (hasMaterialLink && reopenBtn) reopenBtn.style.display = 'inline-block';
-
-        } else if (progress.status === 'pending_review' || progress.status === 'self_checking') {
-            // [待審核 / 自主檢查中]
-            if (hasMaterialLink && reopenBtn) reopenBtn.style.display = 'inline-block';
-
-        } else if (progress.status === 'in_progress') {
-            // [進行中]
-            if (completeBtn) completeBtn.style.display = 'inline-block';
-            if (hasMaterialLink && reopenBtn) reopenBtn.style.display = 'inline-block';
-
-        } else {
-            // [未開始]
-            if (startBtn) {
-                startBtn.style.display = 'inline-block';
-                startBtn.disabled = false;
-                startBtn.textContent = '開始任務';
-            }
-        }
-
-        modal.classList.add('active');
-    };
+      /**
+       * 開啟任務詳情 Modal (支援自主檢查狀態跳轉)
+       */
+      window.openTaskModal = function(task, progress) {
+          selectedTask = task;
+      
+          const modal = document.getElementById('taskModal');
+          if (!modal) return;
+      
+          // --- 1. 填入任務基本資訊 ---
+          const setText = (id, text) => {
+              const el = document.getElementById(id);
+              if (el) el.textContent = text;
+          };
+      
+          setText('modalTaskName', task.name || task.taskName);
+      
+          let taskTypeName = '教學';
+          if (task.type === 'practice') taskTypeName = '練習';
+          else if (task.type === 'assessment') taskTypeName = '評量';
+      
+          setText('modalTaskType', taskTypeName);
+          setText('modalTaskTier', task.tier === 'mixed' ? (selectedTier || '混合') : task.tier);
+          setText('modalTaskReward', `💰 ${task.tokenReward || 0} 代幣`);
+      
+          // --- 2. 處理任務內容 ---
+          let taskContent = '';
+          let taskLink = '';
+      
+          if (task.tier === 'mixed') {
+              if (selectedTier === '基礎層' || selectedTier === 'tutorial') {
+                  taskContent = task.tutorialDesc;
+                  taskLink = task.tutorialLink;
+              } else if (selectedTier === '進階層' || selectedTier === 'adventure') {
+                  taskContent = task.adventureDesc;
+                  taskLink = task.adventureLink;
+              } else if (selectedTier === '精通層' || selectedTier === 'hardcore') {
+                  taskContent = task.hardcoreDesc;
+                  taskLink = task.hardcoreLink;
+              }
+          } else {
+              taskContent = task.content;
+              taskLink = task.link;
+          }
+      
+          const contentSection = document.getElementById('modalContentSection');
+          const contentText = document.getElementById('modalTaskContent');
+      
+          if (contentSection && contentText) {
+              contentSection.style.display = 'block';
+              contentText.textContent = taskContent || '暫無詳細說明';
+          }
+      
+          // --- 3. 按鈕狀態控制 (關鍵修改) ---
+          const startBtn = document.getElementById('startTaskBtn');
+          const completeBtn = document.getElementById('completeTaskBtn');
+          const reopenBtn = document.getElementById('reopenMaterialBtn');
+          
+          // 🔥 新增：繼續檢查按鈕 (如果 HTML 裡沒有，下面會動態建立或是借用按鈕)
+          // 建議直接在 HTML 裡加一個，或者我們用 completeBtn 改文字也可以
+          // 這裡示範「借用 completeBtn 但改文字和行為」的做法，比較省事
+          
+          const setDisplay = (el, displayVal) => { if (el) el.style.display = displayVal; };
+      
+          // 先全部隱藏
+          setDisplay(startBtn, 'none');
+          setDisplay(completeBtn, 'none');
+          setDisplay(reopenBtn, 'none');
+      
+          const hasMaterialLink = taskLink && taskLink.trim() !== '';
+          const currentStatus = progress ? progress.status : 'not_started';
+      
+          // 依據狀態顯示按鈕
+          if (currentStatus === 'completed') {
+              // [已完成]
+              if (hasMaterialLink) setDisplay(reopenBtn, 'inline-block');
+              // 可以選擇顯示「已完成」的純文字標籤
+      
+          } else if (currentStatus === 'self_checking') {
+              // 🔥🔥🔥 [自主檢查中] - 這是你要的狀態 🔥🔥🔥
+              
+              if (hasMaterialLink) setDisplay(reopenBtn, 'inline-block');
+              
+              if (completeBtn) {
+                  completeBtn.style.display = 'inline-block';
+                  completeBtn.textContent = '📋 繼續自主檢查';
+                  completeBtn.className = 'btn btn-warning'; // 換個顏色 (黃色) 提示
+                  
+                  // 綁定點擊事件：直接打開檢查面板
+                  completeBtn.onclick = function() {
+                      closeTaskModal();
+                      // 呼叫顯示面板函式 (需確保有 taskProgressId，通常在 progress 物件裡找得到，或重新 fetch)
+                      // 這裡假設 progress 物件裡有 id，或者我們直接用 taskId 讓後端去查
+                      showSelfCheckPanel(progress.taskProgressId || task.taskId, task.taskId);
+                  };
+              }
+      
+          } else if (currentStatus === 'in_progress') {
+              // [進行中]
+              if (hasMaterialLink) setDisplay(reopenBtn, 'inline-block');
+              
+              if (completeBtn) {
+                  completeBtn.style.display = 'inline-block';
+                  completeBtn.textContent = '提交完成';
+                  completeBtn.className = 'btn btn-success'; // 綠色
+                  completeBtn.onclick = handleCompleteTask; // 綁回原本的提交函式
+              }
+      
+          } else {
+              // [未開始]
+              if (startBtn) {
+                  setDisplay(startBtn, 'inline-block');
+                  startBtn.disabled = false;
+                  startBtn.textContent = '開始任務';
+              }
+          }
+      
+          modal.classList.add('active');
+      };
 
     /**
      * 顯示「接續任務」Modal
@@ -3061,6 +3084,7 @@ window.handleCompleteTask = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
