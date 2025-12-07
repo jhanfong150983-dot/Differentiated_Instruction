@@ -1021,7 +1021,7 @@
         .check-item-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start !important; /* 讓左邊的文字靠上對齊 */
             gap: 10px;
         }
 
@@ -1035,21 +1035,21 @@
         /* 通過/待改進 切換按鈕 */
         .status-toggle {
             display: flex;
-            background: var(--game-bg-dark);
-            border-radius: 6px;
-            padding: 2px;
-            border: 1px solid var(--game-border);
+            flex-direction: column !important; /* 🔥 關鍵：由 row 改為 column (直向) */
+            gap: 8px;               /* 增加兩個按鈕之間的距離 */
+            
+            /* 以下是為了美觀做的微調 */
+            border: none !important; /* 移除原本包裹兩個按鈕的外框(視個人喜好) */
+            background: transparent !important; 
+            padding: 0 !important;
+            min-width: 110px;       /* 設定最小寬度，避免按鈕太窄 */
         }
 
         .status-btn {
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-            border: none;
-            background: transparent;
-            color: var(--game-text-medium);
-            transition: all 0.2s;
+            width: 100%;            /* 讓按鈕填滿容器寬度 */
+            text-align: center;     /* 文字置中 */
+            padding: 8px 12px;      /* 增加一點點擊範圍 */
+            border: 1px solid var(--game-border); /* 確保每個按鈕都有獨立邊框 */
         }
 
         .status-btn:hover {
@@ -1488,6 +1488,7 @@
     <script src="student.js"></script>
 </body>
 </html>
+
 
 
 
