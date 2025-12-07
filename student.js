@@ -2851,47 +2851,130 @@ window.openTaskModal = function(task, progress) {
     };
 
     /**
-     * 顯示自主檢查面板
-     */
-    window.showSelfCheckPanel = function(taskProgressId, taskId) {
-        APP_CONFIG.log('🎯 打開自主檢查面板', { taskProgressId, taskId });
-        
-        const modal = document.getElementById('selfCheckModal');
-        if (!modal) return;
+ * 顯示自主檢查面板 (修正版：強制重置按鈕狀態，解決「處理中」卡住問題)
+ */
+window.showSelfCheckPanel = function(taskProgressId, taskId) {
+    console.log('📋 [Frontend] 開啟檢查面板...', { taskProgressId, taskId });
 
-        // 重置介面狀態
-        document.getElementById('checkStageContainer').style.display = 'block';
-        document.getElementById('assessmentStageContainer').style.display = 'none';
-        document.getElementById('finishCheckBtn').style.display = 'inline-block';
-        document.getElementById('submitAssessmentBtn').style.display = 'none';
-        document.getElementById('selfCheckTitle').textContent = '📋 自主檢查';
+    // 1. 初始化資料
+    if (!window.currentCheckData) window.currentCheckData = {};
+    currentCheckData.progressId = taskProgressId;
+    currentCheckData.taskId = taskId;
 
-        // 儲存 ID
-        currentCheckData.taskId = taskId;
-        currentCheckData.progressId = taskProgressId;
-        currentCheckData.hasErrors = false;
+    // 2. 抓取 DOM
+    const modal = document.getElementById('selfCheckModal');
+    const checkStage = document.getElementById('checkStageContainer');
+    const assessmentStage = document.getElementById('assessmentStageContainer');
+    const finishBtn = document.getElementById('finishCheckBtn');
+    const submitBtn = document.getElementById('submitAssessmentBtn');
+    const listContainer = document.querySelector('#checkStageContainer .check-list-container');
 
-        // 呼叫後端取得資料
-        const params = new URLSearchParams({
-            action: 'getTaskChecklistsAndAnswer',
-            taskId: taskId
-        });
+    // 3. UI 狀態初始化 (顯示 Modal, 顯示檢查表, 隱藏評量)
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    }
+    
+    // 強制顯示檢查區塊
+    if (checkStage) {
+        checkStage.style.display = 'block';
+        checkStage.style.removeProperty('display'); // 移除可能的 !important
+        checkStage.innerHTML = '<div class="check-list-container"></div>'; // 重建容器，防止舊內容殘留
+    }
+    
+    // 強制隱藏評量區塊
+    if (assessmentStage) {
+        assessmentStage.style.display = 'none';
+    }
+    if (submitBtn) submitBtn.style.display = 'none';
 
-        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    renderCheckStage(data);
-                    modal.style.display = 'flex';
-                } else {
-                    showToast('無法獲取資料', 'error');
+    // ============================================================
+    // 🔥🔥🔥 關鍵修正：暴力重置提交按鈕狀態 🔥🔥🔥
+    // ============================================================
+    if (finishBtn) {
+        finishBtn.style.display = 'inline-block';
+        finishBtn.disabled = false;            // 🔓 解鎖
+        finishBtn.textContent = '完成檢查，進入評量 →'; // 📝 還原文字
+        finishBtn.classList.remove('btn-secondary'); // 移除灰色樣式
+        finishBtn.classList.add('btn-primary');      // 加回主色樣式
+    }
+    // ============================================================
+
+    // 4. 判斷資料來源
+    // 因為重新整理或重新進入，建議重新抓取以確保資料最新
+    console.log('🔄 重新載入檢查清單...');
+    
+    // 顯示載入中動畫
+    const container = document.querySelector('#checkStageContainer .check-list-container');
+    if (container) container.innerHTML = '<div class="text-center p-3"><span class="spinner-border spinner-border-sm"></span> 載入檢查項目中...</div>';
+    
+    // 暫時鎖定按鈕，防止在載入完成前點擊
+    if (finishBtn) finishBtn.disabled = true;
+
+    const params = new URLSearchParams({
+        action: 'getTaskChecklist',
+        taskId: taskId
+    });
+
+    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.checklists && data.checklists.length > 0) {
+                currentCheckData.checklists = data.checklists;
+                currentCheckData.results = new Array(data.checklists.length).fill(null);
+                
+                // 渲染列表
+                renderChecklistItems();
+                
+                // ✅ 資料載入完成後，再次確保按鈕是可用的
+                if (finishBtn) {
+                    finishBtn.disabled = false;
+                    finishBtn.textContent = '完成檢查，進入評量 →';
                 }
-            })
-            .catch(err => {
-                console.error(err);
-                showToast('連線錯誤', 'error');
-            });
-    };
+            } else {
+                if (container) container.innerHTML = '<div class="text-danger p-3">此任務沒有設定檢查項目，或載入失敗。</div>';
+                showToast('找不到檢查表資料', 'error');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            if (container) container.innerHTML = '<div class="text-danger p-3">連線錯誤，無法載入檢查表。</div>';
+        });
+};
+
+// 確保 renderChecklistItems 函式存在且正確 (附上以防萬一)
+function renderChecklistItems() {
+    const listContainer = document.querySelector('#checkStageContainer .check-list-container');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = ''; // 清空
+
+    currentCheckData.checklists.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'check-item';
+        div.id = `checkItem_${index}`;
+        div.style.cssText = "margin-bottom: 15px; padding: 15px; border: 1px solid #eee; border-radius: 8px; background: #fff; transition: all 0.3s;";
+
+        div.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 10px; display: flex; align-items: flex-start;">
+                <span style="margin-right: 8px;">${index + 1}.</span>
+                <span>${item.itemTitle}</span>
+            </div>
+            <div class="btn-group w-100" role="group">
+                <button type="button" class="btn btn-outline-success" onclick="updateCheckStatus(${index}, 'pass')">
+                    ✅ 符合
+                </button>
+                <button type="button" class="btn btn-outline-danger" onclick="updateCheckStatus(${index}, 'fail')">
+                    ❌ 未符合
+                </button>
+            </div>
+            <div id="improveSection_${index}" style="display:none; margin-top:10px;">
+                <input type="text" id="improveInput_${index}" class="form-control" placeholder="請填寫修正說明...">
+            </div>
+        `;
+        listContainer.appendChild(div);
+    });
+}
 
    /**
     * 渲染第一階段：參考資料與檢核列表 (修正版：預設不勾選)
@@ -3399,6 +3482,7 @@ window.loadAssessment = function(scenario, questionData) {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
 
 
 
