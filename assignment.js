@@ -238,11 +238,17 @@
                         onchange="handleCourseChange('${classData.classId}', this.value)"
                     >
                         <option value="">-- 請選擇課程 --</option>
-                        ${assignmentCourses.map(course => `
-                            <option value="${course.courseId}" ${course.courseId === classData.courseId ? 'selected' : ''}>
-                                ${escapeHtml(course.courseName)}
-                            </option>
-                        `).join('')}
+                        ${assignmentCourses.map(course => {
+                            let displayName = escapeHtml(course.courseName);
+                            if (!course.isOwner && course.sharedBy) {
+                                displayName += ` (由 ${course.sharedBy} 創建)`;
+                            }
+                            return `
+                                <option value="${course.courseId}" ${course.courseId === classData.courseId ? 'selected' : ''}>
+                                    ${displayName}
+                                </option>
+                            `;
+                        }).join('')}
                     </select>
                 </div>
 
