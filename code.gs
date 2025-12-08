@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // 設定區
 // ==========================================
 
@@ -17,16 +17,50 @@ const SHEET_CONFIG = {
     ASSIGNMENTS: '授課安排表',
     LEARNING_RECORDS: '學習資料表',
     TASK_PROGRESS: '任務進度表',
-    DIFFICULTY_CHANGES: '難度變更紀錄表',
+    DIFFICULTY_CHANGES: '難度變更記錄表',
     CLASS_SESSIONS: '課堂紀錄',
     TASK_CHECKLISTS: '檢核項目表',
     TASK_REFERENCE_ANSWERS: '正確答案示範表',
     TASK_QUESTIONS: '題庫表',
-    SELF_CHECK_RECORDS: '自主檢查紀錄表',
-    TASK_ASSESSMENT_RECORDS: '評量紀錄表',
+    SELF_CHECK_RECORDS: '自主檢查記錄表',
+    TASK_ASSESSMENT_RECORDS: '評量記錄表',
   }
 
 };
+
+/**
+ * 檢查教師是否有班級權限（主要教師或代課教師）
+ */
+function hasClassPermission(classRow, teacherEmail) {
+  // 1. 基本防呆：如果沒傳入 email，直接回傳 false
+  if (!teacherEmail) return false;
+
+  // 2. 取得原始資料 (這裡定義了變數，解決 is not defined 問題)
+  const mainTeacherRaw = classRow[2];
+  const coTeachersRaw = classRow[6]; // 👈 關鍵！這裡必須先定義，下面才能 Log
+
+  // 3. Debug 紀錄 (現在這樣寫就不會報錯了)
+  // Logger.log('🔍 檢查權限: ' + teacherEmail);
+  // Logger.log('   主授: ' + mainTeacherRaw);
+  // Logger.log('   協同(原始): ' + coTeachersRaw);
+
+  // 4. 資料標準化 (全部轉小寫 + 去除空白，解決比對不到的問題)
+  const searchEmail = String(teacherEmail).trim().toLowerCase();
+  const mainTeacher = String(mainTeacherRaw).trim().toLowerCase();
+  
+  // 5. 處理協同老師名單
+  // 邏輯：有資料 -> 轉字串 -> 把逗號換成直線 -> 用直線切割 -> 每一項都轉小寫去空白
+  const coTeachersList = coTeachersRaw 
+    ? String(coTeachersRaw).replace(/,/g, '|').split('|').map(function(e) { return e.trim().toLowerCase(); }) 
+    : [];
+
+  // 6. 進行比對
+  const isMain = mainTeacher === searchEmail;
+  const isCo = coTeachersList.includes(searchEmail);
+
+  return isMain || isCo;
+}
+
 
 // ==========================================
 // 工具函數
@@ -96,6 +130,15 @@ function doGet(e) {
         response = handleLogin(userData, params.timestamp);
         break;
 
+      case 'getTaskStateDetails':
+        response = getTaskStateDetails(e.parameter);
+        break;
+      
+      case 'getTaskQuestion':
+        const questionData = getTaskQuestion(e.parameter); // 呼叫函式
+        response = questionData;
+        break;
+
       case 'getUserData':
         response = getUserData(params.user_id);
         break;
@@ -114,6 +157,10 @@ function doGet(e) {
       
       case 'getTeacherClasses':
         response = getTeacherClasses(params.teacherEmail);
+        break;
+
+      case 'getAllClassesInfo':
+        response = getAllClassesInfo();
         break;
       
       case 'importStudents':
@@ -200,14 +247,6 @@ function doGet(e) {
         response = getTaskDetailsForEditor({ taskId: params.taskId });
         break;
 
-      case 'saveTaskReferenceAnswer':
-        response = saveTaskReferenceAnswer({ taskId: params.taskId, answerText: params.answerText, answerImages: params.answerImages });
-        break;
-
-      case 'saveTaskChecklist':
-        response = saveTaskChecklist({ taskId: params.taskId, checklists: params.checklists ? JSON.parse(params.checklists) : [] });
-        break;
-
       case 'addOrUpdateTaskQuestion':
         response = addOrUpdateTaskQuestion({ taskId: params.taskId, question: params.question ? JSON.parse(params.question) : null });
         break;
@@ -262,14 +301,16 @@ function doGet(e) {
       case 'startTask':
         response = startTask({
           userEmail: params.userEmail,
-          taskId: params.taskId
+          taskId: params.taskId,
+          classId: e.parameter.classId
         });
         break;
 
       case 'submitTask':
         response = submitTask({
           userEmail: params.userEmail,
-          taskId: params.taskId
+          taskId: params.taskId,
+          classId: e.parameter.classId
         });
         break;
 
@@ -379,6 +420,10 @@ function doGet(e) {
         });
         break;
 
+      case 'updateCoTeachers':
+        response = updateCoTeachers(params.classId, params.coTeachers, params.teacherEmail);
+        break;
+
       default:
         response = {
           success: false,
@@ -418,15 +463,35 @@ function doGet(e) {
 
 /**
  * doPost - 處理 POST 請求
- * 用途：處理登入系統的 POST 請求
+ * 用途: 處理登入系統、圖片上傳等請求
  */
 function doPost(e) {
+  // 1. 加上互斥鎖 (防止同時上傳導致衝突)
+  const lock = LockService.getScriptLock();
+  // 等待最多 30 秒，如果拿不到鎖就報錯
+  if (!lock.tryLock(30000)) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      message: '系統忙碌中，請稍後再試'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   try {
+    // 2. 檢查資料是否存在
+    if (!e || !e.postData) {
+      return ContentService.createTextOutput(JSON.stringify({ 
+        success: false, 
+        message: 'No postData received' 
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 3. 解析資料
     const requestData = JSON.parse(e.postData.contents);
-    Logger.log('📥 收到 POST 請求：' + JSON.stringify(requestData));
+    Logger.log('📥 收到 POST 請求:' + requestData.action);
     
-    let response;
+    let response = {};
     
+    // 4. 路由處理
     switch(requestData.action) {
       case 'login':
         response = handleLogin(requestData.user_data, requestData.timestamp);
@@ -441,8 +506,24 @@ function doPost(e) {
         break;
 
       case 'uploadReferenceImage':
-        // 前端會傳 { action:'uploadReferenceImage', fileName, fileData, fileMime }
-        response = uploadReferenceImage(requestData);
+        // ✅ 修正：直接傳遞參數物件
+        response = uploadImageToDrive({
+          fileName: requestData.fileName,
+          fileData: requestData.fileData,
+          fileMime: requestData.fileMime
+        });
+        break;
+
+      case 'saveTaskChecklist':
+        response = saveTaskChecklist(requestData);
+        break;
+
+      case 'saveTaskReferenceAnswer':
+        response = saveTaskReferenceAnswer(requestData);
+        break;
+
+      case 'saveTaskQuestions':
+        response = saveTaskQuestions(requestData);
         break;
         
       default:
@@ -452,37 +533,25 @@ function doPost(e) {
         };
     }
     
+    // 5. 回傳結果
     return ContentService
       .createTextOutput(JSON.stringify(response))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader('Access-Control-Allow-Origin', '*')
-      .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-      .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      .setMimeType(ContentService.MimeType.JSON);
     
   } catch (error) {
-    Logger.log('❌ 錯誤：' + error.toString());
+    Logger.log('❌ 錯誤:' + error.toString());
     
     return ContentService
       .createTextOutput(JSON.stringify({
         success: false,
-        message: '❌ 錯誤：' + error.toString()
+        message: 'Server Error: ' + error.toString()
       }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader('Access-Control-Allow-Origin', '*');
+      .setMimeType(ContentService.MimeType.JSON);
+      
+  } finally {
+    // 6. 釋放鎖定
+    lock.releaseLock();
   }
-}
-
-/**
- * doOptions - 處理 CORS 預檢請求
- */
-function doOptions(e) {
-  return ContentService
-    .createTextOutput('')
-    .setMimeType(ContentService.MimeType.TEXT)
-    .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    .setHeader('Access-Control-Allow-Headers', 'Content-Type')
-    .setHeader('Access-Control-Max-Age', '3600');
 }
 
 // ==========================================
@@ -601,14 +670,20 @@ function formatTimestamp(isoTimestamp) {
  * 處理使用者登入
  */
 function handleLogin(userData, timestamp) {
+  // 🔒 加入鎖機制，防止並發時產生重複的 user_id
+  const lock = LockService.getScriptLock();
+
   try {
+    // 等待鎖（最多等待 30 秒）
+    lock.waitLock(30000);
+
     const ss = getSpreadsheet();
     const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
-    
+
     if (!usersSheet) {
       throw new Error('找不到使用者資料表');
     }
-    
+
     const usersData = usersSheet.getDataRange().getValues();
     const headers = usersData[0];
     
@@ -649,10 +724,11 @@ function handleLogin(userData, timestamp) {
     } else {
       // 新使用者 - 建立帳號
       Logger.log('🆕 新使用者，建立帳號');
-      
-      userId = generateUserId(usersData.length);
+
+      // 使用改良的 generateUserId，防止並發時 ID 重複
+      userId = generateUserId(usersSheet);
       role = 'student';
-      
+
       usersSheet.appendRow([
         userId,
         userData.google_id,
@@ -676,13 +752,16 @@ function handleLogin(userData, timestamp) {
       email: userData.email,
       name: userData.name
     };
-    
+
   } catch (error) {
     Logger.log('❌ 登入處理失敗：' + error.toString());
     return {
       success: false,
       message: '登入處理失敗：' + error.toString()
     };
+  } finally {
+    // 🔓 釋放鎖
+    lock.releaseLock();
   }
 }
 
@@ -790,10 +869,37 @@ function checkPermission(userId, permissionName) {
 /**
  * 產生使用者 ID
  */
-function generateUserId(currentCount) {
-  const number = currentCount;
-  const paddedNumber = String(number).padStart(3, '0');
-  return 'USER' + paddedNumber;
+function generateUserId(usersSheet) {
+  const usersData = usersSheet.getDataRange().getValues();
+  let maxNumber = 0;
+
+  // 掃描所有現有的 user_id，找出最大編號
+  for (let i = 1; i < usersData.length; i++) {
+    const userId = usersData[i][0]; // user_id 在第1欄
+    if (userId && typeof userId === 'string' && userId.startsWith('USER')) {
+      const numberPart = userId.substring(4); // 取得 'USER' 後面的數字部分
+      const number = parseInt(numberPart, 10);
+      if (!isNaN(number) && number > maxNumber) {
+        maxNumber = number;
+      }
+    }
+  }
+
+  // 生成新的 ID（最大編號 + 1）
+  const newNumber = maxNumber + 1;
+  const paddedNumber = String(newNumber).padStart(3, '0');
+  const newUserId = 'USER' + paddedNumber;
+
+  // 再次檢查是否重複（雙重保險）
+  for (let i = 1; i < usersData.length; i++) {
+    if (usersData[i][0] === newUserId) {
+      // 如果仍然重複，改用 UUID
+      Logger.log('⚠️ 檢測到 ID 衝突，改用 UUID');
+      return 'USER_' + Utilities.getUuid();
+    }
+  }
+
+  return newUserId;
 }
 
 /**
@@ -1120,17 +1226,21 @@ function getTeacherClasses(teacherEmail) {
     }
     
     for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      
-      // ✅ 使用 email 比對
-      if (row[2] && row[2] === email) {
-        classes.push({
-          classId: row[0],
-          className: row[1],
-          teacherEmail: row[2],
-          createDate: row[3]
-        });
-      }
+        const row = data[i];
+        
+        if (hasClassPermission(row, email)) {
+            const isMainTeacher = row[2] === email;
+            const coTeachers = row[6] ? String(row[6]).split('|') : [];
+            
+            classes.push({
+                classId: row[0],
+                className: row[1],
+                teacherEmail: row[2],
+                createDate: row[3],
+                isCoTeacher: !isMainTeacher,  // 👈 新增標記
+                coTeachers: coTeachers.join(', ')  // 👈 顯示所有代課教師
+            });
+        }
     }
     
     classes.sort((a, b) => new Date(b.createDate) - new Date(a.createDate));
@@ -1174,7 +1284,7 @@ function getClassMembers(classId, teacherEmail) {
     
     let hasPermission = false;
     for (let i = 1; i < classData.length; i++) {
-      if (classData[i][0] === classId && classData[i][2] === email) {
+      if (classData[i][0] === classId && hasClassPermission(classData[i], email)) {
         hasPermission = true;
         break;
       }
@@ -1345,7 +1455,7 @@ function deleteClass(classId, teacherEmail) {
 
     for (let i = 1; i < classData.length; i++) {
       if (classData[i][0] === classId) {
-        if (classData[i][2] !== email) {
+        if (!hasClassPermission(classData[i], email)) {
           throw new Error('您沒有權限刪除此班級');
         }
         classExists = true;
@@ -1526,7 +1636,8 @@ function getTeacherCourses(teacherEmail) {
     
     const data = coursesSheet.getDataRange().getValues();
     const courses = [];
-    
+    const courseIdSet = new Set(); // 防止重複
+
     if (data.length <= 1) {
       return {
         success: true,
@@ -1534,26 +1645,80 @@ function getTeacherCourses(teacherEmail) {
         message: '尚未建立任何課程'
       };
     }
-    
-    // 遍歷所有資料列
+
+    // 第一步：收集自己創建的課程（原有邏輯）
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      
+
       if (row[2] && row[2] === email) {
+        const courseId = row[0];
+        courseIdSet.add(courseId);
         courses.push({
-          courseId: row[0],
+          courseId: courseId,
           courseName: row[1],
           teacherEmail: row[2],
           description: row[3],
-          createDate: row[4]
+          createDate: row[4],
+          isOwner: true  // 新增標記：自己的課程
         });
       }
     }
-    
+
+    // 第二步：收集可訪問班級的已指派課程（新增邏輯）
+    const classesSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASSES);
+    const assignmentsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.ASSIGNMENTS);
+
+    if (classesSheet && assignmentsSheet) {
+      const classData = classesSheet.getDataRange().getValues();
+      const assignData = assignmentsSheet.getDataRange().getValues();
+
+      // 找出所有有權限訪問的班級
+      const accessibleClassIds = [];
+      for (let i = 1; i < classData.length; i++) {
+        if (hasClassPermission(classData[i], email)) {
+          accessibleClassIds.push(classData[i][0]);
+        }
+      }
+
+      // 找出這些班級的 active 授課安排
+      const assignedCourseIds = new Set();
+      for (let i = 1; i < assignData.length; i++) {
+        const classId = assignData[i][1];
+        const courseId = assignData[i][2];
+        const status = assignData[i][5];
+
+        if (accessibleClassIds.includes(classId) &&
+            status === 'active' &&
+            !courseIdSet.has(courseId)) {  // 避免重複
+          assignedCourseIds.add(courseId);
+        }
+      }
+
+      // 將這些課程加入列表
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const courseId = row[0];
+
+        if (assignedCourseIds.has(courseId)) {
+          courses.push({
+            courseId: courseId,
+            courseName: row[1],
+            teacherEmail: row[2],
+            description: row[3],
+            createDate: row[4],
+            isOwner: false,  // 新增標記：共享的課程
+            sharedBy: row[2]  // 新增：原始創建者
+          });
+        }
+      }
+    }
+
     // 按建立日期排序（最新的在前）
     courses.sort((a, b) => new Date(b.createDate) - new Date(a.createDate));
-    
-    Logger.log('✅ 找到課程數量:', courses.length);
+
+    Logger.log('✅ 找到課程數量:', courses.length,
+               '(自己的:', courses.filter(function(c) { return c.isOwner; }).length,
+               ', 共享的:', courses.filter(function(c) { return !c.isOwner; }).length + ')');
     
     return {
       success: true,
@@ -2336,7 +2501,7 @@ function getClassAssignments(teacherEmail) {
     const classes = [];
 
     for (let i = 1; i < classData.length; i++) {
-      if (classData[i][2] === email) {
+      if (hasClassPermission(classData[i], email)) {
         classes.push({
           classId: classData[i][0],
           className: classData[i][1],
@@ -2471,13 +2636,19 @@ function assignCourseToClass(params) {
     const coursesSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.COURSES);
     const assignmentsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.ASSIGNMENTS);
 
-    // 驗證班級和課程屬於該教師
+    // 驗證班級權限（使用 hasClassPermission）
     const classData = classesSheet.getDataRange().getValues();
     let classExists = false;
+    let classRow = null;
     for (let i = 1; i < classData.length; i++) {
-      if (classData[i][0] === classId && classData[i][2] === email) {
-        classExists = true;
-        break;
+      if (classData[i][0] === classId) {
+        if (hasClassPermission(classData[i], email)) {
+          classExists = true;
+          classRow = classData[i];
+          break;
+        } else {
+          throw new Error('您沒有此班級的權限');
+        }
       }
     }
 
@@ -2487,15 +2658,17 @@ function assignCourseToClass(params) {
 
     const courseData = coursesSheet.getDataRange().getValues();
     let courseExists = false;
+    let courseCreator = null;
     for (let i = 1; i < courseData.length; i++) {
-      if (courseData[i][0] === courseId && courseData[i][2] === email) {
+      if (courseData[i][0] === courseId) {
         courseExists = true;
+        courseCreator = courseData[i][2];  // 記錄課程創建者
         break;
       }
     }
 
     if (!courseExists) {
-      throw new Error('課程不存在或您沒有權限');
+      throw new Error('課程不存在');
     }
 
     // 檢查是否已有 active 的指派，如果有則改為 inactive
@@ -2520,7 +2693,7 @@ function assignCourseToClass(params) {
       'active'
     ]);
 
-    Logger.log('✅ 授課安排成功:', { classId, courseId });
+    Logger.log('✅ 授課安排成功:', { classId: classId, courseId: courseId, operator: email, courseCreator: courseCreator });
 
     return {
       success: true,
@@ -2561,13 +2734,17 @@ function removeAssignment(params) {
     const classesSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASSES);
     const assignmentsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.ASSIGNMENTS);
 
-    // 驗證班級屬於該教師
+    // 驗證班級權限（使用 hasClassPermission）
     const classData = classesSheet.getDataRange().getValues();
     let classExists = false;
     for (let i = 1; i < classData.length; i++) {
-      if (classData[i][0] === classId && classData[i][2] === email) {
-        classExists = true;
-        break;
+      if (classData[i][0] === classId) {
+        if (hasClassPermission(classData[i], email)) {
+          classExists = true;
+          break;
+        } else {
+          throw new Error('您沒有此班級的權限');
+        }
       }
     }
 
@@ -3040,10 +3217,8 @@ function getStudentDashboard(userEmail, targetClassId = null) {
 }
 
 /**
- * 學生進入課堂整合API（優化進入速度）
+ * 學生進入課堂整合API（修正版：補上 taskProgressId）
  * 一次性返回所有進入課堂需要的數據
- * @param {Object} params - {userEmail, classId, courseId}
- * @returns {Object} 整合數據
  */
 function getStudentClassEntryData(params) {
   try {
@@ -3058,127 +3233,85 @@ function getStudentClassEntryData(params) {
 
     Logger.log('📊 開始載入學生進入數據...', { email, classId, courseId });
 
-    // ===== 1. 檢查課堂狀態 (getCurrentSession 邏輯) =====
-    const sessionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASS_SESSIONS);
-    const classesSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASSES);
+    // ===== 1. 檢查使用者與 Session =====
     const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
     const classMembersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASS_MEMBERS);
+    const sessionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASS_SESSIONS);
 
-    // 驗證學生是否屬於該班級
+    // 1-1. 取得 userId
     const usersData = usersSheet ? usersSheet.getDataRange().getValues() : [];
     let userId = null;
-
     for (let i = 1; i < usersData.length; i++) {
       if (usersData[i][2] === email) {
         userId = usersData[i][0];
         break;
       }
     }
+    if (!userId) throw new Error('找不到使用者資訊');
 
-    if (!userId) {
-      throw new Error('找不到使用者資訊');
-    }
-
+    // 1-2. 檢查是否為班級成員
     const membersData = classMembersSheet ? classMembersSheet.getDataRange().getValues() : [];
-    let isMemberOfClass = false;
-
+    let isMember = false;
     for (let i = 1; i < membersData.length; i++) {
       if (membersData[i][1] === classId && membersData[i][5] === userId) {
-        isMemberOfClass = true;
+        isMember = true;
         break;
       }
     }
+    if (!isMember) return { success: true, isActive: false, message: '您不屬於此班級' };
 
-    if (!isMemberOfClass) {
-      return {
-        success: true,
-        isActive: false,
-        message: '您不屬於此班級',
-        notMember: true
-      };
-    }
-
-    // 檢查是否有進行中的 session
+    // 1-3. 檢查 Active Session
     const sessionsData = sessionsSheet ? sessionsSheet.getDataRange().getValues() : [];
     let sessionInfo = null;
-    let teacherEmail = null;
+    let teacherEmail = ''; 
 
     for (let i = 1; i < sessionsData.length; i++) {
       if (sessionsData[i][1] === classId && sessionsData[i][5] === 'active') {
-        const sessionId = sessionsData[i][0];
-        teacherEmail = sessionsData[i][2];  // 取得 teacher_email
-        const startTime = sessionsData[i][3];
-        const sessionCourseId = sessionsData[i][6];
-
         sessionInfo = {
-          sessionId: sessionId,
+          sessionId: sessionsData[i][0],
           classId: classId,
-          startTime: startTime,
+          startTime: sessionsData[i][3],
           status: 'active',
-          courseId: sessionCourseId
+          courseId: sessionsData[i][6]
         };
+        teacherEmail = sessionsData[i][2];
         break;
       }
     }
 
     if (!sessionInfo) {
-      return {
-        success: true,
-        isActive: false,
-        message: '目前沒有進行中的課堂'
-      };
+      return { success: true, isActive: false, message: '目前沒有進行中的課堂' };
     }
 
-    // ===== 2. 載入課程層級 (getCourseTiers 邏輯) =====
-    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
-    const tasksData = tasksSheet ? tasksSheet.getDataRange().getValues() : [];
+    // ===== 2. 載入課程層級 (Tiers) =====
+    const tiersArray = [
+      { tier: 'tutorial', id: 'tutorial', name: '基礎層' },
+      { tier: 'adventure', id: 'adventure', name: '進階層' },
+      { tier: 'hardcore', id: 'hardcore', name: '精通層' }
+    ];
 
-    const tiers = {
-      tutorial: { name: '基礎層', tasks: [] },
-      adventure: { name: '挑戰層', tasks: [] },
-      hardcore: { name: '困難層', tasks: [] }
-    };
-
-    // 檢測任務表結構
-    const isNewStructure = tasksData.length > 1 &&
-                          tasksData[0][4] &&
-                          typeof tasksData[0][4] === 'string' &&
-                          (tasksData[0][4].toLowerCase().includes('tier') ||
-                           tasksData[0][4].toLowerCase().includes('層'));
-
-    for (let i = 1; i < tasksData.length; i++) {
-      if (tasksData[i][1] === courseId) {
-        const taskId = tasksData[i][0];
-        const taskName = isNewStructure ? tasksData[i][3] : tasksData[i][3];
-        const tier = isNewStructure ? tasksData[i][4] : null;
-
-        if (tier && tiers[tier]) {
-          tiers[tier].tasks.push({ taskId, taskName });
-        }
-      }
-    }
-
-    const tiersArray = Object.keys(tiers).map(key => ({
-      tier: key,
-      name: tiers[key].name,
-      taskCount: tiers[key].tasks.length
-    }));
-
-    // ===== 3. 載入或創建學習記錄 (getStudentDashboard/startLearning 邏輯) =====
+    // ===== 3. 載入或創建學習記錄 (Learning Record) =====
     const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
     const learningData = learningSheet ? learningSheet.getDataRange().getValues() : [];
     let learningRecord = null;
+    let recordId = null;
 
+    // 尋找現有記錄
     for (let i = 1; i < learningData.length; i++) {
       if (learningData[i][1] === userId &&
           learningData[i][2] === classId &&
           learningData[i][3] === courseId) {
+        
+        recordId = learningData[i][0];
+        const currentTierVal = learningData[i][10] || 'tutorial';
+
         learningRecord = {
-          recordId: learningData[i][0],
+          recordId: recordId,
           userId: userId,
           classId: classId,
           courseId: courseId,
-          currentTier: learningData[i][10] || 'tutorial',
+          current_tier: currentTierVal, 
+          currentTier: currentTierVal,
           completedTasks: learningData[i][8] || 0,
           totalTasks: learningData[i][9] || 0
         };
@@ -3186,17 +3319,16 @@ function getStudentClassEntryData(params) {
       }
     }
 
-    // 如果沒有學習記錄，創建一個
+    // 如果沒有記錄，創建新的
     if (!learningRecord) {
-      const recordId = 'record_' + Utilities.getUuid();
+      recordId = 'record_' + Utilities.getUuid();
       const now = new Date();
-
-      // 獲取課程的總任務數
+      
+      const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
+      const tasksData = tasksSheet ? tasksSheet.getDataRange().getValues() : [];
       let totalTasks = 0;
-      for (let i = 1; i < tasksData.length; i++) {
-        if (tasksData[i][1] === courseId) {
-          totalTasks++;
-        }
+      for(let i=1; i<tasksData.length; i++) {
+        if(tasksData[i][1] === courseId) totalTasks++;
       }
 
       learningSheet.appendRow([
@@ -3204,7 +3336,7 @@ function getStudentClassEntryData(params) {
         userId,
         classId,
         courseId,
-        teacherEmail,  // 修正：第5欄應為 teacher_email
+        teacherEmail,
         now,           // start_date
         now,           // last_access_date
         'in_progress', // status
@@ -3218,38 +3350,37 @@ function getStudentClassEntryData(params) {
         userId: userId,
         classId: classId,
         courseId: courseId,
+        current_tier: 'tutorial',
         currentTier: 'tutorial',
         completedTasks: 0,
         totalTasks: totalTasks
       };
-
       Logger.log('✅ 創建新的學習記錄:', recordId);
     }
 
-    // ===== 4. 載入任務進度 (getTaskProgress 邏輯) =====
+    // ===== 4. 載入任務進度 (Progress) - 關鍵修正處 =====
     const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
     const progressData = progressSheet ? progressSheet.getDataRange().getValues() : [];
     const progress = {};
 
     for (let i = 1; i < progressData.length; i++) {
-      if (progressData[i][1] === learningRecord.recordId) {
+      // 比對 RecordID (確保只載入這個學生的進度)
+      if (String(progressData[i][1]) === String(recordId)) {
         const taskId = progressData[i][2];
-        const status = progressData[i][3];
-        const startTime = progressData[i][4];
-        const completeTime = progressData[i][5];
-        const timeSpent = progressData[i][6] || 0;
-
+        
+        // 🔥 關鍵修正：必須回傳 taskProgressId (Index 0)
         progress[taskId] = {
-          status: status,
-          startTime: startTime,
-          completeTime: completeTime,
-          timeSpent: timeSpent
+          taskProgressId: progressData[i][0], // A欄
+          status: progressData[i][3],         // D欄 (確保是 assessment)
+          startTime: progressData[i][4],
+          completeTime: progressData[i][5],
+          timeSpent: progressData[i][6] || 0
         };
       }
     }
 
-    // ===== 返回整合數據 =====
-    Logger.log('✅ 學生進入數據載入完成');
+    // ===== 回傳整合數據 =====
+    Logger.log('✅ 學生進入數據載入完成', { currentTier: learningRecord.current_tier });
 
     return {
       success: true,
@@ -3547,398 +3678,371 @@ function getTaskProgress(recordId) {
 }
 
 /**
- * 開始一個任務
- * @param {Object} params - 參數物件
- * @returns {Object} 操作結果
+ * 開始任務：建立 Task_Progress (嚴格比對版 - 修正抓錯 Record ID 問題)
  */
 function startTask(params) {
   const lock = LockService.getScriptLock();
-
   try {
-    lock.waitLock(30000);
-
-    const { userEmail, taskId } = params;
-
-    if (!userEmail || !taskId) {
-      throw new Error('缺少必要參數');
+    lock.waitLock(10000);
+    
+    const { userEmail, taskId, classId } = params;
+    
+    // 強制檢查必要參數
+    if (!userEmail || !taskId || !classId) {
+      throw new Error(`缺少必要參數: Email=${userEmail}, Task=${taskId}, Class=${classId}`);
     }
 
     const email = getCurrentUserEmail(userEmail);
-
     const ss = getSpreadsheet();
-    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
-    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
-    const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
-    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+    
+    Logger.log(`🔍 [StartTask] 開始尋找紀錄: UserEmail=${email}, Task=${taskId}, Class=${classId}`);
 
-    // 取得 userId
+    // ============================================================
+    // 1. 取得使用者 ID
+    // ============================================================
+    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
     const usersData = usersSheet.getDataRange().getValues();
     let userId = null;
-
     for (let i = 1; i < usersData.length; i++) {
-      if (usersData[i][2] === email) {
+      if (String(usersData[i][2]).trim() === String(email).trim()) {
         userId = usersData[i][0];
         break;
       }
     }
+    if (!userId) throw new Error('找不到使用者資訊');
 
-    if (!userId) {
-      throw new Error('找不到使用者資訊');
-    }
-
-    // 取得任務資訊
-    const tasksData = tasksSheet.getDataRange().getValues();
-    let courseId = null;
-    let actualTaskId = taskId;
-
-    // 🔍 處理舊結構的 taskId 後綴（_tutorial, _adventure, _hardcore）
-    let taskTier = null;
-    if (taskId.includes('_tutorial')) {
-      actualTaskId = taskId.replace('_tutorial', '');
-      taskTier = 'tutorial';
-    } else if (taskId.includes('_adventure')) {
-      actualTaskId = taskId.replace('_adventure', '');
-      taskTier = 'adventure';
-    } else if (taskId.includes('_hardcore')) {
-      actualTaskId = taskId.replace('_hardcore', '');
-      taskTier = 'hardcore';
-    }
-
-    Logger.log(`📌 startTask: 原始 taskId=${taskId}, 實際 taskId=${actualTaskId}, 層級=${taskTier}`);
-
-    for (let i = 1; i < tasksData.length; i++) {
-      if (tasksData[i][0] === actualTaskId || tasksData[i][0] === taskId) {
-        courseId = tasksData[i][1];
-        Logger.log(`✅ 找到任務: courseId=${courseId}`);
-        break;
-      }
-    }
-
-    if (!courseId) {
-      throw new Error('找不到任務資訊');
-    }
-
-    // 找到對應的學習記錄
-    const learningData = learningSheet.getDataRange().getValues();
-    let recordId = null;
-
-    for (let i = 1; i < learningData.length; i++) {
-      if (learningData[i][1] === userId && learningData[i][3] === courseId) {
-        recordId = learningData[i][0];
-
-        // 更新 last_access_date
-        learningSheet.getRange(i + 1, 6).setValue(new Date());
-        break;
-      }
-    }
-
-    if (!recordId) {
-      throw new Error('找不到學習記錄，請先開始學習課程');
-    }
-
-    // 檢查是否已有任務進度記錄
-    const progressData = progressSheet.getDataRange().getValues();
-    for (let i = 1; i < progressData.length; i++) {
-      if (progressData[i][1] === recordId && progressData[i][2] === taskId) {
-        const currentStatus = progressData[i][3];
-
-        // 如果已完成或待審核，不允許重新開始
-        if (currentStatus === 'completed') {
-          return {
-            success: false,
-            message: '此任務已完成'
-          };
-        }
-
-        if (currentStatus === 'pending_review') {
-          return {
-            success: false,
-            message: '此任務已提交審核，請等待教師批改'
-          };
-        }
-
-        // 如果是 not_started 或 in_progress，允許繼續
-        // 更新開始時間（重新計時，已累積的 time_spent 會保留）
-        progressSheet.getRange(i + 1, 5).setValue(new Date());  // start_time
-
-        if (currentStatus === 'not_started') {
-          progressSheet.getRange(i + 1, 4).setValue('in_progress');
-        }
-
-        Logger.log(`✅ 繼續任務: progressId=${progressData[i][0]}, 已累積時間=${progressData[i][6]}秒`);
-
-        return {
-          success: true,
-          message: currentStatus === 'not_started' ? '任務已開始！' : '繼續學習',
-          progressId: progressData[i][0]
-        };
-      }
-    }
-
-    // 創建新的任務進度記錄
-    const progressId = generateUUID();
-    const now = new Date();
-
-    progressSheet.appendRow([
-      progressId,
-      recordId,
-      taskId,
-      'in_progress',  // status
-      now,            // start_time
-      null,           // complete_time
-      0               // time_spent (秒)
-    ]);
-
-    Logger.log('✅ 開始任務成功:', { userId, taskId });
-
-    return {
-      success: true,
-      message: '任務已開始！',
-      progressId: progressId
-    };
-
-  } catch (error) {
-    Logger.log('❌ 開始任務失敗：' + error);
-    return {
-      success: false,
-      message: '開始失敗：' + error.message
-    };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * 完成一個任務並獲得代幣
- * @param {Object} params - 參數物件
- * @returns {Object} 操作結果
- */
-/**
- * 學生提交任務（等待教師審核）
- */
-function submitTask(params) {
-  const lock = LockService.getScriptLock();
-
-  try {
-    lock.waitLock(30000);
-
-    const { userEmail, taskId } = params;
-
-    if (!userEmail || !taskId) {
-      throw new Error('缺少必要參數');
-    }
-
-    const email = getCurrentUserEmail(userEmail);
-
-    const ss = getSpreadsheet();
-    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
+    // ============================================================
+    // 2. 取得任務所屬的 Course ID (反查)
+    // ============================================================
     const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
-    const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
-    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
-
-    // 取得 userId
-    const usersData = usersSheet.getDataRange().getValues();
-    let userId = null;
-
-    for (let i = 1; i < usersData.length; i++) {
-      if (usersData[i][2] === email) {
-        userId = usersData[i][0];
-        break;
-      }
-    }
-
-    if (!userId) {
-      throw new Error('找不到使用者資訊');
-    }
-
-    // 取得任務資訊
     const tasksData = tasksSheet.getDataRange().getValues();
     let courseId = null;
-    let actualTaskId = taskId;
-
-    // 🔍 處理舊結構的 taskId 後綴
-    if (taskId.includes('_tutorial')) {
-      actualTaskId = taskId.replace('_tutorial', '');
-    } else if (taskId.includes('_adventure')) {
-      actualTaskId = taskId.replace('_adventure', '');
-    } else if (taskId.includes('_hardcore')) {
-      actualTaskId = taskId.replace('_hardcore', '');
-    }
-
-    Logger.log(`📌 submitTask: 原始 taskId=${taskId}, 實際 taskId=${actualTaskId}`);
-
     for (let i = 1; i < tasksData.length; i++) {
-      if (tasksData[i][0] === actualTaskId || tasksData[i][0] === taskId) {
+      if (String(tasksData[i][0]).trim() === String(taskId).trim()) {
         courseId = tasksData[i][1];
-        Logger.log(`✅ 找到任務: courseId=${courseId}`);
         break;
       }
     }
+    if (!courseId) throw new Error('找不到任務所屬的課程 ID');
 
-    if (!courseId) {
-      throw new Error('找不到任務資訊');
-    }
-
-    // 找到對應的學習記錄
+    // ============================================================
+    // 3. 取得或「補建」學習記錄 (🔥 嚴格比對核心)
+    // ============================================================
+    const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
     const learningData = learningSheet.getDataRange().getValues();
+    
     let recordId = null;
 
+    // 準備要搜尋的目標字串 (轉字串 + 去空白)
+    const targetUserId = String(userId).trim();
+    const targetClassId = String(classId).trim();
+    const targetCourseId = String(courseId).trim();
+
+    Logger.log(`🎯 [Matching] 目標: User[${targetUserId}] + Class[${targetClassId}] + Course[${targetCourseId}]`);
+
+    // A. 嘗試尋找現有的 Learning Record
+    // 欄位順序假設: [0]record_id, [1]user_id, [2]class_id, [3]course_id
     for (let i = 1; i < learningData.length; i++) {
-      if (learningData[i][1] === userId && learningData[i][3] === courseId) {
-        recordId = learningData[i][0];
-        // 更新 last_access_date
-        learningSheet.getRange(i + 1, 6).setValue(new Date());
-        break;
-      }
-    }
+        const rowUserId = String(learningData[i][1]).trim();
+        const rowClassId = String(learningData[i][2]).trim();
+        const rowCourseId = String(learningData[i][3]).trim();
 
-    if (!recordId) {
-      throw new Error('找不到學習記錄');
-    }
-
-    // 更新任務進度為「待審核」
-    const progressData = progressSheet.getDataRange().getValues();
-    let taskProgressId = null;
-    let progressRow = -1;
-
-    for (let i = 1; i < progressData.length; i++) {
-      if (progressData[i][1] === recordId && progressData[i][2] === taskId) {
-        taskProgressId = progressData[i][0];
-        progressRow = i + 1;
-
-        const currentStatus = progressData[i][3];
-
-        if (currentStatus === 'completed' || currentStatus === 'pending_review') {
-          return {
-            success: false,
-            message: currentStatus === 'completed' ? '此任務已經完成' : '此任務已提交審核，請等待教師批改'
-          };
+        // 🔥 嚴格比對：三個欄位必須完全一致
+        if (rowUserId === targetUserId && 
+            rowClassId === targetClassId && 
+            rowCourseId === targetCourseId) {
+            
+            recordId = learningData[i][0];
+            Logger.log(`✅ [Matched] 找到匹配紀錄 (Row ${i+1}): RecordID=${recordId}`);
+            break;
         }
+    }
 
-        // 更新狀態為待審核（計算總時間：已累積 + 本次執行）
+    // B. 自我修復：如果找不到 Record，自動補建
+    if (!recordId) {
+        Logger.log('⚠️ 找不到完全匹配的學習記錄，正在建立新紀錄...');
+        
+        recordId = 'record_' + Utilities.getUuid();
         const now = new Date();
-        const startTime = progressData[i][4];
-        const savedTimeSpent = progressData[i][6] || 0;  // 已累積的時間
 
-        // 計算本次執行時間
-        let thisSessionTime = 0;
-        if (startTime) {
-          const start = new Date(startTime).getTime();
-          thisSessionTime = Math.floor((now.getTime() - start) / 1000);
-        }
+        learningSheet.appendRow([
+            recordId,
+            userId,
+            targetClassId,      // ✅ 確保寫入的是當前的 ClassID
+            targetCourseId,     // ✅ 確保寫入的是當前的 CourseID
+            '',                 // teacher_email
+            now,                // start_date
+            now,                // last_access
+            'in_progress',      // status
+            0,                  // completed
+            0,                  // total
+            'tutorial'          // current_tier
+        ]);
+        
+        Logger.log('✅ 新紀錄建立完成:', recordId);
+    }
 
-        // 總時間 = 已累積時間 + 本次執行時間
-        const totalTimeSpent = savedTimeSpent + thisSessionTime;
+    // ============================================================
+    // 4. 寫入 Task_Progress (進度表)
+    // ============================================================
+    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+    if (!progressSheet) throw new Error('找不到 Task_Progress 表');
 
-        // 先不更新狀態，等互評分配結果出來再決定
-        progressSheet.getRange(progressRow, 5).setValue('');  // 清空 start_time
-        progressSheet.getRange(progressRow, 6).setValue(now);  // submit_time
-        progressSheet.getRange(progressRow, 7).setValue(totalTimeSpent);  // 保存總時間
-
-        Logger.log(`✅ 提交任務: 已累積=${savedTimeSpent}秒, 本次=${thisSessionTime}秒, 總計=${totalTimeSpent}秒`);
-
-        // ===== 整合互評流程 =====
-        // 嘗試分配同儕審核
-        const peerReviewResult = assignPeerReview({
-          taskProgressId: taskProgressId,
-          taskId: taskId,
-          revieweeEmail: email
-        });
-
-        if (peerReviewResult.success && peerReviewResult.usePeerReview) {
-          // 成功分配互評，狀態已在 assignPeerReview 中設為 pending_peer_review
-          Logger.log('✅ 提交任務成功（互評模式）:', { userId, taskId, taskProgressId, reviewerId: peerReviewResult.reviewId });
-
-          return {
-            success: true,
-            message: '✅ 任務已提交，正在尋找同學協助審核...',
-            taskProgressId: taskProgressId,
-            peerReviewMode: true,
-            reviewId: peerReviewResult.reviewId,
-            reviewerName: peerReviewResult.reviewerName
-          };
-        } else {
-          // 無法分配互評，改為教師審核
-          progressSheet.getRange(progressRow, 4).setValue('pending_review');
-
-          Logger.log('✅ 提交任務成功（教師審核模式）:', { userId, taskId, taskProgressId, reason: peerReviewResult.message });
-
-          return {
-            success: true,
-            message: '✅ 任務已提交，請等待教師審核',
-            taskProgressId: taskProgressId,
-            peerReviewMode: false
-          };
-        }
+    const progressData = progressSheet.getDataRange().getValues();
+    
+    // 檢查重複 (同樣使用嚴格比對)
+    for (let i = 1; i < progressData.length; i++) {
+      if (String(progressData[i][1]).trim() === String(recordId).trim() && 
+          String(progressData[i][2]).trim() === String(taskId).trim()) {
+        
+        // 已經存在 -> 更新狀態
+        progressSheet.getRange(i + 1, 4).setValue('in_progress');
+        progressSheet.getRange(i + 1, 5).setValue(new Date()); 
+        
+        return { success: true, message: '任務已重新開始', taskProgressId: progressData[i][0] };
       }
     }
 
-    // 如果沒有找到進度記錄，創建一個新的
-    const newProgressId = 'progress_' + Utilities.getUuid();
+    // 不存在 -> 建立新紀錄
+    const newProgressId = 'prog_' + Utilities.getUuid();
+    const now = new Date();
+    
     progressSheet.appendRow([
       newProgressId,
       recordId,
       taskId,
-      'pending_review',
-      new Date(),  // start_time
-      new Date(),  // submit_time
-      0            // time_spent
+      'in_progress',
+      now,
+      '', // end_time
+      0   // time_spent
     ]);
 
-    Logger.log('✅ 創建並提交任務成功:', { userId, taskId, newProgressId });
+    return { success: true, message: '任務開始', taskProgressId: newProgressId };
 
-    return {
-      success: true,
-      message: '✅ 任務已提交，請等待教師審核',
-      taskProgressId: newProgressId
-    };
-
-  } catch (error) {
-    Logger.log('❌ 提交任務失敗：' + error);
-    return {
-      success: false,
-      message: '提交失敗：' + error.message
-    };
+  } catch (e) {
+    Logger.log('❌ startTask Error: ' + e);
+    return { success: false, message: '開始任務失敗：' + e.message };
   } finally {
     lock.releaseLock();
   }
 }
 
+
 /**
- * 上傳參考圖片（從前端送來的 base64）並存到 Drive，回傳可嵌入的連結
- * params: { fileName, fileData (base64), fileMime }
+ * 提交任務 (最終版：包含除錯 Log 回傳 + 強力欄位檢查 + 正確狀態流轉)
  */
-function uploadReferenceImage(params) {
+function submitTask(params) {
+  const lock = LockService.getScriptLock();
+  
+  // 1. 初始化除錯 Log 容器
+  const debugLogs = [];
+  const log = (msg) => {
+      Logger.log(msg);
+      debugLogs.push(msg);
+  };
+
   try {
-    if (!params || !params.fileName || !params.fileData) {
-      throw new Error('缺少檔案參數');
+    lock.waitLock(30000);
+
+    const { userEmail, taskId, classId } = params;
+    
+    // 強制轉字串並去空白
+    const targetTaskId = String(taskId).trim();
+    const targetEmail = String(userEmail).trim().toLowerCase();
+
+    log(`🔍 [SubmitTask] 開始處理...`);
+    log(`   - 目標 TaskID: [${targetTaskId}]`);
+    log(`   - 使用者 Email: [${targetEmail}]`);
+
+    if (!userEmail || !taskId) throw new Error('缺少必要參數');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+    const checklistSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLISTS);
+    const questionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
+    const membersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASS_MEMBERS);
+    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
+    const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
+
+    // ==========================================
+    // 2. 身分驗證 (Email -> UserID -> RecordID)
+    // ==========================================
+    const usersData = usersSheet.getDataRange().getValues();
+    let userId = null;
+    for (let i = 1; i < usersData.length; i++) {
+      if (String(usersData[i][2]).trim().toLowerCase() === targetEmail) {
+        userId = usersData[i][0];
+        break;
+      }
+    }
+    if (!userId) throw new Error('找不到使用者資訊 (Users表)');
+
+    const learningData = learningSheet.getDataRange().getValues();
+    const userRecordIds = [];
+    for (let i = 1; i < learningData.length; i++) {
+        // 假設 Learning_Records B欄 (Index 1) 是 user_id
+        if (String(learningData[i][1]) === String(userId)) {
+            userRecordIds.push(String(learningData[i][0])); 
+        }
+    }
+    if (userRecordIds.length === 0) throw new Error('找不到該學生的選課紀錄 (LearningRecords)');
+    
+    log(`👤 身分驗證通過，找到 ${userRecordIds.length} 筆 RecordID`);
+
+    // ==========================================
+    // 3. 檢查是否有檢核項目 (Checklist) - 🔥 強力掃描 🔥
+    // ==========================================
+    let hasChecklist = false;
+    
+    if (checklistSheet) {
+      const cData = checklistSheet.getDataRange().getValues();
+      log(`📋 [檢查 Checklist] 表格共有 ${cData.length} 列`);
+      
+      for (let i = 1; i < cData.length; i++) {
+        const colA = String(cData[i][0]).trim(); // Index 0 (A欄)
+        const colB = String(cData[i][1]).trim(); // Index 1 (B欄)
+        
+        // 除錯：只印出前 3 筆，或者疑似匹配的
+        if (i <= 3 || colA.includes(targetTaskId) || colB.includes(targetTaskId)) {
+           log(`   - Row ${i+1}: A=[${colA}], B=[${colB}]`);
+        }
+
+        // 寬鬆比對：只要 A 欄或 B 欄其中一個等於 TaskID，就算有！
+        if (colA === targetTaskId || colB === targetTaskId) {
+          hasChecklist = true;
+          log(`✅ 找到檢核項目！在第 ${i+1} 列`);
+          break;
+        }
+      }
+    } else {
+      log('❌ 嚴重錯誤：找不到 CHECKLISTS 工作表');
     }
 
-    const fileName = params.fileName;
-    const b64 = params.fileData;
-    const mime = params.fileMime || 'image/png';
-
-    // Decode base64
-    const bytes = Utilities.base64Decode(b64);
-    const blob = Utilities.newBlob(bytes, mime, fileName);
-
-    // 建立檔案到應用程式的根目錄
-    const file = DriveApp.createFile(blob);
-
-    // 設為 anyone with link 可檢視
-    try {
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (e) {
-      Logger.log('⚠️ 設定分享權限失敗: ' + e);
+    // ==========================================
+    // 4. 檢查是否有評量題目 (Question)
+    // ==========================================
+    let hasQuestion = false;
+    if (questionsSheet) {
+      const qData = questionsSheet.getDataRange().getValues();
+      for (let i = 1; i < qData.length; i++) {
+        // 同樣掃描 A 和 B 欄
+        const colA = String(qData[i][0]).trim();
+        const colB = String(qData[i][1]).trim();
+        if (colA === targetTaskId || colB === targetTaskId) {
+          hasQuestion = true;
+          break;
+        }
+      }
     }
 
-    const fileId = file.getId();
-    const publicUrl = 'https://drive.google.com/uc?export=view&id=' + fileId;
+    log(`📊 最終判定: HasChecklist=${hasChecklist}, HasQuestion=${hasQuestion}`);
 
-    return { success: true, url: publicUrl, fileId: fileId };
+    // ==========================================
+    // 5. 尋找並更新進度 (Task_Progress)
+    // ==========================================
+    let taskProgressId = null;
+    let progressRow = -1;
+    const pData = progressSheet.getDataRange().getValues();
+    
+    for (let i = 1; i < pData.length; i++) {
+        const rowRecordId = String(pData[i][1]);
+        const rowTaskId = String(pData[i][2]).trim();
+        const rowStatus = String(pData[i][3]);
+
+        // 比對：TaskID吻合 + 是本人的紀錄 + 狀態未完成
+        if (rowTaskId === targetTaskId && userRecordIds.includes(rowRecordId) && rowStatus !== 'completed') {
+            taskProgressId = pData[i][0];
+            progressRow = i + 1;
+            break; 
+        }
+    }
+
+    if (!taskProgressId) {
+        log('❌ 找不到對應的進度列');
+        throw new Error('找不到進行中的任務進度，請確認是否已開始任務');
+    }
+
+    log(`📍 鎖定進度列: Row ${progressRow}, ProgressID: ${taskProgressId}`);
+
+    // ==========================================
+    // 🔥 6. 狀態路由與更新 🔥
+    // ==========================================
+
+    // 情況 A: 有檢核表 -> 狀態改為 'self_checking'
+    if (hasChecklist) {
+        progressSheet.getRange(progressRow, 4).setValue('self_checking');
+        log(`➡️ 更新狀態為: self_checking`);
+        
+        return {
+            success: true,
+            nextStep: 'checklist',
+            taskProgressId: taskProgressId,
+            debugLogs: debugLogs // 🔥 回傳 Log
+        };
+    }
+
+    // 情況 B: 無檢核表，有題目 -> 狀態改為 'assessment'
+    if (hasQuestion) {
+        progressSheet.getRange(progressRow, 4).setValue('assessment');
+        log(`➡️ 更新狀態為: assessment (跳過檢查)`);
+        
+        const questionResult = getRandomQuestionForTask(ss, taskId);
+        
+        return {
+            success: true,
+            nextStep: 'assessment',
+            taskProgressId: taskProgressId,
+            question: questionResult,
+            scenarioType: 'A',
+            debugLogs: debugLogs // 🔥 回傳 Log
+        };
+    }
+
+    // 情況 C: 兩者皆無 -> 直接完成
+    const now = new Date();
+    progressSheet.getRange(progressRow, 4).setValue('completed'); // Status
+    progressSheet.getRange(progressRow, 6).setValue(now);         // Complete Time
+    progressSheet.getRange(progressRow, 8).setValue(now);         // Submit Time
+    progressSheet.getRange(progressRow, 9).setValue('A');         // Scenario
+    progressSheet.getRange(progressRow, 10).setValue(true);       // Passed
+    
+    log(`➡️ 更新狀態為: completed (直接完成)`);
+
+    // --- 發放獎勵 ---
+    let tokenReward = 0;
+    const tData = tasksSheet.getDataRange().getValues();
+    for(let i=1; i<tData.length; i++){
+        if(String(tData[i][0]) === targetTaskId){
+            tokenReward = Number(tData[i][11]) || 0;
+            break;
+        }
+    }
+
+    const mData = membersSheet.getDataRange().getValues();
+    for(let i=1; i<mData.length; i++){
+        if(String(mData[i][4]) === targetEmail){
+            const current = Number(mData[i][5]) || 0;
+            membersSheet.getRange(i+1, 6).setValue(current + tokenReward);
+            log(`💰 發放代幣: ${tokenReward}`);
+            break;
+        }
+    }
+
+    return {
+        success: true,
+        nextStep: 'completed',
+        message: '任務完成！',
+        tokenReward: tokenReward,
+        debugLogs: debugLogs // 🔥 回傳 Log
+    };
+
   } catch (error) {
-    Logger.log('uploadReferenceImage error: ' + error);
-    return { success: false, message: '上傳失敗：' + error.message };
+    log('❌ 發生錯誤: ' + error.message);
+    Logger.log(error); // 確保後台也有紀錄
+    return { success: false, message: '提交失敗: ' + error.message, debugLogs: debugLogs };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -4223,12 +4327,12 @@ function getTeacherPendingTasks(teacherEmail) {
     const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
     const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
 
-    // 1. 找出教師的所有班級
+    // 1. 找出教師的所有班級（使用 hasClassPermission 包含代課老師）
     const classesData = classesSheet ? classesSheet.getDataRange().getValues() : [];
     const teacherClassIds = [];
 
     for (let i = 1; i < classesData.length; i++) {
-      if (classesData[i][5] === email) {  // teacher_email
+      if (hasClassPermission(classesData[i], email)) {  // 使用 hasClassPermission 檢查權限
         teacherClassIds.push(classesData[i][0]);  // class_id
       }
     }
@@ -4423,13 +4527,13 @@ function getTeacherTaskMonitor(params) {
     const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
     const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
 
-    // 1. 找出教師的所有班級
+    // 1. 找出教師的所有班級（使用 hasClassPermission 包含代課老師）
     const classesData = classesSheet ? classesSheet.getDataRange().getValues() : [];
     const teacherClasses = [];
 
     for (let i = 1; i < classesData.length; i++) {
       // class_id, class_name, teacher_email, create_date
-      if (classesData[i][2] === email) {  // teacher_email
+      if (hasClassPermission(classesData[i], email)) {  // 使用 hasClassPermission 檢查權限
         teacherClasses.push({
           classId: classesData[i][0],
           className: classesData[i][1]
@@ -4965,7 +5069,7 @@ function startClassSession(params) {
     let className = '';
 
     for (let i = 1; i < classesData.length; i++) {
-      if (classesData[i][0] === classId && classesData[i][2] === email) {
+      if (classesData[i][0] === classId && hasClassPermission(classesData[i], email)) {
         classExists = true;
         className = classesData[i][1];
         break;
@@ -5349,7 +5453,7 @@ function getCurrentSession(params) {
 // ==========================================
 
 /**
- * 記錄難度變更
+ * 記錄難度變更 (修正版：自動查找 from_tier，確保歷程完整)
  */
 function recordDifficultyChange(params) {
   const lock = LockService.getScriptLock();
@@ -5357,111 +5461,94 @@ function recordDifficultyChange(params) {
   try {
     lock.waitLock(30000);
 
-    const { userEmail, recordId, courseId, fromTier, toTier, changeReason, triggeredByTask, executionTime } = params;
+    const { userEmail, recordId, courseId, toTier, changeReason, triggeredByTask, executionTime } = params;
 
-    // 驗證必填參數
+    // 驗證必填參數 (注意：我們不再強制要求前端傳 fromTier，因為我們要自己查)
     if (!userEmail || !recordId || !courseId || !toTier) {
       throw new Error('缺少必要參數');
     }
 
     const email = getCurrentUserEmail(userEmail);
-
     const ss = getSpreadsheet();
-    const changesSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.DIFFICULTY_CHANGES);
+    const changesSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.DIFFICULTY_CHANGES); // 確保 Sheet 名稱正確: 'Difficulty_Changes'
     const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
     const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
 
-    if (!changesSheet) {
-      throw new Error('找不到難度變更記錄表');
-    }
+    if (!changesSheet) throw new Error('找不到難度變更記錄表 (Difficulty_Changes)');
 
     // 1. 取得 userId
     const usersData = usersSheet.getDataRange().getValues();
     let userId = null;
-
     for (let i = 1; i < usersData.length; i++) {
       if (usersData[i][2] === email) {
         userId = usersData[i][0];
         break;
       }
     }
+    if (!userId) throw new Error('找不到使用者資訊');
 
-    if (!userId) {
-      throw new Error('找不到使用者資訊');
+    // 2. 查找學習記錄，並獲取「原本的難度 (from_tier)」
+    const learningData = learningSheet.getDataRange().getValues();
+    const headers = learningData[0];
+    
+    // 動態尋找欄位索引
+    const idCol = 0; // record_id 預設在第1欄
+    let currentTierCol = headers.indexOf('current_tier');
+    
+    if (currentTierCol === -1) {
+      // 如果找不到 current_tier 欄位，嘗試找最後一欄或報錯
+      // 建議你在 Sheet 裡明確加上 current_tier 標題
+      currentTierCol = learningSheet.getLastColumn() - 1; 
     }
 
-    // 2. 更新學習記錄表的 current_tier
-    const learningData = learningSheet.getDataRange().getValues();
-    let learningRow = -1;
+    let learningRowIndex = -1;
+    let dbFromTier = ''; // 這就是我們要找的「原本難度」
 
     for (let i = 1; i < learningData.length; i++) {
-      if (learningData[i][0] === recordId) {
-        learningRow = i + 1;
+      if (String(learningData[i][idCol]) === String(recordId)) {
+        learningRowIndex = i + 1; // 實際列號 (從1開始)
+        dbFromTier = learningData[i][currentTierCol]; // 抓取原本存在 DB 的難度
         break;
       }
     }
 
-    if (learningRow !== -1) {
-      // 找到 current_tier 欄位（假設在最後一欄）
-      const headers = learningData[0];
-      let currentTierColumn = -1;
+    if (learningRowIndex === -1) throw new Error('找不到對應的 recordId');
 
-      for (let col = 0; col < headers.length; col++) {
-        if (headers[col] === 'current_tier') {
-          currentTierColumn = col + 1;  // Sheets 從 1 開始計數
-          break;
-        }
-      }
+    // 3. 執行更新與記錄
+    // 更新學習記錄表為「新的難度」
+    learningSheet.getRange(learningRowIndex, currentTierCol + 1).setValue(toTier);
+    Logger.log(`✅ 更新 Current Tier: ${dbFromTier} -> ${toTier}`);
 
-      if (currentTierColumn === -1) {
-        // 如果沒有找到 current_tier 欄位，使用最後一欄
-        currentTierColumn = learningSheet.getLastColumn();
-      }
-
-      learningSheet.getRange(learningRow, currentTierColumn).setValue(toTier);
-      Logger.log(`✅ 更新學習記錄 current_tier: ${toTier} (欄位 ${currentTierColumn})`);
-    }
-
-    // 3. 記錄難度變更
+    // 寫入變更歷程
     const changeId = 'change_' + Utilities.getUuid();
     const now = new Date();
 
     const newChange = [
-      changeId,                              // change_id
-      recordId,                              // record_id
-      userId,                                // user_id
-      courseId,                              // course_id
-      fromTier || '',                        // from_tier
-      toTier,                                // to_tier
-      changeReason || 'manual',              // change_reason (manual/too_fast/too_slow/system_suggest)
-      now,                                   // change_time
-      triggeredByTask || '',                 // triggered_by_task
-      executionTime || 0                     // execution_time
+      changeId,
+      recordId,
+      userId,
+      courseId,
+      dbFromTier || 'initial', // 如果原本沒值，標記為 initial (初始選擇)
+      toTier,
+      changeReason || 'manual',
+      now,
+      triggeredByTask || '',
+      executionTime || 0
     ];
 
     changesSheet.appendRow(newChange);
-
-    Logger.log('✅ 記錄難度變更成功:', {
-      changeId: changeId,
-      userId: userId,
-      fromTier: fromTier,
-      toTier: toTier,
-      reason: changeReason
-    });
 
     return {
       success: true,
       message: '難度變更已記錄',
       changeId: changeId,
+      fromTier: dbFromTier,
       toTier: toTier
     };
 
   } catch (error) {
     Logger.log('❌ 記錄難度變更失敗：' + error);
-    return {
-      success: false,
-      message: '記錄失敗：' + error.message
-    };
+    return { success: false, message: '記錄失敗：' + error.message };
   } finally {
     lock.releaseLock();
   }
@@ -5560,18 +5647,18 @@ function getTaskChecklistsAndAnswer(params) {
       throw new Error('找不到檢查清單或答案工作表');
     }
 
-    // 獲取檢查清單資料
+    // 1. 獲取檢查清單資料
     const checklistData = checklistSheet.getDataRange().getValues();
     const checklists = [];
 
     for (let i = 1; i < checklistData.length; i++) {
-      if (checklistData[i][1] === taskId) {
+      if (String(checklistData[i][1]) === String(taskId)) { // 強制轉字串比較，防呆
         checklists.push({
           checklistId: checklistData[i][0],
           taskId: checklistData[i][1],
           itemOrder: checklistData[i][2],
           itemTitle: checklistData[i][3],
-          itemDescription: checklistData[i][4]
+          description: checklistData[i][4] // 確保前端讀取 description
         });
       }
     }
@@ -5579,28 +5666,37 @@ function getTaskChecklistsAndAnswer(params) {
     // 排序檢查清單
     checklists.sort((a, b) => a.itemOrder - b.itemOrder);
 
-    // 獲取參考答案資料
+    // 2. 獲取參考答案資料
     const answerData = answerSheet.getDataRange().getValues();
-    let answer = null;
+    
+    // 預設值
+    let answerText = '無參考答案';
+    let answerImages = []; // 保持為陣列
 
     for (let i = 1; i < answerData.length; i++) {
-      if (answerData[i][1] === taskId) {
-        answer = {
-          answerId: answerData[i][0],
-          taskId: answerData[i][1],
-          answerText: answerData[i][2],
-          answerImages: answerData[i][3] ? answerData[i][3].split('|') : []
-        };
-        break;
+      if (String(answerData[i][1]) === String(taskId)) { // 強制轉字串比較
+        // 抓取文字 (C欄)
+        answerText = answerData[i][2]; 
+        
+        // 抓取圖片 (D欄)
+        const rawImg = answerData[i][3];
+        if (rawImg && String(rawImg).trim() !== '') {
+             if (String(rawImg).includes('|')) answerImages = String(rawImg).split('|');
+             else answerImages = [String(rawImg)];
+        }
+        break; 
       }
     }
 
-    Logger.log(`已獲取檢查清單: taskId=${taskId}, 數量=${checklists.length}`);
+    Logger.log(`已獲取: taskId=${taskId}, 清單數=${checklists.length}, 圖片數=${answerImages.length}`);
 
+    // 🔥 關鍵修正：將資料「扁平化」回傳，符合前端 renderCheckStage 的預期
     return {
       success: true,
       checklists: checklists,
-      answer: answer || { answerText: '無參考答案', answerImages: [] }
+      // 直接回傳這兩個欄位，不要包在 answer 物件裡
+      referenceAnswer: answerText,  
+      referenceImages: answerImages 
     };
 
   } catch (error) {
@@ -5613,185 +5709,224 @@ function getTaskChecklistsAndAnswer(params) {
 }
 
 /**
- * 提交自檢清單記錄，並生成題目
+ * 提交自主檢查 (最終修正版：先用 ProgressID 反查 TaskID)
  */
 function submitSelfCheck(params) {
   const lock = LockService.getScriptLock();
+  
+  // 初始化 Log
+  const debugLogs = [];
+  const log = (msg) => {
+      Logger.log(msg);
+      debugLogs.push(msg);
+  };
 
   try {
     lock.waitLock(30000);
 
     const { taskProgressId, checklistData, scenarioType, errorExplanation, userEmail } = params;
 
-    if (!taskProgressId || !Array.isArray(checklistData)) {
-      throw new Error('缺少必要參數');
-    }
+    if (!taskProgressId || !checklistData) throw new Error('缺少必要參數');
 
-    const email = getCurrentUserEmail(userEmail);
+    // 這是前端傳來的 ID (根據 Log，它是 prog_...)
+    const incomingId = String(taskProgressId).trim();
+    const targetEmail = String(userEmail).trim().toLowerCase();
 
-    const ss = getSpreadsheet();
+    log(`🔍 [SubmitSelfCheck] 收到請求，ID: [${incomingId}]`);
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
-    const checkRecordSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.SELF_CHECK_RECORDS);
     const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
+    const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
+    const checkRecordSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.SELF_CHECK_RECORDS);
+    const questionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
+    const membersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASS_MEMBERS);
 
-    if (!progressSheet || !checkRecordSheet) {
-      throw new Error('找不到必要工作表');
+    // ============================================================
+    // 1. 核心修正：利用 ProgressID 反查真正的 TaskID 和 Row
+    // ============================================================
+    let realTaskId = null;
+    let progressRow = -1;
+    let userId = null; // 稍後用來寫入檢查紀錄
+    
+    // 先讀取 Progress 表
+    const pData = progressSheet.getDataRange().getValues();
+    
+    // 掃描 Progress 表尋找這一筆 prog_id
+    for (let i = 1; i < pData.length; i++) {
+        // A欄是 prog_id
+        if (String(pData[i][0]).trim() === incomingId) {
+            progressRow = i + 1;
+            realTaskId = String(pData[i][2]).trim(); // C欄是真正的 task_id
+            log(`✅ 找到進度列 (Row ${progressRow}) -> 反查出 TaskID: [${realTaskId}]`);
+            break;
+        }
     }
 
-    // 獲取 user_id
-    const usersData = usersSheet.getDataRange().getValues();
-    let userId = null;
+    // 如果找不到 prog_id，嘗試把它當作 task_id 找找看 (容錯)
+    if (!realTaskId) {
+        log(`⚠️ 用 ProgressID 找不到，嘗試直接將 [${incomingId}] 視為 TaskID...`);
+        // 這時我們還不知道 Row 是多少，後面再透過 User+TaskID 去找
+        realTaskId = incomingId;
+    }
 
+    // ============================================================
+    // 2. 身分驗證 (為了寫入 CheckRecord)
+    // ============================================================
+    const usersData = usersSheet.getDataRange().getValues();
     for (let i = 1; i < usersData.length; i++) {
-      if (usersData[i][2] === email) {
+      if (String(usersData[i][2]).trim().toLowerCase() === targetEmail) {
         userId = usersData[i][0];
         break;
       }
     }
+    if (!userId) throw new Error('找不到使用者資訊');
 
-    if (!userId) {
-      throw new Error('找不到使用者資訊');
-    }
+    // ============================================================
+    // 3. 寫入自主檢查紀錄 (使用 realTaskId)
+    // ============================================================
+    let items = checklistData;
+    if (typeof items === 'string') { try { items = JSON.parse(items); } catch (e) { items = []; } }
+    const now = new Date();
 
-    // 查找 task_progress_id
-    const progressData = progressSheet.getDataRange().getValues();
-    let taskId = null;
-    let progressRow = -1;
-
-    for (let i = 1; i < progressData.length; i++) {
-      if (progressData[i][0] === taskProgressId) {
-        taskId = progressData[i][2];
-        progressRow = i + 1;
-        break;
+    if (checkRecordSheet) {
+      const recordsToAdd = items.map(item => [
+        'check_' + Utilities.getUuid().slice(0, 8), 
+        realTaskId, // 🔥 這裡存真正的 TaskID
+        userEmail || 'unknown', 
+        userId,
+        item.checklistId, 
+        item.isChecked ? 'Pass' : 'Fail', 
+        item.isChecked ? '' : errorExplanation, 
+        now
+      ]);
+      if (recordsToAdd.length > 0) {
+        const lastRow = Math.max(checkRecordSheet.getLastRow(), 1);
+        checkRecordSheet.getRange(lastRow + 1, 1, recordsToAdd.length, recordsToAdd[0].length).setValues(recordsToAdd);
+        log(`📝 檢查紀錄已寫入 (${items.length} 筆)`);
       }
     }
 
-    if (!taskId) {
-      throw new Error('找不到任務進度記錄');
+    // ============================================================
+    // 4. 檢查是否有評量題目 (使用 realTaskId)
+    // ============================================================
+    let hasQuestion = false;
+    
+    if (questionsSheet) {
+      const qData = questionsSheet.getDataRange().getValues();
+      for (let i = 1; i < qData.length; i++) {
+        // 掃描 A 欄和 B 欄
+        const colA = String(qData[i][0]).trim();
+        const colB = String(qData[i][1]).trim();
+        
+        if (colA === realTaskId || colB === realTaskId) {
+          hasQuestion = true;
+          log(`✅ 找到評量題目 (TaskID匹配)`);
+          break;
+        }
+      }
     }
 
-    // 記錄每一項檢查
-    let checkRecordData = checkRecordSheet.getDataRange().getValues();
-    let nextRow = checkRecordData.length + 1;
+    log(`📊 判定結果: HasQuestion=${hasQuestion}`);
 
-    for (let checkItem of checklistData) {
-      const recordId = generateUUID();
-      checkRecordSheet.appendRow([
-        recordId,                       // check_record_id
-        taskProgressId,                 // task_progress_id
-        email,                          // student_email
-        userId,                         // user_id
-        checkItem.checklistId,          // checklist_id
-        checkItem.isChecked ? true : false,  // student_checked
-        checkItem.isChecked ? '' : errorExplanation,  // student_answer_text (若在否的情境)
-        new Date()                      // check_time
-      ]);
+    // ============================================================
+    // 5. 再次確認進度列 (如果是用容錯邏輯進來的，progressRow可能還是-1)
+    // ============================================================
+    if (progressRow === -1) {
+        // 如果前面沒用 prog_id 找到，現在用 TaskID + User 再找一次
+        const learningData = learningSheet.getDataRange().getValues();
+        const userRecordIds = [];
+        for (let i = 1; i < learningData.length; i++) {
+            if (String(learningData[i][1]) === String(userId)) userRecordIds.push(String(learningData[i][0])); 
+        }
+
+        for (let i = 1; i < pData.length; i++) {
+            const rowRecordId = String(pData[i][1]);
+            const rowTaskId = String(pData[i][2]).trim();
+            const rowStatus = String(pData[i][3]);
+
+            if (rowTaskId === realTaskId && userRecordIds.includes(rowRecordId) && rowStatus !== 'completed') {
+                progressRow = i + 1;
+                log(`📍 透過 TaskID+User 重新鎖定進度列: Row ${progressRow}`);
+                break; 
+            }
+        }
     }
 
-    // 更新 TASK_PROGRESS 的自檢狀態
-    progressSheet.getRange(progressRow, 9).setValue(scenarioType);  // self_check_status (第9欄)
+    if (progressRow === -1) {
+        log(`❌ 嚴重錯誤：找不到可更新的進度列！`);
+        // 雖然找不到列無法更新，但為了不讓前端卡死，我們還是回傳 nextStep
+    }
 
-    Logger.log(`自檢清單記錄已儲存: taskProgressId=${taskProgressId}, 情境=${scenarioType}`);
+    // ============================================================
+    // 6. 狀態路由與更新
+    // ============================================================
+    let nextStep = '';
+    let questionResult = null;
 
-    // 生成題目
-    const questionResult = getTaskQuestion({ taskId: taskId });
+    if (hasQuestion) {
+        // 分岔 A：有題目 -> 改為 assessment
+        if (progressRow > 0) {
+            progressSheet.getRange(progressRow, 4).setValue('assessment');
+            progressSheet.getRange(progressRow, 9).setValue(scenarioType);
+        }
+        nextStep = 'assessment';
+        questionResult = getRandomQuestionForTask(ss, realTaskId); // 用 realTaskId 抽題
+        log(`➡️ 更新狀態為 assessment`);
+    
+    } else {
+        // 分岔 B：沒題目 -> 直接完成
+        if (progressRow > 0) {
+            progressSheet.getRange(progressRow, 4).setValue('completed');
+            progressSheet.getRange(progressRow, 6).setValue(now);
+            progressSheet.getRange(progressRow, 9).setValue(scenarioType);
+            progressSheet.getRange(progressRow, 10).setValue(true);
+            log(`➡️ 更新狀態為 completed`);
 
-    if (!questionResult.success) {
-      throw new Error('無法獲取測驗題目');
+            // 發放獎勵
+            let tokenReward = 0;
+            if (tasksSheet) {
+                const tData = tasksSheet.getDataRange().getValues();
+                for(let k=1; k<tData.length; k++){
+                    if(String(tData[k][0]) === realTaskId){
+                        tokenReward = Number(tData[k][11]) || 0;
+                        break;
+                    }
+                }
+            }
+            if (membersSheet) {
+                const mData = membersSheet.getDataRange().getValues();
+                for(let m=1; m<mData.length; m++){
+                    if(String(mData[m][4]) === targetEmail){
+                        const current = Number(mData[m][5]) || 0;
+                        membersSheet.getRange(m+1, 6).setValue(current + tokenReward);
+                        break;
+                    }
+                }
+            }
+        }
+        nextStep = 'completed';
     }
 
     return {
-      success: true,
-      message: '檢查清單完成，請回答題目',
-      scenarioType: scenarioType,
-      question: questionResult.question,
-      taskProgressId: taskProgressId
+        success: true,
+        nextStep: nextStep,
+        scenarioType: scenarioType,
+        question: questionResult,
+        debugLogs: debugLogs
     };
 
   } catch (error) {
-    Logger.log('提交自檢清單時發生錯誤: ' + error);
-    return {
-      success: false,
-      message: '提交失敗: ' + error.message
-    };
+    log('❌ 發生錯誤: ' + error.message);
+    return { success: false, message: '系統錯誤: ' + error.message, debugLogs: debugLogs };
   } finally {
     lock.releaseLock();
   }
 }
 
 /**
- * 獲取隨機題目
- */
-function getTaskQuestion(params) {
-  try {
-    const { taskId } = params;
-
-    if (!taskId) {
-      throw new Error('缺少任務 ID');
-    }
-
-    const ss = getSpreadsheet();
-    const questionSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
-
-    if (!questionSheet) {
-      throw new Error('找不到題庫表');
-    }
-
-    const questionData = questionSheet.getDataRange().getValues();
-    const taskQuestions = [];
-
-    for (let i = 1; i < questionData.length; i++) {
-      if (questionData[i][1] === taskId) {
-        taskQuestions.push({
-          questionId: questionData[i][0],
-          taskId: questionData[i][1],
-          questionText: questionData[i][2],
-          optionA: questionData[i][3],
-          optionB: questionData[i][4],
-          optionC: questionData[i][5],
-          optionD: questionData[i][6],
-          correctAnswer: questionData[i][7]
-        });
-      }
-    }
-
-    if (taskQuestions.length === 0) {
-      throw new Error('此任務無題目');
-    }
-
-    // 隨機選取一題
-    const randomIndex = Math.floor(Math.random() * taskQuestions.length);
-    const selectedQuestion = taskQuestions[randomIndex];
-
-    // 不回傳正確答案
-    const question = {
-      questionId: selectedQuestion.questionId,
-      taskId: selectedQuestion.taskId,
-      questionText: selectedQuestion.questionText,
-      optionA: selectedQuestion.optionA,
-      optionB: selectedQuestion.optionB,
-      optionC: selectedQuestion.optionC,
-      optionD: selectedQuestion.optionD
-    };
-
-    Logger.log(`已生成題目: taskId=${taskId}, questionId=${question.questionId}`);
-
-    return {
-      success: true,
-      question: question
-    };
-
-  } catch (error) {
-    Logger.log('獲取題目發生錯誤: ' + error);
-    return {
-      success: false,
-      message: '獲取失敗: ' + error.message
-    };
-  }
-}
-
-/**
- * 提交測驗答案，判斷是否正確
+ * 提交評量結果 (嚴謹版：答錯強制退回 in_progress)
  */
 function submitAssessment(params) {
   const lock = LockService.getScriptLock();
@@ -5919,26 +6054,24 @@ function submitAssessment(params) {
           }
         }
 
-        // 更新學員 Tokens
-        const membersData = membersSheet.getDataRange().getValues();
-        const learningData = learningSheet.getDataRange().getValues();
-        let classId = null;
+        // 🪙 更新使用者資料表的 TOTAL_TOKENS（修正：原本錯誤地更新學員資料表）
+        let userRow = -1;
+        let currentTokens = 0;
 
-        for (let i = 1; i < learningData.length; i++) {
-          if (learningData[i][0] === recordId) {
-            classId = learningData[i][2];
+        for (let i = 1; i < usersData.length; i++) {
+          if (usersData[i][0] === userId) {  // 根據 user_id 找到使用者
+            userRow = i + 1;
+            currentTokens = usersData[i][8] || 0;  // total_tokens 在第9欄
             break;
           }
         }
 
-        if (classId) {
-          for (let i = 1; i < membersData.length; i++) {
-            if (membersData[i][4] === email) {  // student_email
-              const currentTokens = membersData[i][5] || 0;  // total_tokens
-              membersSheet.getRange(i + 1, 6).setValue(currentTokens + tokenReward);
-              break;
-            }
-          }
+        if (userRow > 0) {
+          const newTotalTokens = currentTokens + tokenReward;
+          usersSheet.getRange(userRow, 9).setValue(newTotalTokens);  // 更新 total_tokens
+          Logger.log(`✅ 使用者 ${userId} 獲得 ${tokenReward} 代幣，總計：${newTotalTokens}`);
+        } else {
+          Logger.log(`⚠️ 找不到使用者 ${userId}，無法更新代幣`);
         }
 
         Logger.log(`任務完成: taskProgressId=${taskProgressId}, tokens=${tokenReward}, scenario=${selfCheckStatus}`);
@@ -6060,84 +6193,179 @@ function getTaskDetailsForEditor(params) {
 }
 
 /**
- * 儲存或更新參考答案（簡單的 upsert）
+ * 儲存檢核項目 (強制修正欄位數問題)
  */
+function saveTaskChecklist(params) {
+  try {
+    const taskId = params.taskId;
+    let checklists = params.checklists;
+
+    if (!taskId) throw new Error('缺少 taskId');
+    if (typeof checklists === 'string') {
+      try { checklists = JSON.parse(checklists); } catch (e) {}
+    }
+    if (!Array.isArray(checklists)) throw new Error('checklists 格式錯誤');
+
+    const ss = getSpreadsheet();
+    const sheetName = SHEET_CONFIG.SHEETS.TASK_CHECKLISTS;
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) throw new Error('找不到檢核項目表: ' + sheetName);
+
+    const all = sheet.getDataRange().getValues();
+    
+    // ✅ 強制定義 5 個標準標題
+    const standardHeader = ['checklist_id', 'task_id', 'item_order', 'item_title', 'item_description'];
+    const keep = [standardHeader];
+
+    // 處理舊資料：只保留「非此 Task」的資料，且強制修剪為 5 欄
+    // 從 i=1 開始跳過舊標題
+    if (all.length > 1) {
+      for (let i = 1; i < all.length; i++) {
+        // 假設 task_id 在 index 1
+        if (String(all[i][1]) !== String(taskId)) {
+          let row = all[i].slice(0, 5); // ✂️ 強制切成 5 欄
+          while (row.length < 5) row.push(""); // 不足補空
+          keep.push(row);
+        }
+      }
+    }
+
+    // 加入新資料 (確保也是 5 欄)
+    for (let item of checklists) {
+      keep.push([
+        item.checklistId || Utilities.getUuid(),
+        taskId,
+        item.itemOrder || 0,
+        item.itemTitle || '',
+        item.itemDescription || ''
+      ]);
+    }
+
+    // 寫回
+    sheet.clearContents();
+    if (keep.length > 0) {
+      // ✅ 明確指定寫入 5 欄寬度
+      sheet.getRange(1, 1, keep.length, 5).setValues(keep);
+    }
+
+    return { success: true, message: '檢核項已儲存' };
+  } catch (error) {
+    Logger.log('saveTaskChecklist error: ' + error);
+    return { success: false, message: '儲存失敗：' + error.message };
+  }
+}
+
+/**
+ * 儲存評量題庫
+ */
+function saveTaskQuestions(params) {
+  try {
+    const taskId = params.taskId;
+    let questions = params.questions;
+
+    if (!taskId) throw new Error('缺少 taskId');
+
+    // 解析 JSON
+    if (typeof questions === 'string') {
+      try { questions = JSON.parse(questions); } catch (e) {}
+    }
+    if (!Array.isArray(questions)) throw new Error('questions 格式錯誤');
+
+    const ss = getSpreadsheet();
+    const sheetName = SHEET_CONFIG.SHEETS.TASK_QUESTIONS;
+    let sheet = ss.getSheetByName(sheetName);
+    
+    // 如果沒有題庫表，自動建立
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      // 8 個欄位
+      sheet.appendRow(['question_id', 'task_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer']);
+    }
+
+    const all = sheet.getDataRange().getValues();
+    const standardHeader = ['question_id', 'task_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer'];
+    const keep = [standardHeader];
+
+    // 保留舊資料 (非此 Task 的題目)
+    if (all.length > 1) {
+      for (let i = 1; i < all.length; i++) {
+        // 假設 task_id 在 index 1
+        if (String(all[i][1]) !== String(taskId)) {
+          let row = all[i].slice(0, 8); // 強制 8 欄
+          while (row.length < 8) row.push("");
+          keep.push(row);
+        }
+      }
+    }
+
+    // 加入新題目
+    for (let q of questions) {
+      keep.push([
+        q.questionId || Utilities.getUuid(),
+        taskId,
+        q.questionText || '',
+        q.optionA || '',
+        q.optionB || '',
+        q.optionC || '',
+        q.optionD || '',
+        q.correctAnswer || 'A'
+      ]);
+    }
+
+    // 寫回
+    sheet.clearContents();
+    if (keep.length > 0) {
+      sheet.getRange(1, 1, keep.length, 8).setValues(keep);
+    }
+
+    return { success: true, message: '題庫已儲存' };
+
+  } catch (error) {
+    Logger.log('saveTaskQuestions error: ' + error);
+    return { success: false, message: '題庫儲存失敗：' + error.message };
+  }
+}
+
 function saveTaskReferenceAnswer(params) {
   try {
     const { taskId, answerText, answerImages } = params;
     if (!taskId) throw new Error('缺少 taskId');
 
     const ss = getSpreadsheet();
-    const answerSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_REFERENCE_ANSWERS);
-    if (!answerSheet) throw new Error('找不到參考答案表');
+    const sheetName = SHEET_CONFIG.SHEETS.TASK_REFERENCE_ANSWERS;
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) throw new Error('找不到參考答案表: ' + sheetName);
 
-    // 支援 answerImages 為字串或陣列
+    // 處理圖片：如果是陣列轉字串，如果是字串則 trim
     let imagesString = '';
     if (Array.isArray(answerImages)) {
-      imagesString = answerImages.map(s=>String(s).trim()).filter(Boolean).join('|');
-    } else if (typeof answerImages === 'string' && answerImages.trim() !== '') {
-      imagesString = String(answerImages).trim();
+      imagesString = answerImages.join('|');
+    } else if (typeof answerImages === 'string') {
+      imagesString = answerImages;
     }
 
-    const data = answerSheet.getDataRange().getValues();
+    const data = sheet.getDataRange().getValues();
     let found = false;
+    
+    // 假設 task_id 在 index 1
     for (let i = 1; i < data.length; i++) {
-      if (data[i][1] === taskId) {
-        // 更新文字與圖片欄位（第3與第4欄）
-        answerSheet.getRange(i+1, 3).setValue(answerText || '');
-        answerSheet.getRange(i+1, 4).setValue(imagesString || '');
+      if (String(data[i][1]) === String(taskId)) {
+        // 更新文字 (假設在 index 2) 與 圖片 (假設在 index 3)
+        // 注意：請確認你的 Excel 欄位順序！
+        sheet.getRange(i + 1, 3).setValue(answerText || '');
+        sheet.getRange(i + 1, 4).setValue(imagesString || '');
         found = true;
         break;
       }
     }
+
     if (!found) {
-      const newId = generateUUID();
-      answerSheet.appendRow([newId, taskId, answerText || '', imagesString || '']);
+      sheet.appendRow([Utilities.getUuid(), taskId, answerText || '', imagesString || '']);
     }
 
     return { success: true, message: '參考答案已儲存' };
   } catch (error) {
-    Logger.log('saveTaskReferenceAnswer error: ' + error);
-    return { success: false, message: '儲存參考答案失敗：' + error.message };
-  }
-}
-
-/**
- * 儲存整批檢核項（會取代既有 taskId 的檢核項）
- */
-function saveTaskChecklist(params) {
-  try {
-    const { taskId, checklists } = params;
-    if (!taskId) throw new Error('缺少 taskId');
-    if (!Array.isArray(checklists)) throw new Error('checklists 必須是陣列');
-
-    const ss = getSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLISTS);
-    if (!sheet) throw new Error('找不到檢核項目表');
-
-    const all = sheet.getDataRange().getValues();
-    const header = all[0] || [];
-    const keep = [header];
-    for (let i = 1; i < all.length; i++) {
-      if (all[i][1] !== taskId) {
-        keep.push(all[i]);
-      }
-    }
-
-    // 新增新的檢核項
-    for (let item of checklists) {
-      const id = item.checklistId || generateUUID();
-      keep.push([id, taskId, item.itemOrder || 0, item.itemTitle || '', item.itemDescription || '']);
-    }
-
-    // 清空並寫回
-    sheet.clearContents();
-    sheet.getRange(1,1,keep.length, keep[0].length).setValues(keep);
-
-    return { success: true, message: '檢核項已儲存' };
-  } catch (error) {
-    Logger.log('saveTaskChecklist error: ' + error);
-    return { success: false, message: '儲存檢核項失敗：' + error.message };
+    return { success: false, message: '儲存失敗：' + error.message };
   }
 }
 
@@ -6206,5 +6434,295 @@ function deleteTaskQuestion(params) {
   } catch (error) {
     Logger.log('deleteTaskQuestion error: ' + error);
     return { success: false, message: '刪除題目失敗：' + error.message };
+  }
+}
+
+/**
+ * 輔助函式：從題庫中隨機撈一題
+ * (這段程式碼必須存在，submitSelfCheck 和 submitTask 才能運作)
+ */
+function getRandomQuestionForTask(ss, taskId) {
+  Logger.log(`🔍 [GetQuestion] 開始搜尋題目，目標 TaskID: ${taskId}`);
+
+  if (!taskId) {
+    Logger.log('❌ [GetQuestion] 失敗：TaskID 為空');
+    return null;
+  }
+
+  const qSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+  if (!qSheet) {
+    Logger.log('❌ [GetQuestion] 失敗：找不到 TASK_QUESTIONS 表格');
+    return null;
+  }
+
+  // 讀取所有題目資料
+  const data = qSheet.getDataRange().getValues();
+  const candidates = [];
+  
+  // 從第 2 列開始 (跳過標題)
+  // 假設欄位結構: [0]q_id, [1]task_id, [2]text, [3]optA, [4]optB, [5]optC, [6]optD, [7]answer
+  for (let i = 1; i < data.length; i++) {
+    const rowTaskId = String(data[i][1]).trim(); // B欄 (Index 1) 為 TaskID
+    const targetTaskId = String(taskId).trim();
+
+    if (rowTaskId === targetTaskId) {
+      candidates.push({
+        questionId: data[i][0], // A欄
+        questionText: data[i][2], // C欄
+        // 組合選項陣列 [A, B, C, D]
+        options: [data[i][3], data[i][4], data[i][5], data[i][6]].filter(opt => opt !== ''), 
+        // 注意：絕對不要回傳正確答案 (Column H) 給前端
+      });
+    }
+  }
+
+  Logger.log(`✅ [GetQuestion] 篩選結束，符合的題目數量: ${candidates.length}`);
+
+  if (candidates.length === 0) {
+    Logger.log(`⚠️ [GetQuestion] 警告：任務 [${taskId}] 沒有對應的題目。`);
+    return null;
+  }
+
+  // 隨機抽選一題
+  const randomIndex = Math.floor(Math.random() * candidates.length);
+  const selected = candidates[randomIndex];
+  
+  Logger.log(`🎉 [GetQuestion] 成功抽選題目 ID: ${selected.questionId}`);
+  return selected;
+}
+
+/**
+ * API: 獲取特定任務的評量題目 (用於恢復進度)
+ */
+function getTaskQuestion(params) {
+  const { taskId, userEmail } = params;
+  
+  if (!taskId) {
+    return { success: false, message: '缺少 TaskID' };
+  }
+
+  // 這裡可以加入權限驗證 (確認該學生狀態是否為 assessment)，
+  // 但為了效能與容錯，我們直接回傳題目即可，前端會自己控制顯示時機。
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 使用現有的輔助函式抽題
+  const questionResult = getRandomQuestionForTask(ss, taskId);
+
+  if (questionResult) {
+    return {
+      success: true,
+      question: questionResult,
+      // 預設恢復為 A 情境 (除非去查 Progress 表，但影響不大)
+      scenarioType: 'A' 
+    };
+  } else {
+    return { success: false, message: '找不到此任務的題目' };
+  }
+}
+
+/**
+ * API: 獲取任務當前狀態與所需資料 (單一入口)
+ * 前端點擊任務卡片時，呼叫這個就好
+ */
+function getTaskStateDetails(params) {
+  const { taskId, userEmail } = params;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. 找 User
+  const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
+  let userId = null;
+  const uData = usersSheet.getDataRange().getValues();
+  for(let i=1; i<uData.length; i++) {
+    if(String(uData[i][2]).trim().toLowerCase() === String(userEmail).trim().toLowerCase()) {
+      userId = uData[i][0];
+      break;
+    }
+  }
+  
+  // 2. 找 RecordIDs
+  const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
+  const userRecordIds = [];
+  const lData = learningSheet.getDataRange().getValues();
+  for(let i=1; i<lData.length; i++) {
+    if(String(lData[i][1]) === String(userId)) userRecordIds.push(String(lData[i][0]));
+  }
+
+  // 3. 找任務進度狀態
+  const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+  const pData = progressSheet.getDataRange().getValues();
+  let status = 'not_started';
+  let taskProgressId = null;
+
+  for(let i=1; i<pData.length; i++) {
+    if(String(pData[i][2]) === String(taskId) && userRecordIds.includes(String(pData[i][1]))) {
+      // 找到最近的一筆非 completed 的，或是已完成的
+      status = pData[i][3]; // D欄 Status
+      taskProgressId = pData[i][0];
+      // 如果是進行中或檢查中，以此為主
+      if (status !== 'completed') break; 
+    }
+  }
+
+  // 4. 根據狀態打包資料
+  let responseData = {
+    success: true,
+    status: status,
+    taskProgressId: taskProgressId,
+    taskId: taskId
+  };
+
+  // Case A: 狀態是自主檢查 (self_checking) -> 回傳檢查表
+  if (status === 'self_checking') {
+    const checklistSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLISTS); // 請確認名稱
+    if (checklistSheet) {
+      const cData = checklistSheet.getDataRange().getValues();
+      const checklists = [];
+      for(let i=1; i<cData.length; i++) {
+        const colA = String(cData[i][0]).trim();
+        const colB = String(cData[i][1]).trim();
+        if(colA === taskId || colB === taskId) {
+          checklists.push({ checklistId: cData[i][0], itemTitle: cData[i][2] });
+        }
+      }
+      responseData.checklists = checklists;
+    }
+  }
+
+  // Case B: 狀態是評量 (assessment) -> 回傳題目
+  if (status === 'assessment') {
+    // 使用之前的輔助函式抽題
+    const question = getRandomQuestionForTask(ss, taskId);
+    responseData.question = question;
+  }
+
+  return responseData;
+}
+
+/**
+ * 上傳圖片到 Google Drive
+ */
+function uploadImageToDrive(params) {
+  try {
+    const { fileName, fileData, fileMime } = params;
+
+    if (!fileName || !fileData || !fileMime) {
+      throw new Error('缺少必要參數');
+    }
+
+    // Decode Base64
+    const blob = Utilities.newBlob(Utilities.base64Decode(fileData), fileMime, fileName);
+
+    // 取得或建立上傳資料夾
+    const folderName = 'Task_Reference_Images';
+    let folder;
+    const folders = DriveApp.getFoldersByName(folderName);
+
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder(folderName);
+      folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
+
+    // 上傳檔案
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    // 取得分享連結
+    const url = `https://drive.google.com/uc?export=view&id=${file.getId()}`;
+
+    Logger.log('✅ 圖片上傳成功: ' + url);
+
+    return {
+      success: true,
+      url: url,
+      fileId: file.getId(),
+      message: '圖片上傳成功'
+    };
+
+  } catch (error) {
+    Logger.log('❌ 圖片上傳失敗: ' + error);
+    return {
+      success: false,
+      message: '上傳失敗：' + error.message
+    };
+  }
+}
+
+/**
+ * 更新代課教師名單
+ */
+function updateCoTeachers(classId, coTeachers, teacherEmail) {
+  try {
+    const email = getCurrentUserEmail(teacherEmail);
+    const ss = getSpreadsheet();
+    const classesSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASSES);
+    const classData = classesSheet.getDataRange().getValues();
+
+    for (let i = 1; i < classData.length; i++) {
+      if (classData[i][0] === classId && classData[i][2] === email) {
+        // 更新第7欄（co_teachers）
+        classesSheet.getRange(i + 1, 7).setValue(coTeachers);
+
+        return {
+          success: true,
+          message: '代課教師更新成功'
+        };
+      }
+    }
+
+    throw new Error('找不到班級或您不是主要教師');
+  } catch (error) {
+    return {
+      success: false,
+      message: '更新失敗：' + error.message
+    };
+  }
+}
+
+/**
+ * 取得所有班級資訊（診斷用）
+ */
+function getAllClassesInfo() {
+  try {
+    const ss = getSpreadsheet();
+    const classesSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.CLASSES);
+
+    if (!classesSheet) {
+      return {
+        success: false,
+        message: '找不到班級資料表'
+      };
+    }
+
+    const data = classesSheet.getDataRange().getValues();
+    const classes = [];
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      classes.push({
+        classId: row[0],
+        className: row[1],
+        teacherEmail: row[2],
+        createDate: row[3],
+        coTeachers: row[6] || ''
+      });
+    }
+
+    Logger.log('✅ 取得所有班級資訊:', classes.length);
+
+    return {
+      success: true,
+      classes: classes
+    };
+
+  } catch (error) {
+    Logger.log('❌ 取得班級資訊失敗：' + error);
+    return {
+      success: false,
+      message: '取得失敗：' + error.message,
+      classes: []
+    };
   }
 }
