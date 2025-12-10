@@ -4838,7 +4838,21 @@ function getTeacherTaskMonitor(params) {
 /**
  * 教師審核通過任務
  */
+/**
+ * 審核通過任務（已棄用）
+ * @deprecated 系統已改為自動完成模式，學生完成自主檢核+評量後自動獲得代幣
+ * 保留此函數僅為向後兼容，不建議使用
+ *
+ * 說明：
+ * - 新系統中，學生完成自主檢核和評量（如有）後，會自動獲得代幣
+ * - 教師角色從「審核者」轉變為「支持者」，專注於即時監控和幫助
+ * - 如需重置學生任務，請使用 resetTask() 函數
+ */
 function approveTask(params) {
+  Logger.log('⚠️ approveTask 已棄用：系統已改為自動完成模式');
+  Logger.log('ℹ️ 學生完成自主檢核+評量後會自動獲得代幣，無需教師審核');
+
+  // 保留原有邏輯以確保向後兼容
   const lock = LockService.getScriptLock();
 
   try {
@@ -4866,9 +4880,7 @@ function approveTask(params) {
 
     for (let i = 1; i < progressData.length; i++) {
       if (progressData[i][0] === taskProgressId) {
-        if (progressData[i][3] !== 'pending_review') {
-          throw new Error('此任務不是待審核狀態');
-        }
+        // 移除狀態檢查，允許任何狀態（向後兼容）
         progressRow = i + 1;
         recordId = progressData[i][1];
         taskId = progressData[i][2];
@@ -4947,7 +4959,7 @@ function approveTask(params) {
         const newTokens = currentTokens + tokenReward;
         usersSheet.getRange(i + 1, 9).setValue(newTokens);
 
-        Logger.log('✅ 審核通過任務成功:', { taskProgressId, userId, tokenReward, newTokens });
+        Logger.log('✅ 審核通過任務成功（已棄用功能）:', { taskProgressId, userId, tokenReward, newTokens });
 
         return {
           success: true,
@@ -4969,12 +4981,12 @@ function approveTask(params) {
     lock.releaseLock();
   }
 }
-
-
 /**
- * 教師退回任務
+ * 重置任務（原 rejectTask）
+ * 教師發現學生確實有問題時，可以重置任務讓學生重新開始
+ * 會清除所有進度、自主檢核記錄和評量記錄
  */
-function rejectTask(params) {
+function resetTask(params) {
   const lock = LockService.getScriptLock();
 
   try {
@@ -4990,17 +5002,21 @@ function rejectTask(params) {
 
     const ss = getSpreadsheet();
     const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+    const selfCheckSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.SELF_CHECK_RECORDS);
+    const assessmentSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_ASSESSMENT_RECORDS);
 
     // 找到任務進度記錄
     const progressData = progressSheet.getDataRange().getValues();
     let progressRow = -1;
+    let taskId = null;
+    let recordId = null;
 
     for (let i = 1; i < progressData.length; i++) {
       if (progressData[i][0] === taskProgressId) {
-        if (progressData[i][3] !== 'pending_review') {
-          throw new Error('此任務不是待審核狀態');
-        }
+        // 移除狀態檢查 - 任何狀態都可以重置（不限於 pending_review）
         progressRow = i + 1;
+        recordId = progressData[i][1];  // learning_record_id
+        taskId = progressData[i][2];     // task_id
         break;
       }
     }
@@ -5009,32 +5025,79 @@ function rejectTask(params) {
       throw new Error('找不到任務進度記錄');
     }
 
-    // 更新狀態為 in_progress（讓學生可以重新提交）
-    progressSheet.getRange(progressRow, 4).setValue('in_progress');
+    // 1. 重置任務進度狀態
+    progressSheet.getRange(progressRow, 4).setValue('not_started');  // status = not_started（完全重置）
+    progressSheet.getRange(progressRow, 5).setValue('');              // start_time 清空
+    progressSheet.getRange(progressRow, 6).setValue(0);               // time_spent = 0
+    progressSheet.getRange(progressRow, 7).setValue('');              // complete_time 清空
+    progressSheet.getRange(progressRow, 9).setValue('');              // self_check_status 清空
 
-    // 設置新的 start_time（教師端可以立即看到重新計時）
-    // 保留 time_spent（已花費的時間會保留）
-    progressSheet.getRange(progressRow, 5).setValue(new Date());  // 設置新的 start_time
+    // 2. 清除自主檢核記錄（SELF_CHECK_RECORDS）
+    if (selfCheckSheet) {
+      const selfCheckData = selfCheckSheet.getDataRange().getValues();
+      const rowsToDelete = [];
 
-    // TODO: 如果需要記錄退回原因，可以在這裡添加新的欄位
-    // 目前暫時只記錄在 Logger 中
-    Logger.log('✅ 退回任務成功:', { taskProgressId, reason: reason || '無' });
+      for (let i = selfCheckData.length - 1; i >= 1; i--) {
+        // B欄是 task_id，匹配則標記刪除
+        if (String(selfCheckData[i][1]).trim() === String(taskId).trim()) {
+          rowsToDelete.push(i + 1);
+        }
+      }
+
+      // 從後往前刪除，避免索引錯亂
+      rowsToDelete.forEach(row => {
+        selfCheckSheet.deleteRow(row);
+      });
+
+      Logger.log(`🗑️ 清除了 ${rowsToDelete.length} 筆自主檢核記錄`);
+    }
+
+    // 3. 清除評量記錄（TASK_ASSESSMENT_RECORDS）
+    if (assessmentSheet) {
+      const assessmentData = assessmentSheet.getDataRange().getValues();
+      const rowsToDelete = [];
+
+      for (let i = assessmentData.length - 1; i >= 1; i--) {
+        // B欄是 task_progress_id，匹配則標記刪除
+        if (String(assessmentData[i][1]).trim() === String(taskProgressId).trim()) {
+          rowsToDelete.push(i + 1);
+        }
+      }
+
+      // 從後往前刪除
+      rowsToDelete.forEach(row => {
+        assessmentSheet.deleteRow(row);
+      });
+
+      Logger.log(`🗑️ 清除了 ${rowsToDelete.length} 筆評量記錄`);
+    }
+
+    Logger.log('✅ 重置任務成功:', { taskProgressId, taskId, reason: reason || '無' });
 
     return {
       success: true,
-      message: '任務已退回，學生可以重新提交',
+      message: '任務已重置，學生需要重新開始',
       reason: reason || '請重新完成任務'
     };
 
   } catch (error) {
-    Logger.log('❌ 退回任務失敗：' + error);
+    Logger.log('❌ 重置任務失敗：' + error);
     return {
       success: false,
-      message: '退回失敗：' + error.message
+      message: '重置失敗：' + error.message
     };
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * 保留舊的 rejectTask 函數作為別名，避免破壞現有調用
+ * @deprecated 請使用 resetTask 代替
+ */
+function rejectTask(params) {
+  Logger.log('⚠️ rejectTask 已棄用，請使用 resetTask');
+  return resetTask(params);
 }
 
 
@@ -5876,34 +5939,49 @@ function submitSelfCheck(params) {
         log(`➡️ 更新狀態為 assessment`);
     
     } else {
-        // 分岔 B：沒題目 -> 直接完成
+        // 分岔 B：沒題目 -> 直接完成並發放代幣（不再需要教師審核）
         if (progressRow > 0) {
             progressSheet.getRange(progressRow, 4).setValue('completed');
-            progressSheet.getRange(progressRow, 6).setValue(now);
+            progressSheet.getRange(progressRow, 7).setValue(now);  // complete_time (第7欄，非第6欄)
             progressSheet.getRange(progressRow, 9).setValue(scenarioType);
-            progressSheet.getRange(progressRow, 10).setValue(true);
-            log(`➡️ 更新狀態為 completed`);
+            log(`➡️ 更新狀態為 completed（無評量題目，自動完成）`);
 
-            // 發放獎勵
+            // 計算並發放代幣獎勵
             let tokenReward = 0;
             if (tasksSheet) {
                 const tData = tasksSheet.getDataRange().getValues();
                 for(let k=1; k<tData.length; k++){
                     if(String(tData[k][0]) === realTaskId){
-                        tokenReward = Number(tData[k][11]) || 0;
+                        tokenReward = Number(tData[k][11]) || 100;  // token_reward（預設100）
+
+                        // B情境額外加成 10 代幣
+                        if (scenarioType === 'B') {
+                            tokenReward += 10;
+                            log(`🎁 B情境加成：+10 代幣`);
+                        }
                         break;
                     }
                 }
             }
-            if (membersSheet) {
-                const mData = membersSheet.getDataRange().getValues();
-                for(let m=1; m<mData.length; m++){
-                    if(String(mData[m][4]) === targetEmail){
-                        const current = Number(mData[m][5]) || 0;
-                        membersSheet.getRange(m+1, 6).setValue(current + tokenReward);
-                        break;
-                    }
+
+            // 更新 USERS 表的 total_tokens（而非 CLASS_MEMBERS）
+            let userRow = -1;
+            let currentTokens = 0;
+
+            for (let i = 1; i < usersData.length; i++) {
+                if (usersData[i][0] === userId) {  // 根據 user_id 找到使用者
+                    userRow = i + 1;
+                    currentTokens = usersData[i][8] || 0;  // total_tokens 在第9欄
+                    break;
                 }
+            }
+
+            if (userRow > 0) {
+                const newTotalTokens = currentTokens + tokenReward;
+                usersSheet.getRange(userRow, 9).setValue(newTotalTokens);  // 更新 total_tokens
+                log(`✅ 使用者 ${userId} 獲得 ${tokenReward} 代幣，總計：${newTotalTokens}`);
+            } else {
+                log(`⚠️ 找不到使用者 ${userId}，無法更新代幣`);
             }
         }
         nextStep = 'completed';

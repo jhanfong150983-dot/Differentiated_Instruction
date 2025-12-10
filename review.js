@@ -801,14 +801,16 @@
     };
 
     /**
-     * 應用所有篩選條件（階段 2：紅燈只篩選執行中超時）
+     * 應用所有篩選條件（課堂監控模式）
      */
     window.applyFilters = function() {
         let tasks = [...allTasks];
 
         // 1. 快速篩選
-        if (currentQuickFilter === 'pending') {
-            tasks = tasks.filter(task => task.status === 'pending_review');
+        if (currentQuickFilter === 'in_progress') {
+            tasks = tasks.filter(task => task.status === 'in_progress');
+        } else if (currentQuickFilter === 'completed') {
+            tasks = tasks.filter(task => task.status === 'completed');
         } else if (currentQuickFilter === 'overtime') {
             // 紅燈只篩選執行中且超時的任務
             tasks = tasks.filter(task => task.status === 'in_progress' && task.isOvertime);
@@ -860,16 +862,18 @@
     };
 
     /**
-     * 更新計數（階段 2：紅燈只統計執行中超時）
+     * 更新計數（課堂監控模式）
      */
     function updateCounts() {
         const countAll = allTasks.length;
-        const countPending = allTasks.filter(task => task.status === 'pending_review').length;
+        const countInProgress = allTasks.filter(task => task.status === 'in_progress').length;
+        const countCompleted = allTasks.filter(task => task.status === 'completed').length;
         // 紅燈只統計執行中且超時的任務
         const countOvertime = allTasks.filter(task => task.status === 'in_progress' && task.isOvertime).length;
 
         document.getElementById('countAll').textContent = countAll;
-        document.getElementById('countPending').textContent = countPending;
+        document.getElementById('countInProgress').textContent = countInProgress;
+        document.getElementById('countCompleted').textContent = countCompleted;
         document.getElementById('countOvertime').textContent = countOvertime;
     }
 
@@ -944,28 +948,34 @@
             tr.classList.add('overtime');
         }
 
-        // 燈號邏輯（階段 2）
-        let lightColor = 'yellow'; // 默認黃燈（待審核）
+        // 燈號邏輯（課堂監控模式）
+        let lightColor = 'green'; // 默認綠燈
         let statusBadge = '';
-        let showActions = true; // 是否顯示審核按鈕
+        let showActions = false; // 是否顯示重置按鈕
 
         if (task.status === 'in_progress') {
-            // 執行中：綠燈或紅燈
-            lightColor = task.isOvertime ? 'red' : 'green';
-            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⚡ 執行中</span>';
-            showActions = false; // 執行中不顯示審核按鈕
-        } else if (task.status === 'pending_review') {
-            // 待審核：黃燈（超過5分鐘變紅燈）
-            const isLongWait = task.waitingTime && task.waitingTime.priority === 'high';
-            lightColor = isLongWait ? 'red' : 'yellow';
+            // 執行中：根據時間使用率決定燈號
+            const timeUsedPercent = task.timeLimit > 0 ? (task.executionTime / task.timeLimit) : 0;
 
-            // 等待時間顯示（添加 class 以便前端更新）
-            const waitingTimeDisplay = task.waitingTime
-                ? `<span class="waiting-time-display" style="margin-left: 8px; color: ${isLongWait ? '#ef4444' : '#f59e0b'}; font-weight: 700;">⏰ ${task.waitingTime.formatted}</span>`
-                : '';
-
-            statusBadge = `<span style="display: inline-block; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⏱️ 待審核</span>${waitingTimeDisplay}`;
-            showActions = true; // 待審核顯示審核按鈕
+            if (task.isOvertime) {
+                // 紅燈：已超時
+                lightColor = 'red';
+                statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(239, 68, 68, 0.1); color: #ef4444; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">🚨 已超時</span>';
+            } else if (timeUsedPercent >= 0.8) {
+                // 黃燈：接近超時（80%以上）
+                lightColor = 'yellow';
+                statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⚡ 執行中（接近超時）</span>';
+            } else {
+                // 綠燈：正常執行中
+                lightColor = 'green';
+                statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⚡ 執行中</span>';
+            }
+            showActions = true; // 執行中也可以重置任務
+        } else if (task.status === 'completed') {
+            // 已完成：顯示完成標記
+            lightColor = 'blue';
+            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">✅ 已完成</span>';
+            showActions = false; // 已完成不需要重置
         }
 
         // 時間格式化（HH:MM:SS 或 MM:SS）
@@ -986,11 +996,8 @@
         let actionsHtml = '';
         if (showActions) {
             actionsHtml = `
-                <button class="btn-approve" onclick="handleApproveTask('${task.taskProgressId}')">
-                    ✅ 通過
-                </button>
-                <button class="btn-reject" onclick="handleRejectTask('${task.taskProgressId}')">
-                    ❌ 退回
+                <button class="btn-reset" onclick="handleResetTask('${task.taskProgressId}')" title="重置任務，清除所有進度">
+                    🔄 重置任務
                 </button>
             `;
         } else {
@@ -1068,38 +1075,39 @@
     // ==========================================
 
     /**
-     * 審核通過
+     * 重置任務（原審核通過功能已棄用）
      */
-    window.handleApproveTask = function(taskProgressId) {
-        if (!confirm('確定要通過此任務嗎？\n學生將獲得代幣獎勵。')) {
+    window.handleResetTask = function(taskProgressId) {
+        if (!confirm('⚠️ 確定要重置此任務嗎？\n\n這將會：\n• 清除所有任務進度\n• 刪除自主檢核記錄\n• 刪除評量記錄\n• 學生需要重新開始\n\n此操作無法復原！')) {
             return;
         }
 
         const params = new URLSearchParams({
-            action: 'approveTask',
+            action: 'resetTask',
             teacherEmail: reviewUser.email,
-            taskProgressId: taskProgressId
+            taskProgressId: taskProgressId,
+            reason: '教師手動重置'
         });
 
-        APP_CONFIG.log('📤 審核通過任務...', { taskProgressId });
+        APP_CONFIG.log('📤 重置任務...', { taskProgressId });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
-                APP_CONFIG.log('📥 審核通過回應:', response);
+                APP_CONFIG.log('📥 重置任務回應:', response);
 
                 if (response.success) {
-                    showToast('✅ 審核通過！學生已獲得代幣', 'success');
+                    showToast('✅ 任務已重置，學生需要重新開始', 'success');
 
                     // 樂觀更新：立即從 UI 移除該任務（不重新載入）
                     removeTaskFromUI(taskProgressId);
                 } else {
-                    showToast(response.message || '審核失敗', 'error');
+                    showToast(response.message || '重置失敗', 'error');
                 }
             })
             .catch(function(error) {
-                APP_CONFIG.error('審核通過失敗', error);
-                showToast('審核失敗：' + error.message, 'error');
+                APP_CONFIG.error('重置任務失敗', error);
+                showToast('重置失敗：' + error.message, 'error');
             });
     };
 
@@ -1150,39 +1158,21 @@
     }
 
     /**
-     * 退回任務
+     * 舊函數保留作為別名（向後兼容）
+     * @deprecated 請使用 handleResetTask
+     */
+    window.handleApproveTask = function(taskProgressId) {
+        console.warn('⚠️ handleApproveTask 已棄用，系統已改為自動完成模式');
+        showToast('⚠️ 系統已改為自動完成模式，學生完成任務後會自動獲得代幣', 'warning');
+    };
+
+    /**
+     * 舊函數保留作為別名（向後兼容）
+     * @deprecated 請使用 handleResetTask
      */
     window.handleRejectTask = function(taskProgressId) {
-        if (!confirm('確定要退回此任務嗎？\n任務將回到執行中狀態，學生可以重新提交。')) {
-            return;
-        }
-
-        const params = new URLSearchParams({
-            action: 'rejectTask',
-            teacherEmail: reviewUser.email,
-            taskProgressId: taskProgressId
-        });
-
-        APP_CONFIG.log('📤 退回任務...', { taskProgressId });
-
-        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-            .then(response => response.json())
-            .then(function(response) {
-                APP_CONFIG.log('📥 退回任務回應:', response);
-
-                if (response.success) {
-                    showToast('✅ 任務已退回，學生可重新提交', 'success');
-
-                    // 樂觀更新：立即從 UI 移除該任務（不重新載入）
-                    removeTaskFromUI(taskProgressId);
-                } else {
-                    showToast(response.message || '退回失敗', 'error');
-                }
-            })
-            .catch(function(error) {
-                APP_CONFIG.error('退回任務失敗', error);
-                showToast('退回失敗：' + error.message, 'error');
-            });
+        console.warn('⚠️ handleRejectTask 已改為 handleResetTask');
+        handleResetTask(taskProgressId);
     };
 
     // ==========================================

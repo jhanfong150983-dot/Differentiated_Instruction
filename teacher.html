@@ -1701,6 +1701,11 @@
             color: #ef4444;
         }
 
+        .status-light.blue {
+            background: #3b82f6;
+            color: #3b82f6;
+        }
+
         @keyframes pulse-light {
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.7; transform: scale(0.95); }
@@ -1725,6 +1730,26 @@
             justify-content: center;
         }
 
+        /* 重置按鈕（原審核按鈕已棄用） */
+        .btn-reset {
+            padding: 8px 16px;
+            background: #f59e0b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-reset:hover {
+            background: #d97706;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+        }
+
+        /* 保留舊樣式以確保向後兼容 */
         .btn-approve {
             padding: 8px 16px;
             background: #10b981;
@@ -1971,7 +1996,7 @@
                 <span class="tab-icon">💰</span>代幣管理
             </a>
             <a href="#" class="tab-item" onclick="event.preventDefault(); switchTab('review');">
-                <span class="tab-icon">📊</span>任務審核
+                <span class="tab-icon">📊</span>課堂監控
             </a>
         </div>
         
@@ -2251,14 +2276,14 @@
             </div>
         </div>
 
-        <!-- 任務審核區 -->
+        <!-- 課堂監控區 -->
         <div id="reviewSection" class="management-section" style="display: none;">
             <div class="page-header">
                 <h1 class="page-title">
                     <span class="page-title-icon">📊</span>
-                    任務審核儀表板
+                    課堂監控儀表板
                 </h1>
-                <p class="page-subtitle">監控學生任務狀態並進行審核</p>
+                <p class="page-subtitle">即時監控學生學習進度，並在需要時提供支持</p>
             </div>
 
             <!-- 控制面板 -->
@@ -2297,10 +2322,13 @@
             <!-- 快速篩選 -->
             <div class="review-quick-filters">
                 <button class="filter-tag active" data-filter="all" onclick="applyQuickFilter('all')">
-                    🟢 全部 (<span id="countAll">0</span>)
+                    📊 全部 (<span id="countAll">0</span>)
                 </button>
-                <button class="filter-tag" data-filter="pending" onclick="applyQuickFilter('pending')">
-                    🟡 待審核 (<span id="countPending">0</span>)
+                <button class="filter-tag" data-filter="in_progress" onclick="applyQuickFilter('in_progress')">
+                    ⚡ 執行中 (<span id="countInProgress">0</span>)
+                </button>
+                <button class="filter-tag" data-filter="completed" onclick="applyQuickFilter('completed')">
+                    ✅ 已完成 (<span id="countCompleted">0</span>)
                 </button>
                 <button class="filter-tag" data-filter="overtime" onclick="applyQuickFilter('overtime')">
                     🔴 超時 (<span id="countOvertime">0</span>)
@@ -2370,8 +2398,8 @@
             <!-- 空狀態 -->
             <div class="empty-state" id="reviewEmptyState" style="display: block;">
                 <div class="empty-state-icon">📊</div>
-                <h3>暫無待審核任務</h3>
-                <p>當學生提交任務後，將會顯示在此處<br>您可以審核通過或退回學生的任務</p>
+                <h3>暫無任務進行中</h3>
+                <p>當學生開始任務後，將會顯示在此處<br>您可以即時監控學生學習進度，並在需要時提供支持</p>
             </div>
 
             <!-- 自動刷新倒數 -->
