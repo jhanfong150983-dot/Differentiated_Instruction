@@ -1024,6 +1024,11 @@
             tr.setAttribute('data-status', 'pending_review');
         }
 
+        // ✅ 新增：登入狀態標記
+        const loginStatusBadge = task.hasLoggedIn === false
+            ? '<span style="display: inline-block; margin-left: 6px; padding: 2px 6px; background: rgba(239, 68, 68, 0.1); color: #ef4444; border-radius: 8px; font-size: 11px; font-weight: 600;">未登入</span>'
+            : '';
+
         tr.innerHTML = `
             <td style="text-align: center;">
                 <span class="status-light ${lightColor}"></span>
@@ -1032,7 +1037,7 @@
                 ${escapeHtml(task.studentNumber)}
             </td>
             <td style="font-weight: 600;">
-                ${escapeHtml(task.studentName)}
+                ${escapeHtml(task.studentName)}${loginStatusBadge}
             </td>
             <td style="color: var(--text-medium);">
                 ${escapeHtml(task.className)}

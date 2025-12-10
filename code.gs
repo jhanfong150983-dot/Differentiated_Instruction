@@ -4580,9 +4580,30 @@ function getTeacherTaskMonitor(params) {
 
     Logger.log('📊 任務表結構：' + (isNewStructure ? '新結構' : '舊結構'));
 
-    const monitorTasks = [];
+    // 4. 建立班級學生映射（class_id -> user_id[]）
+    const classStudentsMap = {};
+    for (let i = 1; i < classMembersData.length; i++) {
+      const classId = classMembersData[i][1];
+      const seatNumber = classMembersData[i][2];
+      const studentName = classMembersData[i][3];  // ✅ 新增：從 CLASS_MEMBERS 讀取學生姓名
+      const studentEmail = classMembersData[i][4];
+      const userId = classMembersData[i][5];  // 可能為空（學生未登入）
 
-    // 4. 遍歷所有執行中和待審核的任務進度（階段 2：加入執行中任務）
+      if (!classStudentsMap[classId]) {
+        classStudentsMap[classId] = [];
+      }
+
+      classStudentsMap[classId].push({
+        userId: userId,  // 可能為空
+        name: studentName,  // ✅ 新增：直接從 CLASS_MEMBERS 取得姓名
+        email: studentEmail,
+        seatNumber: seatNumber
+      });
+    }
+
+    // 5. 建立用戶進度映射（userId -> 最新任務進度）
+    const userProgressMap = {};
+
     for (let i = 1; i < progressData.length; i++) {
       // progress_id, record_id, task_id, status, start_time, complete_time, time_spent
       const progressId = progressData[i][0];
@@ -4593,10 +4614,10 @@ function getTeacherTaskMonitor(params) {
       const completeTime = progressData[i][5];
       const timeSpent = progressData[i][6];
 
-      // 階段 2：處理執行中和待審核狀態
-      if (status !== 'in_progress' && status !== 'pending_review') continue;
+      // 階段 2：處理執行中、待審核和已完成狀態
+      if (status !== 'in_progress' && status !== 'pending_review' && status !== 'completed') continue;
 
-      // 5. 找到學習記錄
+      // 6. 找到學習記錄
       let learningRecord = null;
       for (let j = 1; j < learningData.length; j++) {
         // record_id, user_id, class_id, course_id, teacher_email, ...
@@ -4615,43 +4636,9 @@ function getTeacherTaskMonitor(params) {
       // 檢查是否是教師負責的班級
       if (!filteredClassIds.includes(learningRecord.classId)) continue;
 
-      // 6. 取得學生資訊（從 Users 表）
-      let studentInfo = null;
-      for (let j = 1; j < usersData.length; j++) {
-        // user_id, google_id, email, name, role, ...
-        if (usersData[j][0] === learningRecord.userId) {
-          studentInfo = {
-            userId: usersData[j][0],
-            name: usersData[j][3],
-            email: usersData[j][2]
-          };
-          break;
-        }
-      }
+      const userId = learningRecord.userId;
 
-      if (!studentInfo) continue;
-
-      // 7. 取得學生座號（從學員資料表）
-      let seatNumber = null;
-      for (let j = 1; j < classMembersData.length; j++) {
-        // uuid, class_id, seat_number, student_name, student_email, user_id
-        if (classMembersData[j][1] === learningRecord.classId &&
-            classMembersData[j][4] === studentInfo.email) {
-          seatNumber = classMembersData[j][2];
-          break;
-        }
-      }
-
-      // 8. 取得班級名稱
-      let className = '';
-      for (let j = 0; j < teacherClasses.length; j++) {
-        if (teacherClasses[j].classId === learningRecord.classId) {
-          className = teacherClasses[j].className;
-          break;
-        }
-      }
-
-      // 9. 取得任務資訊（處理舊結構的後綴）
+      // 8. 取得任務資訊（處理舊結構的後綴）
       let actualTaskId = taskId;
       let taskTier = '';
       let taskType = '';
@@ -4724,8 +4711,8 @@ function getTeacherTaskMonitor(params) {
           // 無 start_time：表示課堂已結束，任務已凍結
           executionTime = savedTimeSpent;  // 直接使用已保存的時間
         }
-      } else if (status === 'pending_review') {
-        // 待審核：固定時間（提交時間 - 開始時間）
+      } else if (status === 'pending_review' || status === 'completed') {
+        // 待審核或已完成：固定時間（提交時間 - 開始時間）
         if (savedTimeSpent > 0) {
           executionTime = savedTimeSpent;
         } else if (startTime && completeTime) {
@@ -4766,49 +4753,228 @@ function getTeacherTaskMonitor(params) {
         Logger.log(`⚠️ 待審核任務沒有 completeTime: taskProgressId=${progressId}, completeTime=${completeTime}`);
       }
 
-      // 13. 組裝監控資料
-      monitorTasks.push({
-        taskProgressId: progressId,
-        studentName: studentInfo.name,
-        studentEmail: studentInfo.email,
-        studentNumber: seatNumber || '-',
-        className: className,
-        classId: learningRecord.classId,
-        taskName: taskInfo.taskName,
-        taskId: taskInfo.taskId,
-        tier: taskInfo.tier,
-        tierDisplay: taskInfo.tierDisplay,
-        type: taskInfo.type,
-        typeDisplay: taskInfo.typeDisplay,
-        status: status,
-        startTime: startTime || '',
-        submitTime: completeTime || '',
-        executionTime: executionTime,
-        timeSpent: savedTimeSpent,  // 添加累積時間字段（前端需要用於即時更新）
-        timeLimit: taskInfo.timeLimit,
-        isOvertime: isOvertime,
-        tokenReward: taskInfo.tokenReward,
-        waitingTime: waitingTime  // 等待審核時間（只有 pending_review 時才有值）
-      });
+      // 13. 保存到用戶進度映射（優先保存執行中的任務）
+      if (!userProgressMap[userId] ||
+          (status === 'in_progress' && userProgressMap[userId].status !== 'in_progress') ||
+          (status === 'in_progress' && startTime > userProgressMap[userId].startTime)) {
+        userProgressMap[userId] = {
+          progressId: progressId,
+          classId: learningRecord.classId,
+          taskInfo: taskInfo,
+          status: status,
+          startTime: startTime,
+          completeTime: completeTime,
+          executionTime: executionTime,
+          savedTimeSpent: savedTimeSpent,
+          isOvertime: isOvertime,
+          waitingTime: waitingTime
+        };
+      }
     }
 
-    // 按等待時間排序（待審核任務的等待時間最久的在前，執行中任務排在後面）
-    monitorTasks.sort((a, b) => {
-      // 優先顯示待審核任務
-      if (a.status === 'pending_review' && b.status !== 'pending_review') return -1;
-      if (a.status !== 'pending_review' && b.status === 'pending_review') return 1;
+    // 14. 遍歷篩選班級的所有學生，生成監控資料
+    const monitorTasks = [];
+    const addedUserIds = new Set(); // 追蹤已加入的 userId，避免重複
 
-      // 如果都是待審核，按等待時間排序（最久的在前）
-      if (a.status === 'pending_review' && b.status === 'pending_review') {
-        const timeA = a.waitingTime ? a.waitingTime.seconds : 0;
-        const timeB = b.waitingTime ? b.waitingTime.seconds : 0;
-        return timeB - timeA;
+    for (const classId of filteredClassIds) {
+      const studentsInClass = classStudentsMap[classId] || [];
+
+      // 取得班級名稱
+      let className = '';
+      for (let j = 0; j < teacherClasses.length; j++) {
+        if (teacherClasses[j].classId === classId) {
+          className = teacherClasses[j].className;
+          break;
+        }
       }
 
-      // 如果都是執行中，按開始時間排序（最早開始的在前）
-      const timeA = a.startTime ? new Date(a.startTime).getTime() : 0;
-      const timeB = b.startTime ? new Date(b.startTime).getTime() : 0;
-      return timeA - timeB;
+      for (const student of studentsInClass) {
+        const userId = student.userId;
+
+        // ✅ 處理未登入的學生（userId 為空）
+        if (userId) {
+          addedUserIds.add(userId); // 記錄已加入的學生
+        }
+
+        // 取得學生資訊
+        let studentInfo = null;
+        let hasLoggedIn = false;  // ✅ 新增：追蹤學生是否已登入
+
+        if (userId) {
+          // 學生有 userId，嘗試從 USERS 表取得資訊
+          for (let j = 1; j < usersData.length; j++) {
+            if (usersData[j][0] === userId) {
+              studentInfo = {
+                userId: usersData[j][0],
+                name: usersData[j][3],
+                email: usersData[j][2]
+              };
+              hasLoggedIn = true;  // ✅ 標記為已登入
+              break;
+            }
+          }
+        }
+
+        // ✅ 如果 USERS 表中沒有資料，使用 CLASS_MEMBERS 的資料
+        if (!studentInfo) {
+          studentInfo = {
+            userId: userId || '',  // 可能為空
+            name: student.name,  // 來自 CLASS_MEMBERS
+            email: student.email  // 來自 CLASS_MEMBERS
+          };
+          hasLoggedIn = false;  // ✅ 未登入
+        }
+
+        const progress = userProgressMap[userId];
+
+        if (progress && progress.classId === classId) {
+          // 學生有任務進度
+          monitorTasks.push({
+            taskProgressId: progress.progressId,
+            studentName: studentInfo.name,
+            studentEmail: studentInfo.email,
+            studentNumber: student.seatNumber || '-',
+            className: className,
+            classId: classId,
+            taskName: progress.taskInfo.taskName,
+            taskId: progress.taskInfo.taskId,
+            tier: progress.taskInfo.tier,
+            tierDisplay: progress.taskInfo.tierDisplay,
+            type: progress.taskInfo.type,
+            typeDisplay: progress.taskInfo.typeDisplay,
+            status: progress.status,
+            startTime: progress.startTime || '',
+            submitTime: progress.completeTime || '',
+            executionTime: progress.executionTime,
+            timeSpent: progress.savedTimeSpent,
+            timeLimit: progress.taskInfo.timeLimit,
+            isOvertime: progress.isOvertime,
+            tokenReward: progress.taskInfo.tokenReward,
+            waitingTime: progress.waitingTime,
+            hasLoggedIn: hasLoggedIn  // ✅ 新增：標記學生是否已登入
+          });
+        } else {
+          // 學生尚未開始任何任務（包括未登入的學生）
+          monitorTasks.push({
+            taskProgressId: '',
+            studentName: studentInfo.name,
+            studentEmail: studentInfo.email,
+            studentNumber: student.seatNumber || '-',
+            className: className,
+            classId: classId,
+            taskName: hasLoggedIn ? '尚未開始任務' : '尚未登入',  // ✅ 區分未開始和未登入
+            taskId: '',
+            tier: '',
+            tierDisplay: '',
+            type: '',
+            typeDisplay: '',
+            status: 'not_started',
+            startTime: '',
+            submitTime: '',
+            executionTime: 0,
+            timeSpent: 0,
+            timeLimit: 0,
+            isOvertime: false,
+            tokenReward: 0,
+            waitingTime: null,
+            hasLoggedIn: hasLoggedIn  // ✅ 新增：標記學生是否已登入
+          });
+        }
+      }
+    }
+
+    // 15. 新增：顯示所有已登入但尚未加入班級的學生
+    for (let i = 1; i < usersData.length; i++) {
+      const userId = usersData[i][0];
+      const userRole = usersData[i][4]; // role 欄位
+
+      // 只處理學生角色，且未在任何班級中的
+      if (userRole === 'student' && !addedUserIds.has(userId)) {
+        const studentInfo = {
+          userId: userId,
+          name: usersData[i][3],
+          email: usersData[i][2],
+          seatNumber: usersData[i][5] || '-' // seat_number 從 USERS 表讀取
+        };
+
+        const progress = userProgressMap[userId];
+
+        if (progress) {
+          // 學生有任務進度（但不在任何班級中）
+          monitorTasks.push({
+            taskProgressId: progress.progressId,
+            studentName: studentInfo.name,
+            studentEmail: studentInfo.email,
+            studentNumber: studentInfo.seatNumber,
+            className: '（未加入班級）',
+            classId: '',
+            taskName: progress.taskInfo.taskName,
+            taskId: progress.taskInfo.taskId,
+            tier: progress.taskInfo.tier,
+            tierDisplay: progress.taskInfo.tierDisplay,
+            type: progress.taskInfo.type,
+            typeDisplay: progress.taskInfo.typeDisplay,
+            status: progress.status,
+            startTime: progress.startTime || '',
+            submitTime: progress.completeTime || '',
+            executionTime: progress.executionTime,
+            timeSpent: progress.savedTimeSpent,
+            timeLimit: progress.taskInfo.timeLimit,
+            isOvertime: progress.isOvertime,
+            tokenReward: progress.taskInfo.tokenReward,
+            waitingTime: progress.waitingTime,
+            hasLoggedIn: true  // ✅ 這些學生已登入（從 USERS 表來的）
+          });
+        } else {
+          // 學生已登入但尚未加入班級，也沒有任何任務
+          monitorTasks.push({
+            taskProgressId: '',
+            studentName: studentInfo.name,
+            studentEmail: studentInfo.email,
+            studentNumber: studentInfo.seatNumber,
+            className: '（未加入班級）',
+            classId: '',
+            taskName: '尚未開始任務',
+            taskId: '',
+            tier: '',
+            tierDisplay: '',
+            type: '',
+            typeDisplay: '',
+            status: 'not_started',
+            startTime: '',
+            submitTime: '',
+            executionTime: 0,
+            timeSpent: 0,
+            timeLimit: 0,
+            isOvertime: false,
+            tokenReward: 0,
+            waitingTime: null,
+            hasLoggedIn: true  // ✅ 這些學生已登入（從 USERS 表來的）
+          });
+        }
+
+        addedUserIds.add(userId); // 避免重複加入
+      }
+    }
+
+    // 按班級和座號排序
+    monitorTasks.sort((a, b) => {
+      // 1. 未加入班級的學生排在最後
+      const aNoClass = a.className === '（未加入班級）';
+      const bNoClass = b.className === '（未加入班級）';
+
+      if (aNoClass && !bNoClass) return 1;
+      if (!aNoClass && bNoClass) return -1;
+
+      // 2. 先按班級排序
+      if (a.className !== b.className) {
+        return a.className.localeCompare(b.className);
+      }
+
+      // 3. 同班級內按座號排序
+      const seatA = parseInt(a.studentNumber) || 9999;
+      const seatB = parseInt(b.studentNumber) || 9999;
+      return seatA - seatB;
     });
 
     Logger.log('✅ 取得任務監控資料成功:', {
