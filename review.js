@@ -949,11 +949,16 @@
         }
 
         // 燈號邏輯（課堂監控模式）
-        let lightColor = 'green'; // 默認綠燈
+        let lightColor = 'gray'; // 默認灰燈（尚未開始）
         let statusBadge = '';
         let showActions = false; // 是否顯示重置按鈕
 
-        if (task.status === 'in_progress') {
+        if (task.status === 'not_started') {
+            // 尚未開始：灰燈
+            lightColor = 'gray';
+            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(156, 163, 175, 0.1); color: #6b7280; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⏸️ 尚未開始</span>';
+            showActions = false;
+        } else if (task.status === 'in_progress') {
             // 執行中：根據時間使用率決定燈號
             const timeUsedPercent = task.timeLimit > 0 ? (task.executionTime / task.timeLimit) : 0;
 
