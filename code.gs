@@ -554,6 +554,17 @@ function doPost(e) {
       case 'saveTaskQuestions':
         response = saveTaskQuestions(requestData);
         break;
+
+      case 'uploadTaskWork':
+        // ✅ 新增：處理任務作業上傳（從 POST 請求）
+        response = uploadTaskWork({
+          taskProgressId: requestData.taskProgressId,
+          fileName: requestData.fileName,
+          fileData: requestData.fileData,
+          fileMime: requestData.fileMime,
+          userEmail: requestData.userEmail
+        });
+        break;
         
       default:
         response = {

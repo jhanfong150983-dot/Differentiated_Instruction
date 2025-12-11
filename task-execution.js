@@ -548,9 +548,9 @@ function renderChecklistItem(index) {
     const itemDiv = document.createElement('div');
     itemDiv.className = 'checklist-item active';
 
-    // 標題（修復：使用 description 而非 text）
+    // 標題（修復：優先使用 type 欄位，因為資料結構中 type 存的是檢核內容文字）
     const title = document.createElement('h3');
-    title.textContent = `${index + 1}. ${item.description || item.text || '檢核項目'}`;
+    title.textContent = `${index + 1}. ${item.type || item.description || item.text || '檢核項目'}`;
     itemDiv.appendChild(title);
 
     // 參考答案
@@ -668,16 +668,23 @@ async function uploadFileToServer(file) {
         // 轉為 Base64
         const base64Data = await fileToBase64(file);
 
-        const params = new URLSearchParams({
+        // 🔧 修復：改用 POST 請求，避免 URL 過長導致 413 錯誤
+        const requestBody = {
             action: 'uploadTaskWork',
             taskProgressId: taskProgressId,
             fileName: file.name,
             fileData: base64Data,
             fileMime: file.type,
             userEmail: studentEmail
-        });
+        };
 
-        const response = await fetch(`${API_URL}?${params.toString()}`);
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8'
+            },
+            body: JSON.stringify(requestBody)
+        });
         const data = await response.json();
 
         showLoading(false);
