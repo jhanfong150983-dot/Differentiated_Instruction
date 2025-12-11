@@ -7487,20 +7487,53 @@ function getTaskDetail(params) {
     const questions = [];
     if (questionsSheet) {
       const questionsData = questionsSheet.getDataRange().getValues();
+      Logger.log(`📋 題庫表共有 ${questionsData.length - 1} 筆題目資料`);
+      Logger.log(`🔍 正在搜尋 taskId=${taskId} 或 actualTaskId=${actualTaskId} 的題目`);
+      
       for (let i = 1; i < questionsData.length; i++) {
-        if (questionsData[i][1] === taskId || questionsData[i][1] === actualTaskId) {
-          try {
-            questions.push({
-              questionId: questionsData[i][0],
-              question: questionsData[i][2],
-              options: JSON.parse(questionsData[i][3] || '[]'),
-              correctAnswer: questionsData[i][4]
-            });
-          } catch (e) {
-            Logger.log('⚠️ 解析題目選項失敗: ' + e.message);
-          }
+        const questionTaskId = String(questionsData[i][1]).trim();
+        const taskIdStr = String(taskId).trim();
+        const actualTaskIdStr = String(actualTaskId).trim();
+        
+        // 更彈性的匹配：完全匹配或包含匹配
+        if (questionTaskId === taskIdStr || 
+            questionTaskId === actualTaskIdStr ||
+            taskIdStr.includes(questionTaskId) ||
+            actualTaskIdStr.includes(questionTaskId)) {
+          Logger.log(`✅ 找到匹配題目: 題目taskId=${questionTaskId}`);
+          
+          // 選項欄位: [3]=option_a, [4]=option_b, [5]=option_c, [6]=option_d, [7]=correct_answer
+          const optionA = questionsData[i][3] || '';
+          const optionB = questionsData[i][4] || '';
+          const optionC = questionsData[i][5] || '';
+          const optionD = questionsData[i][6] || '';
+          const correctAnswer = questionsData[i][7] || 'A';
+          
+          // 組成選項陣列（過濾空選項）
+          const options = [];
+          if (optionA) options.push({ label: 'A', text: optionA });
+          if (optionB) options.push({ label: 'B', text: optionB });
+          if (optionC) options.push({ label: 'C', text: optionC });
+          if (optionD) options.push({ label: 'D', text: optionD });
+          
+          questions.push({
+            questionId: questionsData[i][0],
+            question: questionsData[i][2],
+            options: options,
+            correctAnswer: correctAnswer
+          });
         }
       }
+      
+      // 如果沒找到，記錄前幾筆題目的 taskId 供除錯
+      if (questions.length === 0 && questionsData.length > 1) {
+        Logger.log('❌ 未找到匹配題目，題庫中的 taskId 列表:');
+        for (let i = 1; i < Math.min(questionsData.length, 6); i++) {
+          Logger.log(`  - 第${i}筆: taskId="${questionsData[i][1]}"`);
+        }
+      }
+    } else {
+      Logger.log('❌ 找不到題庫表 (TASK_QUESTIONS)');
     }
 
     const task = {

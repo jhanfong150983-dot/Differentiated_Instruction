@@ -798,18 +798,23 @@ function renderAssessmentQuestions() {
             const optionDiv = document.createElement('div');
             optionDiv.className = 'assessment-option';
 
+            // 支援兩種格式：物件 { label, text } 或純字串
+            const optionLabel = option.label || String.fromCharCode(65 + optIndex); // A, B, C, D
+            const optionText = option.text || option;
+            const optionValue = optionLabel; // 儲存選項代號 (A, B, C, D)
+
             const radio = document.createElement('input');
             radio.type = 'radio';
             radio.name = `question-${index}`;
-            radio.value = option;
+            radio.value = optionValue;
             radio.id = `q${index}-opt${optIndex}`;
             radio.addEventListener('change', function() {
-                assessmentAnswers[question.questionId] = option;
+                assessmentAnswers[question.questionId] = optionValue;
             });
 
             const label = document.createElement('label');
             label.htmlFor = `q${index}-opt${optIndex}`;
-            label.textContent = option;
+            label.textContent = `${optionLabel}. ${optionText}`;
 
             optionDiv.appendChild(radio);
             optionDiv.appendChild(label);

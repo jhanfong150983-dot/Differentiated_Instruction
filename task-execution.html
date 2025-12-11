@@ -263,13 +263,15 @@
         #stage-upload {
             padding: 30px;
             /* ❌ 移除 display: flex，避免覆蓋 .stage-container 的 display: none */
+            overflow-y: auto; /* ✅ 允許垂直滾動 */
         }
 
         #stage-upload.active {
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start; /* ✅ 改為從頂部開始，避免內容被擠壓 */
+            overflow-y: auto; /* ✅ 允許滾動 */
         }
 
         .upload-area {
@@ -303,10 +305,14 @@
         .upload-preview {
             margin-top: 30px;
             max-width: 600px;
+            padding-bottom: 30px; /* ✅ 底部留白，方便滾動 */
+            flex-shrink: 0; /* ✅ 防止被壓縮 */
         }
 
         .upload-preview img {
             max-width: 100%;
+            max-height: 400px; /* ✅ 限制圖片最大高度 */
+            object-fit: contain; /* ✅ 保持比例 */
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
