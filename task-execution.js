@@ -98,10 +98,13 @@ async function loadTaskData(taskId) {
 
             if (taskData.link && taskData.link.trim() !== '') {
                 let finalLink = taskData.link.trim();
+                let originalLink = finalLink; // 保留原始連結用於新分頁開啟
 
-                // 🔧 修復：轉換 Google Drive 連結為可嵌入格式
-                if (finalLink.includes('drive.google.com')) {
-                    console.log('🔍 偵測到 Google Drive 連結，進行轉換...', finalLink);
+                // 🔧 檢測是否為 Google Drive 連結
+                const isGoogleDrive = finalLink.includes('drive.google.com');
+                
+                if (isGoogleDrive) {
+                    console.log('🔍 偵測到 Google Drive 連結', finalLink);
 
                     // 提取 FILE_ID
                     let fileId = null;
@@ -134,83 +137,155 @@ async function loadTaskData(taskId) {
                     if (fileId) {
                         // 清理 FILE_ID（移除可能的查詢參數）
                         fileId = fileId.split('?')[0].split('&')[0];
-
-                        // 轉換為嵌入格式（優先使用 /preview）
-                        finalLink = `https://drive.google.com/file/d/${fileId}/preview`;
-                        console.log('✅ 已轉換為嵌入格式：', finalLink);
-                    } else {
-                        console.warn('⚠️ 無法提取 FILE_ID，使用原始連結:', finalLink);
+                        // 保留原始連結用於新分頁開啟
+                        originalLink = `https://drive.google.com/file/d/${fileId}/view`;
                     }
-                }
 
-                materialFrame.src = finalLink;
-                console.log('✅ 教材連結已載入：', finalLink);
+                    // 🔧 Google Drive 連結：直接顯示友善介面，不嘗試嵌入（避免 403 錯誤）
+                    materialFrame.srcdoc = `
+                        <html>
+                            <head>
+                                <style>
+                                    body {
+                                        display: flex;
+                                        justify-content: center;
+                                        align-items: center;
+                                        height: 100vh;
+                                        margin: 0;
+                                        font-family: 'Microsoft JhengHei', sans-serif;
+                                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                        color: white;
+                                    }
+                                    .container {
+                                        text-align: center;
+                                        padding: 60px;
+                                        background: rgba(255, 255, 255, 0.1);
+                                        border-radius: 20px;
+                                        backdrop-filter: blur(10px);
+                                        max-width: 500px;
+                                    }
+                                    .icon {
+                                        font-size: 80px;
+                                        margin-bottom: 20px;
+                                    }
+                                    h2 {
+                                        margin-bottom: 15px;
+                                        font-size: 24px;
+                                    }
+                                    p {
+                                        margin-bottom: 30px;
+                                        opacity: 0.9;
+                                        line-height: 1.6;
+                                    }
+                                    .btn {
+                                        display: inline-block;
+                                        padding: 15px 40px;
+                                        background: white;
+                                        color: #667eea;
+                                        text-decoration: none;
+                                        border-radius: 30px;
+                                        font-size: 18px;
+                                        font-weight: bold;
+                                        transition: all 0.3s ease;
+                                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                                    }
+                                    .btn:hover {
+                                        transform: translateY(-3px);
+                                        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+                                    }
+                                    .note {
+                                        margin-top: 25px;
+                                        font-size: 14px;
+                                        opacity: 0.7;
+                                    }
+                                </style>
+                            </head>
+                            <body>
+                                <div class="container">
+                                    <div class="icon">📚</div>
+                                    <h2>學習教材已準備好</h2>
+                                    <p>由於 Google Drive 的安全性限制，<br>請點擊下方按鈕在新分頁中開啟教材</p>
+                                    <a href="${originalLink}" target="_blank" class="btn">
+                                        🔗 開啟學習教材
+                                    </a>
+                                    <p class="note">閱讀完畢後，請返回此視窗繼續下一步</p>
+                                </div>
+                            </body>
+                        </html>
+                    `;
+                    console.log('✅ 已顯示 Google Drive 友善介面');
 
-                // 添加備用開啟按鈕（如果 iframe 無法載入）
-                const materialContainer = materialFrame.parentElement;
-                const existingBtn = materialContainer.querySelector('.open-in-new-tab-btn');
-                if (existingBtn) existingBtn.remove();
+                } else {
+                    // 非 Google Drive 連結：嘗試正常嵌入
+                    materialFrame.src = finalLink;
+                    console.log('✅ 教材連結已載入：', finalLink);
 
-                const openInNewTabBtn = document.createElement('button');
-                openInNewTabBtn.className = 'open-in-new-tab-btn';
-                openInNewTabBtn.textContent = '🔗 無法顯示？點此在新分頁開啟教材';
-                openInNewTabBtn.style.cssText = `
-                    position: absolute;
-                    top: 10px;
-                    right: 10px;
-                    padding: 10px 20px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-                    z-index: 1000;
-                    transition: all 0.2s ease;
-                    display: none;
-                `;
-                openInNewTabBtn.onmouseover = function() {
-                    this.style.transform = 'translateY(-2px)';
-                    this.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
-                };
-                openInNewTabBtn.onmouseout = function() {
-                    this.style.transform = 'translateY(0)';
-                    this.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
-                };
-                openInNewTabBtn.onclick = function() {
-                    window.open(finalLink, '_blank');
-                    showWarning('已在新分頁開啟教材', 'success');
-                };
-                materialContainer.style.position = 'relative';
-                materialContainer.appendChild(openInNewTabBtn);
+                    // 添加備用開啟按鈕（如果 iframe 無法載入）
+                    const materialContainer = materialFrame.parentElement;
+                    const existingBtn = materialContainer.querySelector('.open-in-new-tab-btn');
+                    if (existingBtn) existingBtn.remove();
 
-                // 檢測 iframe 載入狀態
-                let iframeLoadTimeout = setTimeout(function() {
-                    // 如果 3 秒後仍未載入成功，顯示備用按鈕
-                    console.warn('⚠️ iframe 載入時間過長，顯示備用開啟按鈕');
-                    openInNewTabBtn.style.display = 'block';
-                }, 3000);
+                    const openInNewTabBtn = document.createElement('button');
+                    openInNewTabBtn.className = 'open-in-new-tab-btn';
+                    openInNewTabBtn.textContent = '🔗 無法顯示？點此在新分頁開啟教材';
+                    openInNewTabBtn.style.cssText = `
+                        position: absolute;
+                        top: 10px;
+                        right: 10px;
+                        padding: 10px 20px;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                        border: none;
+                        border-radius: 8px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+                        z-index: 1000;
+                        transition: all 0.2s ease;
+                        display: none;
+                    `;
+                    openInNewTabBtn.onmouseover = function() {
+                        this.style.transform = 'translateY(-2px)';
+                        this.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
+                    };
+                    openInNewTabBtn.onmouseout = function() {
+                        this.style.transform = 'translateY(0)';
+                        this.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+                    };
+                    openInNewTabBtn.onclick = function() {
+                        window.open(finalLink, '_blank');
+                        showWarning('已在新分頁開啟教材', 'success');
+                    };
+                    materialContainer.style.position = 'relative';
+                    materialContainer.appendChild(openInNewTabBtn);
 
-                // 監聽 iframe 載入錯誤
-                materialFrame.onerror = function() {
-                    console.error('❌ iframe 載入失敗');
-                    clearTimeout(iframeLoadTimeout);
-                    openInNewTabBtn.style.display = 'block';
-                    openInNewTabBtn.textContent = '❌ 嵌入載入失敗，點此在新分頁開啟教材';
-                    openInNewTabBtn.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
-                };
-
-                materialFrame.onload = function() {
-                    console.log('✅ iframe 載入成功');
-                    clearTimeout(iframeLoadTimeout);
-                    // 如果成功載入，仍然顯示按鈕（但文字改為可選開啟）
-                    setTimeout(function() {
+                    // 檢測 iframe 載入狀態
+                    let iframeLoadTimeout = setTimeout(function() {
+                        // 如果 3 秒後仍未載入成功，顯示備用按鈕
+                        console.warn('⚠️ iframe 載入時間過長，顯示備用開啟按鈕');
                         openInNewTabBtn.style.display = 'block';
-                        openInNewTabBtn.style.opacity = '0.7';
-                    }, 500);
-                };
+                    }, 3000);
+
+                    // 監聽 iframe 載入錯誤
+                    materialFrame.onerror = function() {
+                        console.error('❌ iframe 載入失敗');
+                        clearTimeout(iframeLoadTimeout);
+                        openInNewTabBtn.style.display = 'block';
+                        openInNewTabBtn.textContent = '❌ 嵌入載入失敗，點此在新分頁開啟教材';
+                        openInNewTabBtn.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+                    };
+
+                    materialFrame.onload = function() {
+                        console.log('✅ iframe 載入成功');
+                        clearTimeout(iframeLoadTimeout);
+                        // 如果成功載入，仍然顯示按鈕（但文字改為可選開啟）
+                        setTimeout(function() {
+                            openInNewTabBtn.style.display = 'block';
+                            openInNewTabBtn.style.opacity = '0.7';
+                        }, 500);
+                    };
+                }
             } else {
                 // 如果沒有教材連結，顯示提示訊息
                 materialFrame.srcdoc = `
