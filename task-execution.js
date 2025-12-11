@@ -81,13 +81,32 @@ async function loadTaskData(taskId) {
 
         if (data.success) {
             taskData = data.task;
+
+            // 🔍 調試：顯示完整的任務資料
+            console.log('📦 完整任務資料：', taskData);
+
             document.getElementById('taskTitle').textContent = taskData.name;
 
             // 修復：載入教材（檢查 link 是否有效）
             const materialFrame = document.getElementById('materialFrame');
+            console.log('🔗 教材連結檢查：', {
+                link: taskData.link,
+                hasLink: !!taskData.link,
+                isEmpty: taskData.link === '',
+                trimmed: taskData.link ? taskData.link.trim() : 'null'
+            });
+
             if (taskData.link && taskData.link.trim() !== '') {
                 materialFrame.src = taskData.link;
                 console.log('✅ 教材連結已載入：', taskData.link);
+
+                // 監聽 iframe 載入錯誤
+                materialFrame.onerror = function() {
+                    console.error('❌ iframe 載入失敗');
+                };
+                materialFrame.onload = function() {
+                    console.log('✅ iframe 載入成功');
+                };
             } else {
                 // 如果沒有教材連結，顯示提示訊息
                 materialFrame.srcdoc = `
@@ -126,18 +145,32 @@ async function loadTaskData(taskId) {
 
             // 修復：只儲存檢核項目和評量題目，不立即渲染
             // 等到進入對應階段時才渲染
+            console.log('📋 檢核項目檢查：', {
+                hasSelfCheckList: !!taskData.selfCheckList,
+                isArray: Array.isArray(taskData.selfCheckList),
+                length: taskData.selfCheckList ? taskData.selfCheckList.length : 0,
+                data: taskData.selfCheckList
+            });
+
             if (taskData.selfCheckList && taskData.selfCheckList.length > 0) {
                 checklistItems = taskData.selfCheckList;
-                console.log('✅ 檢核項目已載入：', checklistItems.length, '項');
+                console.log('✅ 檢核項目已載入：', checklistItems.length, '項', checklistItems);
             } else {
-                console.log('ℹ️ 此任務沒有檢核項目');
+                console.warn('⚠️ 此任務沒有檢核項目');
             }
+
+            console.log('📝 評量題目檢查：', {
+                hasQuestions: !!taskData.questions,
+                isArray: Array.isArray(taskData.questions),
+                length: taskData.questions ? taskData.questions.length : 0,
+                data: taskData.questions
+            });
 
             if (taskData.questions && taskData.questions.length > 0) {
                 assessmentQuestions = taskData.questions;
-                console.log('✅ 評量題目已載入：', assessmentQuestions.length, '題');
+                console.log('✅ 評量題目已載入：', assessmentQuestions.length, '題', assessmentQuestions);
             } else {
-                console.log('ℹ️ 此任務沒有評量題目');
+                console.warn('⚠️ 此任務沒有評量題目');
             }
 
             // 初始化第一階段

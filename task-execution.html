@@ -139,6 +139,10 @@
         /* 階段2：檢核 */
         #stage-checklist {
             padding: 30px;
+            /* ❌ 移除 display: flex，避免覆蓋 .stage-container 的 display: none */
+        }
+
+        #stage-checklist.active {
             display: flex;
             flex-direction: column;
         }
@@ -258,6 +262,10 @@
         /* 階段3：上傳 */
         #stage-upload {
             padding: 30px;
+            /* ❌ 移除 display: flex，避免覆蓋 .stage-container 的 display: none */
+        }
+
+        #stage-upload.active {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -328,6 +336,10 @@
         /* 階段4：評量 */
         #stage-assessment {
             padding: 30px;
+            /* ❌ 移除 display: flex，避免覆蓋 .stage-container 的 display: none */
+        }
+
+        #stage-assessment.active {
             display: flex;
             flex-direction: column;
         }
