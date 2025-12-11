@@ -446,6 +446,7 @@ function doGet(e) {
           taskProgressId: params.taskProgressId,
           userEmail: params.userEmail,
           checklistAnswers: params.checklistAnswers,
+          checklistItems: params.checklistItems,  // 新增：傳遞檢核項目資料
           uploadedFileUrl: params.uploadedFileUrl,
           assessmentAnswers: params.assessmentAnswers,
           accuracy: params.accuracy,
