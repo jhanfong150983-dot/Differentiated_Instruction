@@ -97,15 +97,119 @@ async function loadTaskData(taskId) {
             });
 
             if (taskData.link && taskData.link.trim() !== '') {
-                materialFrame.src = taskData.link;
-                console.log('✅ 教材連結已載入：', taskData.link);
+                let finalLink = taskData.link.trim();
+
+                // 🔧 修復：轉換 Google Drive 連結為可嵌入格式
+                if (finalLink.includes('drive.google.com')) {
+                    console.log('🔍 偵測到 Google Drive 連結，進行轉換...', finalLink);
+
+                    // 提取 FILE_ID
+                    let fileId = null;
+
+                    // 格式 1: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+                    const match1 = finalLink.match(/\/file\/d\/([^\/\?]+)/);
+                    if (match1) {
+                        fileId = match1[1];
+                        console.log('✅ 格式1匹配成功，FILE_ID:', fileId);
+                    }
+
+                    // 格式 2: https://drive.google.com/open?id=FILE_ID
+                    if (!fileId) {
+                        const match2 = finalLink.match(/[?&]id=([^&]+)/);
+                        if (match2) {
+                            fileId = match2[1];
+                            console.log('✅ 格式2匹配成功，FILE_ID:', fileId);
+                        }
+                    }
+
+                    // 格式 3: https://drive.google.com/uc?id=FILE_ID
+                    if (!fileId) {
+                        const match3 = finalLink.match(/\/uc\?.*id=([^&]+)/);
+                        if (match3) {
+                            fileId = match3[1];
+                            console.log('✅ 格式3匹配成功，FILE_ID:', fileId);
+                        }
+                    }
+
+                    if (fileId) {
+                        // 清理 FILE_ID（移除可能的查詢參數）
+                        fileId = fileId.split('?')[0].split('&')[0];
+
+                        // 轉換為嵌入格式（優先使用 /preview）
+                        finalLink = `https://drive.google.com/file/d/${fileId}/preview`;
+                        console.log('✅ 已轉換為嵌入格式：', finalLink);
+                    } else {
+                        console.warn('⚠️ 無法提取 FILE_ID，使用原始連結:', finalLink);
+                    }
+                }
+
+                materialFrame.src = finalLink;
+                console.log('✅ 教材連結已載入：', finalLink);
+
+                // 添加備用開啟按鈕（如果 iframe 無法載入）
+                const materialContainer = materialFrame.parentElement;
+                const existingBtn = materialContainer.querySelector('.open-in-new-tab-btn');
+                if (existingBtn) existingBtn.remove();
+
+                const openInNewTabBtn = document.createElement('button');
+                openInNewTabBtn.className = 'open-in-new-tab-btn';
+                openInNewTabBtn.textContent = '🔗 無法顯示？點此在新分頁開啟教材';
+                openInNewTabBtn.style.cssText = `
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    padding: 10px 20px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+                    z-index: 1000;
+                    transition: all 0.2s ease;
+                    display: none;
+                `;
+                openInNewTabBtn.onmouseover = function() {
+                    this.style.transform = 'translateY(-2px)';
+                    this.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
+                };
+                openInNewTabBtn.onmouseout = function() {
+                    this.style.transform = 'translateY(0)';
+                    this.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+                };
+                openInNewTabBtn.onclick = function() {
+                    window.open(finalLink, '_blank');
+                    showWarning('已在新分頁開啟教材', 'success');
+                };
+                materialContainer.style.position = 'relative';
+                materialContainer.appendChild(openInNewTabBtn);
+
+                // 檢測 iframe 載入狀態
+                let iframeLoadTimeout = setTimeout(function() {
+                    // 如果 3 秒後仍未載入成功，顯示備用按鈕
+                    console.warn('⚠️ iframe 載入時間過長，顯示備用開啟按鈕');
+                    openInNewTabBtn.style.display = 'block';
+                }, 3000);
 
                 // 監聽 iframe 載入錯誤
                 materialFrame.onerror = function() {
                     console.error('❌ iframe 載入失敗');
+                    clearTimeout(iframeLoadTimeout);
+                    openInNewTabBtn.style.display = 'block';
+                    openInNewTabBtn.textContent = '❌ 嵌入載入失敗，點此在新分頁開啟教材';
+                    openInNewTabBtn.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
                 };
+
                 materialFrame.onload = function() {
                     console.log('✅ iframe 載入成功');
+                    clearTimeout(iframeLoadTimeout);
+                    // 如果成功載入，仍然顯示按鈕（但文字改為可選開啟）
+                    setTimeout(function() {
+                        openInNewTabBtn.style.display = 'block';
+                        openInNewTabBtn.style.opacity = '0.7';
+                    }, 500);
                 };
             } else {
                 // 如果沒有教材連結，顯示提示訊息
