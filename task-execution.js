@@ -83,21 +83,65 @@ async function loadTaskData(taskId) {
             taskData = data.task;
             document.getElementById('taskTitle').textContent = taskData.name;
 
-            // 載入教材
-            document.getElementById('materialFrame').src = taskData.link;
+            // 修復：載入教材（檢查 link 是否有效）
+            const materialFrame = document.getElementById('materialFrame');
+            if (taskData.link && taskData.link.trim() !== '') {
+                materialFrame.src = taskData.link;
+                console.log('✅ 教材連結已載入：', taskData.link);
+            } else {
+                // 如果沒有教材連結，顯示提示訊息
+                materialFrame.srcdoc = `
+                    <html>
+                        <head>
+                            <style>
+                                body {
+                                    display: flex;
+                                    justify-content: center;
+                                    align-items: center;
+                                    height: 100vh;
+                                    margin: 0;
+                                    font-family: 'Microsoft JhengHei', sans-serif;
+                                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                    color: white;
+                                }
+                                .message {
+                                    text-align: center;
+                                    padding: 40px;
+                                    background: rgba(255, 255, 255, 0.1);
+                                    border-radius: 16px;
+                                    backdrop-filter: blur(10px);
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="message">
+                                <h2>📚 此任務沒有提供教材連結</h2>
+                                <p>請直接進入下一階段</p>
+                            </div>
+                        </body>
+                    </html>
+                `;
+                console.warn('⚠️ 任務沒有教材連結');
+            }
 
-            // 載入檢核項目
+            // 修復：只儲存檢核項目和評量題目，不立即渲染
+            // 等到進入對應階段時才渲染
             if (taskData.selfCheckList && taskData.selfCheckList.length > 0) {
                 checklistItems = taskData.selfCheckList;
-                renderChecklistItem(0);
+                console.log('✅ 檢核項目已載入：', checklistItems.length, '項');
+            } else {
+                console.log('ℹ️ 此任務沒有檢核項目');
             }
 
-            // 載入評量題目
             if (taskData.questions && taskData.questions.length > 0) {
                 assessmentQuestions = taskData.questions;
-                renderAssessmentQuestions();
+                console.log('✅ 評量題目已載入：', assessmentQuestions.length, '題');
+            } else {
+                console.log('ℹ️ 此任務沒有評量題目');
             }
 
+            // 初始化第一階段
+            updateStageDisplay();
             showLoading(false);
         } else {
             alert('載入任務失敗：' + data.message);
@@ -108,6 +152,26 @@ async function loadTaskData(taskId) {
         alert('載入任務失敗，請稍後再試');
         window.close();
     }
+}
+
+// ========== 初始化階段顯示 ==========
+function updateStageDisplay() {
+    // 初始化為第一階段（教材）
+    currentStage = 1;
+
+    // 確保只有第一階段顯示
+    document.querySelectorAll('.stage-container').forEach(el => {
+        el.classList.remove('active');
+    });
+    document.getElementById('stage-material').classList.add('active');
+
+    // 更新進度條
+    updateProgressBar(1);
+
+    // 更新按鈕
+    updateButtons(1);
+
+    console.log('✅ 初始化完成，當前階段：1（教材）');
 }
 
 // ========== 階段切換 ==========
@@ -145,6 +209,27 @@ function switchStage(stage) {
 
     // 顯示目標階段
     document.getElementById(`stage-${getStageId(stage)}`).classList.add('active');
+
+    // 修復：根據階段渲染對應內容
+    if (stage === 2) {
+        // 階段2：檢核 - 渲染檢核項目
+        if (checklistItems && checklistItems.length > 0) {
+            console.log('📋 開始渲染檢核項目...');
+            renderChecklistItem(currentChecklistIndex);
+        } else {
+            console.log('⚠️ 沒有檢核項目，跳過檢核階段');
+            // 如果沒有檢核項目，可以自動跳到下一階段
+        }
+    } else if (stage === 4) {
+        // 階段4：評量 - 渲染評量題目
+        if (assessmentQuestions && assessmentQuestions.length > 0) {
+            console.log('📝 開始渲染評量題目...');
+            renderAssessmentQuestions();
+        } else {
+            console.log('⚠️ 沒有評量題目，跳過評量階段');
+            // 如果沒有評量題目，可以自動跳到下一階段
+        }
+    }
 
     // 更新進度條
     updateProgressBar(stage);
@@ -251,9 +336,9 @@ function renderChecklistItem(index) {
     const itemDiv = document.createElement('div');
     itemDiv.className = 'checklist-item active';
 
-    // 標題
+    // 標題（修復：使用 description 而非 text）
     const title = document.createElement('h3');
-    title.textContent = `${index + 1}. ${item.text}`;
+    title.textContent = `${index + 1}. ${item.description || item.text || '檢核項目'}`;
     itemDiv.appendChild(title);
 
     // 參考答案

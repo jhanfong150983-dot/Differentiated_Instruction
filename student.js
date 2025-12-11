@@ -2509,86 +2509,47 @@ window.openTaskModal = function(task, progress) {
     // 處理任務操作
     // ==========================================
       /**
-       * 開始任務（已修正 classId 傳遞位置）
+       * 開始任務（已優化：移除多餘的課堂狀態檢查）
+       * 理由：背景每5秒自動檢查課堂狀態，且後端 startTask 會再次驗證
        */
       window.handleStartTask = function() {
-          console.log('🔍 [Debug] selectedClass:', selectedClass); // 這裡你已經確認有值了
-      
           if (!selectedTask) return;
-      
+
           const startBtn = document.getElementById('startTaskBtn');
           const reopenBtn = document.getElementById('reopenMaterialBtn');
-          const completeBtn = document.getElementById('completeTaskBtn'); 
-      
+          const completeBtn = document.getElementById('completeTaskBtn');
+
           // UI 鎖定
           if (startBtn) {
               startBtn.disabled = true;
-              startBtn.textContent = '檢查中...';
+              startBtn.textContent = '開始中...';
           }
-      
-          // 階段 2：先檢查班級資訊
+
+          // 檢查班級資訊
           if (!selectedClass || !selectedClass.classId) {
               if (startBtn) {
                   startBtn.disabled = false;
                   startBtn.textContent = '開始任務';
               }
-              showToast('無法取得班級資訊 (selectedClass is null)', 'error');
+              showToast('無法取得班級資訊', 'error');
               return;
           }
-      
-          // ==========================================
-          // 第一次 Fetch：檢查課堂狀態 (這裡不需要改)
-          // ==========================================
-          const checkParams = new URLSearchParams({
-              action: 'getCurrentSession',
-              classId: selectedClass.classId,
-              userEmail: currentStudent.email
+
+          // 直接開始任務（已移除重複的課堂狀態檢查）
+          const params = new URLSearchParams({
+              action: 'startTask',
+              userEmail: currentStudent.email,
+              taskId: selectedTask.taskId,
+              classId: selectedClass.classId
           });
-      
-          APP_CONFIG.log('📤 1. 檢查課堂狀態...', { classId: selectedClass.classId });
-      
-          fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
+
+          APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
+
+          fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
               .then(response => response.json())
-              .then(function(sessionResponse) {
-                  
-                  // ... (省略錯誤檢查邏輯，保持原樣) ...
-                  if (!sessionResponse.success || !sessionResponse.isActive) {
-                      if (startBtn) { startBtn.disabled = false; startBtn.textContent = '開始任務'; }
-                      showToast(sessionResponse.message || '無法開始', 'warning');
-                      // 這裡要 throw 或是 return 來中斷，避免執行第二次 fetch
-                      throw new Error('session_invalid'); 
-                  }
-      
-                  // 有進行中的課堂，繼續開始任務
-                  if (startBtn) startBtn.textContent = '開始中...';
-      
-                  // ==========================================
-                  // 🔥 第二次 Fetch：真正開始任務 (請看這裡！)
-                  // ==========================================
-                  const params = new URLSearchParams({
-                      action: 'startTask',
-                      userEmail: currentStudent.email,
-                      taskId: selectedTask.taskId,
-                      // ✅✅✅ 必須加在這裡才有用！ ✅✅✅
-                      classId: selectedClass.classId 
-                  });
-      
-                  // 🔍 Debug：印出最終傳送的字串，確認裡面有沒有 classId
-                  console.log('🚀 [Critical] 準備發送 startTask 請求，參數:', params.toString());
-      
-                  APP_CONFIG.log('📤 2. 開始任務...', { taskId: selectedTask.taskId });
-      
-                  return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`);
-              })
               .then(function(response) {
-                  if (!response) return; 
-                  return response.json();
-              })
-              .then(function(response) {
-                  if (!response) return;
-      
                   APP_CONFIG.log('📥 開始任務回應:', response);
-      
+
                   if (response.success) {
                       showToast('✅ 任務已開始！', 'success');
 
@@ -2602,8 +2563,8 @@ window.openTaskModal = function(task, progress) {
                       if (reopenBtn) reopenBtn.style.display = 'inline-block';
                       if (completeBtn) completeBtn.style.display = 'inline-block';
 
-                      // 🆕 打開新的任務執行視窗（包含4階段：教材→檢核→上傳→評量）
-                      const taskProgressId = response.taskProgressId;  // 從後端回應取得
+                      // 打開任務執行視窗
+                      const taskProgressId = response.taskProgressId;
                       const taskExecutionUrl = new URL('task-execution.html', window.location.href);
                       taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
                       taskExecutionUrl.searchParams.set('taskId', selectedTask.taskId);
@@ -2617,14 +2578,18 @@ window.openTaskModal = function(task, progress) {
                       }
 
                   } else {
-                      if (startBtn) { startBtn.disabled = false; startBtn.textContent = '開始任務'; }
+                      if (startBtn) {
+                          startBtn.disabled = false;
+                          startBtn.textContent = '開始任務';
+                      }
                       showToast(response.message || '開始失敗', 'error');
                   }
               })
               .catch(function(error) {
-                  if (error.message === 'session_invalid') return; // 已處理過的錯誤
-                  
-                  if (startBtn) { startBtn.disabled = false; startBtn.textContent = '開始任務'; }
+                  if (startBtn) {
+                      startBtn.disabled = false;
+                      startBtn.textContent = '開始任務';
+                  }
                   console.error(error);
                   showToast('操作失敗：' + error.message, 'error');
               });
