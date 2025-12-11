@@ -1046,9 +1046,14 @@
                 ${escapeHtml(task.taskName)}
             </td>
             <td>
-                <span style="display: inline-block; padding: 4px 12px; background: rgba(59, 130, 246, 0.1); color: #3498db; border-radius: 12px; font-size: 12px; font-weight: 600;">
-                    ${escapeHtml(task.tierDisplay)}
-                </span>
+                <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                    <span style="display: inline-block; padding: 3px 8px; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-radius: 8px; font-size: 11px; font-weight: 600;">
+                        學生: ${escapeHtml(task.studentTierDisplay || '未選擇')}
+                    </span>
+                    <span style="display: inline-block; padding: 3px 8px; background: rgba(59, 130, 246, 0.1); color: #3498db; border-radius: 8px; font-size: 11px; font-weight: 600;">
+                        任務: ${escapeHtml(task.tierDisplay || '-')}
+                    </span>
+                </div>
             </td>
             <td>
                 <span class="task-time ${timeClass}" data-time-cell="true">${timeStr}</span>

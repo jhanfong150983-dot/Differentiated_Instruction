@@ -4609,6 +4609,60 @@ function getTeacherTaskMonitor(params) {
 
     Logger.log('📊 任務表結構：' + (isNewStructure ? '新結構' : '舊結構'));
 
+    // ========== 效能優化：建立索引 Map ==========
+    // 建立 USERS 表索引（userId -> user data）
+    const usersMap = {};
+    for (let i = 1; i < usersData.length; i++) {
+      const userId = usersData[i][0];
+      if (userId) {
+        usersMap[userId] = {
+          userId: userId,
+          email: usersData[i][2],
+          name: usersData[i][3],
+          role: usersData[i][4],
+          seatNumber: usersData[i][5] || '-'
+        };
+      }
+    }
+
+    // 建立 LEARNING_RECORDS 表索引（recordId -> learning record）
+    const learningRecordsMap = {};
+    for (let i = 1; i < learningData.length; i++) {
+      try {
+        const recordId = learningData[i][0];
+        if (recordId) {
+          learningRecordsMap[recordId] = {
+            recordId: recordId,
+            userId: learningData[i][1] || '',
+            classId: learningData[i][2] || '',
+            courseId: learningData[i][3] || '',
+            currentTier: (learningData[i] && learningData[i][10]) ? learningData[i][10] : ''  // 安全存取
+          };
+        }
+      } catch (error) {
+        Logger.log('⚠️ 建立 LEARNING_RECORDS 索引時發生錯誤（行' + (i+1) + '）：' + error.message);
+      }
+    }
+
+    // 建立 TASKS 表索引（taskId -> task data）
+    const tasksMap = {};
+    for (let i = 1; i < tasksData.length; i++) {
+      const taskId = tasksData[i][0];
+      if (taskId) {
+        tasksMap[taskId] = {
+          taskId: taskId,
+          courseId: tasksData[i][1],
+          sequence: tasksData[i][2],
+          taskName: isNewStructure ? tasksData[i][3] : tasksData[i][3],
+          timeLimit: isNewStructure ? tasksData[i][5] : tasksData[i][4],
+          tokenReward: isNewStructure ? (tasksData[i][12] || 10) : (tasksData[i][11] || 10)
+        };
+      }
+    }
+
+    Logger.log('✅ 索引建立完成：USERS(' + Object.keys(usersMap).length + '), LEARNING_RECORDS(' + Object.keys(learningRecordsMap).length + '), TASKS(' + Object.keys(tasksMap).length + ')');
+    // ========== 索引建立結束 ==========
+
     // 4. 建立班級學生映射（class_id -> user_id[]）
     const classStudentsMap = {};
     for (let i = 1; i < classMembersData.length; i++) {
@@ -4646,20 +4700,8 @@ function getTeacherTaskMonitor(params) {
       // 階段 2：處理執行中、待審核和已完成狀態
       if (status !== 'in_progress' && status !== 'pending_review' && status !== 'completed') continue;
 
-      // 6. 找到學習記錄
-      let learningRecord = null;
-      for (let j = 1; j < learningData.length; j++) {
-        // record_id, user_id, class_id, course_id, teacher_email, ...
-        if (learningData[j][0] === recordId) {
-          learningRecord = {
-            userId: learningData[j][1],
-            classId: learningData[j][2],
-            courseId: learningData[j][3]
-          };
-          break;
-        }
-      }
-
+      // 6. 找到學習記錄（使用索引優化）
+      const learningRecord = learningRecordsMap[recordId];
       if (!learningRecord) continue;
 
       // 檢查是否是教師負責的班級
@@ -4686,69 +4728,75 @@ function getTeacherTaskMonitor(params) {
         taskType = 'assessment';
       }
 
-      let taskInfo = null;
-      for (let j = 1; j < tasksData.length; j++) {
-        if (tasksData[j][0] === actualTaskId) {
-          // 舊結構：task_id, course_id, sequence, task_name, time_limit, tutorial_desc, ...
-          const taskName = isNewStructure ? tasksData[j][3] : tasksData[j][3];
-          const timeLimit = isNewStructure ? tasksData[j][5] : tasksData[j][4];
-          const tokenReward = isNewStructure ? (tasksData[j][12] || 10) : (tasksData[j][11] || 10);
+      // 8. 取得任務資訊（使用索引優化）
+      const baseTask = tasksMap[actualTaskId];
+      if (!baseTask) continue;
 
-          // 層級顯示名稱
-          let tierDisplay = '';
-          if (taskTier === 'tutorial') tierDisplay = '基礎層';
-          else if (taskTier === 'adventure') tierDisplay = '挑戰層';
-          else if (taskTier === 'hardcore') tierDisplay = '困難層';
-          else tierDisplay = taskTier;
+      // 層級顯示名稱
+      let tierDisplay = '';
+      if (taskTier === 'tutorial') tierDisplay = '基礎層';
+      else if (taskTier === 'adventure') tierDisplay = '挑戰層';
+      else if (taskTier === 'hardcore') tierDisplay = '困難層';
+      else tierDisplay = taskTier;
 
-          // 類型顯示名稱
-          let typeDisplay = '';
-          if (taskType === 'tutorial') typeDisplay = '教學';
-          else if (taskType === 'practice') typeDisplay = '練習';
-          else if (taskType === 'assessment') typeDisplay = '評量';
-          else typeDisplay = taskType;
+      // 類型顯示名稱
+      let typeDisplay = '';
+      if (taskType === 'tutorial') typeDisplay = '教學';
+      else if (taskType === 'practice') typeDisplay = '練習';
+      else if (taskType === 'assessment') typeDisplay = '評量';
+      else typeDisplay = taskType;
 
-          taskInfo = {
-            taskId: taskId,
-            taskName: taskName,
-            tier: taskTier,
-            tierDisplay: tierDisplay,
-            type: taskType,
-            typeDisplay: typeDisplay,
-            timeLimit: timeLimit || 600,  // 預設 10 分鐘
-            tokenReward: tokenReward
-          };
-          break;
-        }
-      }
-
-      if (!taskInfo) continue;
+      const taskInfo = {
+        taskId: taskId,
+        taskName: baseTask.taskName,
+        tier: taskTier,
+        tierDisplay: tierDisplay,
+        type: taskType,
+        typeDisplay: typeDisplay,
+        timeLimit: baseTask.timeLimit || 600,  // 預設 10 分鐘
+        tokenReward: baseTask.tokenReward
+      };
 
       // 10. 計算執行時間（考慮課堂暫停的累積時間）
       let executionTime = 0;
       const savedTimeSpent = (timeSpent && typeof timeSpent === 'number') ? timeSpent : 0;
 
-      if (status === 'in_progress') {
-        // 執行中：即時計算（現在時間 - 開始時間）+ 已累積時間
-        if (startTime) {
-          // 有 start_time：表示正在執行中
-          const start = new Date(startTime).getTime();
-          const now = new Date().getTime();
-          const currentElapsed = Math.floor((now - start) / 1000);
-          executionTime = savedTimeSpent + currentElapsed;  // 累加已保存的時間
-        } else {
-          // 無 start_time：表示課堂已結束，任務已凍結
-          executionTime = savedTimeSpent;  // 直接使用已保存的時間
+      try {
+        if (status === 'in_progress') {
+          // 執行中：即時計算（現在時間 - 開始時間）+ 已累積時間
+          if (startTime) {
+            // 有 start_time：表示正在執行中
+            const start = new Date(startTime).getTime();
+            const now = new Date().getTime();
+
+            // 檢查時間是否有效
+            if (!isNaN(start) && !isNaN(now) && start > 0) {
+              const currentElapsed = Math.floor((now - start) / 1000);
+              executionTime = savedTimeSpent + currentElapsed;  // 累加已保存的時間
+            } else {
+              executionTime = savedTimeSpent;  // 時間無效，使用已保存的時間
+            }
+          } else {
+            // 無 start_time：表示課堂已結束，任務已凍結
+            executionTime = savedTimeSpent;  // 直接使用已保存的時間
+          }
+        } else if (status === 'pending_review' || status === 'completed') {
+          // 待審核或已完成：固定時間（提交時間 - 開始時間）
+          if (savedTimeSpent > 0) {
+            executionTime = savedTimeSpent;
+          } else if (startTime && completeTime) {
+            const start = new Date(startTime).getTime();
+            const end = new Date(completeTime).getTime();
+
+            // 檢查時間是否有效
+            if (!isNaN(start) && !isNaN(end) && start > 0 && end > start) {
+              executionTime = Math.floor((end - start) / 1000);  // 秒數
+            }
+          }
         }
-      } else if (status === 'pending_review' || status === 'completed') {
-        // 待審核或已完成：固定時間（提交時間 - 開始時間）
-        if (savedTimeSpent > 0) {
-          executionTime = savedTimeSpent;
-        } else if (startTime && completeTime) {
-          const start = new Date(startTime).getTime();
-          const end = new Date(completeTime).getTime();
-          executionTime = Math.floor((end - start) / 1000);  // 秒數
-        }
+      } catch (timeError) {
+        Logger.log('⚠️ 計算執行時間時發生錯誤（progressId=' + progressId + '）：' + timeError.message);
+        executionTime = savedTimeSpent;  // 錯誤時使用已保存的時間
       }
 
       // 11. 判斷是否超時（只有設置了時間限制才判斷）
@@ -4782,22 +4830,65 @@ function getTeacherTaskMonitor(params) {
         Logger.log(`⚠️ 待審核任務沒有 completeTime: taskProgressId=${progressId}, completeTime=${completeTime}`);
       }
 
-      // 13. 保存到用戶進度映射（保存最新任務，按 startTime 判斷）
-      // 修復：原邏輯只更新 in_progress 狀態，導致完成新任務後仍顯示舊任務
-      if (!userProgressMap[userId] ||
-          new Date(startTime).getTime() > new Date(userProgressMap[userId].startTime).getTime()) {
-        userProgressMap[userId] = {
-          progressId: progressId,
-          classId: learningRecord.classId,
-          taskInfo: taskInfo,
-          status: status,
-          startTime: startTime,
-          completeTime: completeTime,
-          executionTime: executionTime,
-          savedTimeSpent: savedTimeSpent,
-          isOvertime: isOvertime,
-          waitingTime: waitingTime
+      // 13. 保存到用戶進度映射（根據狀態和時間優先級判斷）
+      // 修復：改用狀態優先級 + 時間邏輯來決定顯示哪個任務
+      // 優先級：執行中 > 待審核 > 已完成
+      const newProgress = {
+        progressId: progressId,
+        classId: learningRecord.classId,
+        taskInfo: taskInfo,
+        status: status,
+        startTime: startTime,
+        completeTime: completeTime,
+        executionTime: executionTime,
+        savedTimeSpent: savedTimeSpent,
+        isOvertime: isOvertime,
+        waitingTime: waitingTime,
+        currentTier: learningRecord.currentTier  // 修復：保存學生選擇的層級
+      };
+
+      if (!userProgressMap[userId]) {
+        // 第一個任務，直接保存
+        userProgressMap[userId] = newProgress;
+      } else {
+        const existing = userProgressMap[userId];
+        let shouldReplace = false;
+
+        // 狀態優先級判斷
+        const statusPriority = {
+          'in_progress': 3,
+          'pending_review': 2,
+          'completed': 1,
+          'not_started': 0
         };
+
+        const newPriority = statusPriority[status] || 0;
+        const existingPriority = statusPriority[existing.status] || 0;
+
+        if (newPriority > existingPriority) {
+          // 新任務狀態優先級更高
+          shouldReplace = true;
+        } else if (newPriority === existingPriority) {
+          // 同樣狀態，根據時間判斷
+          if (status === 'in_progress') {
+            // 執行中：顯示最早開始的（執行時間最長的）
+            shouldReplace = new Date(startTime).getTime() < new Date(existing.startTime).getTime();
+          } else if (status === 'completed') {
+            // 已完成：顯示最新完成的
+            if (completeTime && existing.completeTime) {
+              shouldReplace = new Date(completeTime).getTime() > new Date(existing.completeTime).getTime();
+            }
+          } else if (status === 'pending_review') {
+            // 待審核：顯示最新提交的
+            if (completeTime && existing.completeTime) {
+              shouldReplace = new Date(completeTime).getTime() > new Date(existing.completeTime).getTime();
+            }
+          }
+        }
+
+        if (shouldReplace) {
+          userProgressMap[userId] = newProgress;
+        }
       }
     }
 
@@ -4825,39 +4916,42 @@ function getTeacherTaskMonitor(params) {
           addedUserIds.add(userId); // 記錄已加入的學生
         }
 
-        // 取得學生資訊
+        // 取得學生資訊（使用索引優化）
         let studentInfo = null;
-        let hasLoggedIn = false;  // ✅ 新增：追蹤學生是否已登入
+        let hasLoggedIn = false;
 
-        if (userId) {
-          // 學生有 userId，嘗試從 USERS 表取得資訊
-          for (let j = 1; j < usersData.length; j++) {
-            if (usersData[j][0] === userId) {
-              studentInfo = {
-                userId: usersData[j][0],
-                name: usersData[j][3],
-                email: usersData[j][2]
-              };
-              hasLoggedIn = true;  // ✅ 標記為已登入
-              break;
-            }
-          }
-        }
-
-        // ✅ 如果 USERS 表中沒有資料，使用 CLASS_MEMBERS 的資料
-        if (!studentInfo) {
+        if (userId && usersMap[userId]) {
+          // 學生有 userId 且在 USERS 表中找到
+          const userData = usersMap[userId];
           studentInfo = {
-            userId: userId || '',  // 可能為空
-            name: student.name,  // 來自 CLASS_MEMBERS
-            email: student.email  // 來自 CLASS_MEMBERS
+            userId: userData.userId,
+            name: userData.name,
+            email: userData.email
           };
-          hasLoggedIn = false;  // ✅ 未登入
+          hasLoggedIn = true;
+        } else {
+          // 如果 USERS 表中沒有資料，使用 CLASS_MEMBERS 的資料
+          studentInfo = {
+            userId: userId || '',
+            name: student.name,
+            email: student.email
+          };
+          hasLoggedIn = false;
         }
 
         const progress = userProgressMap[userId];
 
         if (progress && progress.classId === classId) {
           // 學生有任務進度
+
+          // 修復：格式化學生選擇的層級顯示
+          let studentTierDisplay = '';
+          if (progress.currentTier === 'tutorial') studentTierDisplay = '基礎層';
+          else if (progress.currentTier === 'adventure') studentTierDisplay = '挑戰層';
+          else if (progress.currentTier === 'hardcore') studentTierDisplay = '困難層';
+          else if (progress.currentTier) studentTierDisplay = progress.currentTier;
+          else studentTierDisplay = '未選擇';
+
           monitorTasks.push({
             taskProgressId: progress.progressId,
             studentName: studentInfo.name,
@@ -4869,6 +4963,8 @@ function getTeacherTaskMonitor(params) {
             taskId: progress.taskInfo.taskId,
             tier: progress.taskInfo.tier,
             tierDisplay: progress.taskInfo.tierDisplay,
+            studentTier: progress.currentTier || '',  // 修復：學生選擇的層級（原始值）
+            studentTierDisplay: studentTierDisplay,  // 修復：學生選擇的層級（顯示名稱）
             type: progress.taskInfo.type,
             typeDisplay: progress.taskInfo.typeDisplay,
             status: progress.status,
@@ -4895,6 +4991,8 @@ function getTeacherTaskMonitor(params) {
             taskId: '',
             tier: '',
             tierDisplay: '',
+            studentTier: '',  // 修復：未開始任務的學生沒有層級資料
+            studentTierDisplay: '未選擇',  // 修復：顯示「未選擇」
             type: '',
             typeDisplay: '',
             status: 'not_started',
@@ -4912,8 +5010,10 @@ function getTeacherTaskMonitor(params) {
       }
     }
 
-    // 15. 新增：顯示所有已登入但尚未加入班級的學生
-    for (let i = 1; i < usersData.length; i++) {
+    // 15. 新增：顯示所有已登入但尚未加入班級的學生（只在未選擇特定班級時）
+    // 修復：當教師選擇特定班級時，不應顯示未加入班級的學生
+    if (!classId) {  // 只有當沒有選擇特定班級時才顯示
+      for (let i = 1; i < usersData.length; i++) {
       const userId = usersData[i][0];
       const userRole = usersData[i][4]; // role 欄位
 
@@ -4930,6 +5030,15 @@ function getTeacherTaskMonitor(params) {
 
         if (progress) {
           // 學生有任務進度（但不在任何班級中）
+
+          // 修復：格式化學生選擇的層級顯示
+          let studentTierDisplay = '';
+          if (progress.currentTier === 'tutorial') studentTierDisplay = '基礎層';
+          else if (progress.currentTier === 'adventure') studentTierDisplay = '挑戰層';
+          else if (progress.currentTier === 'hardcore') studentTierDisplay = '困難層';
+          else if (progress.currentTier) studentTierDisplay = progress.currentTier;
+          else studentTierDisplay = '未選擇';
+
           monitorTasks.push({
             taskProgressId: progress.progressId,
             studentName: studentInfo.name,
@@ -4941,6 +5050,8 @@ function getTeacherTaskMonitor(params) {
             taskId: progress.taskInfo.taskId,
             tier: progress.taskInfo.tier,
             tierDisplay: progress.taskInfo.tierDisplay,
+            studentTier: progress.currentTier || '',  // 修復：學生選擇的層級
+            studentTierDisplay: studentTierDisplay,  // 修復：學生選擇的層級顯示
             type: progress.taskInfo.type,
             typeDisplay: progress.taskInfo.typeDisplay,
             status: progress.status,
@@ -4967,6 +5078,8 @@ function getTeacherTaskMonitor(params) {
             taskId: '',
             tier: '',
             tierDisplay: '',
+            studentTier: '',  // 修復：未開始任務的學生沒有層級資料
+            studentTierDisplay: '未選擇',  // 修復：顯示「未選擇」
             type: '',
             typeDisplay: '',
             status: 'not_started',
@@ -4985,6 +5098,7 @@ function getTeacherTaskMonitor(params) {
         addedUserIds.add(userId); // 避免重複加入
       }
     }
+    }  // 結束 if (!classId) 判斷
 
     // 按班級和座號排序
     monitorTasks.sort((a, b) => {
