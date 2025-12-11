@@ -534,13 +534,21 @@
     window.autoCompleteResumeTask = function() {
         if (!selectedTask) return;
 
+        // 修復：檢查並確保有 classId
+        if (!selectedClass || !selectedClass.classId) {
+            showToast('無法取得班級資訊，請重新登入', 'error');
+            APP_CONFIG.error('繼續任務失敗：缺少 selectedClass');
+            return;
+        }
+
         const params = new URLSearchParams({
             action: 'startTask',
             userEmail: currentStudent.email,
-            taskId: selectedTask.taskId
+            taskId: selectedTask.taskId,
+            classId: selectedClass.classId  // 修復：加入 classId
         });
 
-        APP_CONFIG.log('📤 自動繼續任務...', { taskId: selectedTask.taskId });
+        APP_CONFIG.log('📤 自動繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
@@ -2216,13 +2224,21 @@ window.openTaskModal = function(task, progress) {
     window.continueTask = function() {
         if (!selectedTask) return;
 
+        // 修復：檢查並確保有 classId
+        if (!selectedClass || !selectedClass.classId) {
+            showToast('無法取得班級資訊，請重新登入', 'error');
+            APP_CONFIG.error('繼續任務失敗：缺少 selectedClass');
+            return;
+        }
+
         const params = new URLSearchParams({
             action: 'startTask',
             userEmail: currentStudent.email,
-            taskId: selectedTask.taskId
+            taskId: selectedTask.taskId,
+            classId: selectedClass.classId  // 修復：加入 classId
         });
 
-        APP_CONFIG.log('📤 繼續任務...', { taskId: selectedTask.taskId });
+        APP_CONFIG.log('📤 繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
