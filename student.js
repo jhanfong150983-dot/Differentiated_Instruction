@@ -2569,35 +2569,31 @@ window.openTaskModal = function(task, progress) {
       
                   if (response.success) {
                       showToast('✅ 任務已開始！', 'success');
-      
+
                       // 更新前端狀態
                       if (currentTasksProgress) {
                           currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
                       }
-      
+
                       // UI 按鈕切換
                       if (startBtn) startBtn.style.display = 'none';
-                      if (reopenBtn) reopenBtn.style.display = 'inline-block'; 
+                      if (reopenBtn) reopenBtn.style.display = 'inline-block';
                       if (completeBtn) completeBtn.style.display = 'inline-block';
-      
-                      // 打開教材連結
-                      let taskLink = '';
-                      if (selectedTask.tier === 'mixed') {
-                          if (selectedTier === '基礎層' || selectedTier === 'tutorial') taskLink = selectedTask.tutorialLink;
-                          else if (selectedTier === '進階層' || selectedTier === 'adventure') taskLink = selectedTask.adventureLink;
-                          else if (selectedTier === '精通層' || selectedTier === 'hardcore') taskLink = selectedTask.hardcoreLink;
-                      } else {
-                          taskLink = selectedTask.link;
-                      }
-      
-                      if (taskLink && taskLink.trim() !== '') {
-                          window.open(taskLink, '_blank');
-                      }
-      
+
+                      // 🆕 打開新的任務執行視窗（包含4階段：教材→檢核→上傳→評量）
+                      const taskProgressId = response.taskProgressId;  // 從後端回應取得
+                      const taskExecutionUrl = new URL('task-execution.html', window.location.href);
+                      taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
+                      taskExecutionUrl.searchParams.set('taskId', selectedTask.taskId);
+                      taskExecutionUrl.searchParams.set('userEmail', currentStudent.email);
+                      taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
+
+                      window.open(taskExecutionUrl.toString(), '_blank', 'width=1400,height=900');
+
                       if (typeof displayQuestList === 'function') {
                           displayQuestList();
                       }
-      
+
                   } else {
                       if (startBtn) { startBtn.disabled = false; startBtn.textContent = '開始任務'; }
                       showToast(response.message || '開始失敗', 'error');

@@ -424,6 +424,35 @@ function doGet(e) {
         response = updateCoTeachers(params.classId, params.coTeachers, params.teacherEmail);
         break;
 
+      case 'getTaskDetail':
+        response = getTaskDetail({
+          taskId: params.taskId,
+          userEmail: params.userEmail
+        });
+        break;
+
+      case 'uploadTaskWork':
+        response = uploadTaskWork({
+          taskProgressId: params.taskProgressId,
+          fileName: params.fileName,
+          fileData: params.fileData,
+          fileMime: params.fileMime,
+          userEmail: params.userEmail
+        });
+        break;
+
+      case 'submitTaskExecution':
+        response = submitTaskExecution({
+          taskProgressId: params.taskProgressId,
+          userEmail: params.userEmail,
+          checklistAnswers: params.checklistAnswers,
+          uploadedFileUrl: params.uploadedFileUrl,
+          assessmentAnswers: params.assessmentAnswers,
+          accuracy: params.accuracy,
+          tokenReward: params.tokenReward
+        });
+        break;
+
       default:
         response = {
           success: false,
@@ -4753,10 +4782,10 @@ function getTeacherTaskMonitor(params) {
         Logger.log(`⚠️ 待審核任務沒有 completeTime: taskProgressId=${progressId}, completeTime=${completeTime}`);
       }
 
-      // 13. 保存到用戶進度映射（優先保存執行中的任務）
+      // 13. 保存到用戶進度映射（保存最新任務，按 startTime 判斷）
+      // 修復：原邏輯只更新 in_progress 狀態，導致完成新任務後仍顯示舊任務
       if (!userProgressMap[userId] ||
-          (status === 'in_progress' && userProgressMap[userId].status !== 'in_progress') ||
-          (status === 'in_progress' && startTime > userProgressMap[userId].startTime)) {
+          new Date(startTime).getTime() > new Date(userProgressMap[userId].startTime).getTime()) {
         userProgressMap[userId] = {
           progressId: progressId,
           classId: learningRecord.classId,
@@ -6180,9 +6209,11 @@ function submitAssessment(params) {
 
     const { taskProgressId, questionId, studentAnswer, userEmail } = params;
 
-    if (!taskProgressId || !questionId || !studentAnswer) {
-      throw new Error('缺少必要參數');
-    }
+    // 詳細檢查每個參數，提供清楚的錯誤訊息
+    if (!taskProgressId) throw new Error('缺少任務進度ID (taskProgressId)');
+    if (!questionId) throw new Error('缺少題目ID (questionId)');
+    if (!studentAnswer) throw new Error('缺少學生答案 (studentAnswer)');
+    if (!userEmail) throw new Error('缺少使用者信箱 (userEmail)');
 
     const email = getCurrentUserEmail(userEmail);
 
@@ -6967,6 +6998,363 @@ function getAllClassesInfo() {
       success: false,
       message: '取得失敗：' + error.message,
       classes: []
+    };
+  }
+}
+
+/**
+ * 上傳作業到 Google Drive
+ * @param {Object} params - 包含 taskProgressId, fileName, fileData, fileMime, userEmail
+ * @returns {Object} 包含 success, fileUrl, submissionId, message
+ */
+function uploadTaskWork(params) {
+  const lock = LockService.getScriptLock();
+
+  try {
+    lock.waitLock(30000);
+
+    const { taskProgressId, fileName, fileData, fileMime, userEmail } = params;
+
+    // 參數驗證
+    if (!taskProgressId) throw new Error('缺少任務進度ID (taskProgressId)');
+    if (!fileName) throw new Error('缺少檔案名稱 (fileName)');
+    if (!fileData) throw new Error('缺少檔案資料 (fileData)');
+    if (!fileMime) throw new Error('缺少檔案類型 (fileMime)');
+    if (!userEmail) throw new Error('缺少使用者信箱 (userEmail)');
+
+    Logger.log(`📤 開始上傳作業: taskProgressId=${taskProgressId}, fileName=${fileName}`);
+
+    const email = getCurrentUserEmail(userEmail);
+
+    const ss = getSpreadsheet();
+    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+
+    // 1. 取得任務資訊
+    const progressData = progressSheet.getDataRange().getValues();
+    let taskId = null;
+    let taskName = null;
+
+    for (let i = 1; i < progressData.length; i++) {
+      if (progressData[i][0] === taskProgressId) {
+        taskId = progressData[i][2];  // task_id 欄位
+        break;
+      }
+    }
+
+    if (!taskId) {
+      throw new Error('找不到任務資訊');
+    }
+
+    // 取得任務名稱
+    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
+    const tasksData = tasksSheet.getDataRange().getValues();
+    for (let i = 1; i < tasksData.length; i++) {
+      if (tasksData[i][0] === taskId) {
+        taskName = tasksData[i][1];
+        break;
+      }
+    }
+
+    // 2. 建立/取得資料夾結構：任務作業/{任務名稱}/
+    let rootFolder;
+    const rootFolderName = '任務作業';
+    const rootFolders = DriveApp.getFoldersByName(rootFolderName);
+
+    if (rootFolders.hasNext()) {
+      rootFolder = rootFolders.next();
+    } else {
+      rootFolder = DriveApp.createFolder(rootFolderName);
+      Logger.log(`📁 建立根資料夾: ${rootFolderName}`);
+    }
+
+    let taskFolder;
+    const taskFolderName = taskName || taskId;
+    const taskFolders = rootFolder.getFoldersByName(taskFolderName);
+
+    if (taskFolders.hasNext()) {
+      taskFolder = taskFolders.next();
+    } else {
+      taskFolder = rootFolder.createFolder(taskFolderName);
+      Logger.log(`📁 建立任務資料夾: ${taskFolderName}`);
+    }
+
+    // 3. 上傳檔案
+    const blob = Utilities.newBlob(
+      Utilities.base64Decode(fileData),
+      fileMime,
+      fileName
+    );
+    const file = taskFolder.createFile(blob);
+    const fileUrl = file.getUrl();
+
+    Logger.log(`✅ 檔案上傳成功: ${fileUrl}`);
+
+    // 4. 記錄到 TASK_SUBMISSIONS 表
+    let submissionsSheet = ss.getSheetByName('TASK_SUBMISSIONS');
+
+    if (!submissionsSheet) {
+      // 首次使用，建立表格
+      submissionsSheet = ss.insertSheet('TASK_SUBMISSIONS');
+      submissionsSheet.appendRow([
+        'submission_id',
+        'task_progress_id',
+        'file_url',
+        'file_name',
+        'upload_time',
+        'user_email',
+        'status'
+      ]);
+      Logger.log('📋 建立 TASK_SUBMISSIONS 表');
+    }
+
+    const submissionId = generateUUID();
+    submissionsSheet.appendRow([
+      submissionId,
+      taskProgressId,
+      fileUrl,
+      fileName,
+      new Date(),
+      email,
+      '已上傳'
+    ]);
+
+    Logger.log(`✅ 記錄到 TASK_SUBMISSIONS: submissionId=${submissionId}`);
+
+    lock.releaseLock();
+
+    return {
+      success: true,
+      fileUrl: fileUrl,
+      submissionId: submissionId,
+      message: '作業上傳成功'
+    };
+
+  } catch (error) {
+    Logger.log('❌ 上傳作業失敗：' + error);
+    lock.releaseLock();
+    return {
+      success: false,
+      message: '上傳失敗：' + error.message
+    };
+  }
+}
+
+/**
+ * 提交完整任務執行結果（檢核+上傳+評量）
+ * @param {Object} params - 包含所有階段的資料
+ * @returns {Object} 包含 success, tokenReward, message
+ */
+function submitTaskExecution(params) {
+  const lock = LockService.getScriptLock();
+
+  try {
+    lock.waitLock(30000);
+
+    const {
+      taskProgressId,
+      userEmail,
+      checklistAnswers,
+      uploadedFileUrl,
+      assessmentAnswers,
+      accuracy,
+      tokenReward
+    } = params;
+
+    // 參數驗證
+    if (!taskProgressId) throw new Error('缺少任務進度ID (taskProgressId)');
+    if (!userEmail) throw new Error('缺少使用者信箱 (userEmail)');
+    if (!checklistAnswers) throw new Error('缺少檢核答案 (checklistAnswers)');
+    if (!assessmentAnswers) throw new Error('缺少評量答案 (assessmentAnswers)');
+    if (accuracy === undefined) throw new Error('缺少答對率 (accuracy)');
+    if (tokenReward === undefined) throw new Error('缺少代幣獎勵 (tokenReward)');
+
+    Logger.log(`📝 提交任務執行: taskProgressId=${taskProgressId}, accuracy=${accuracy}, tokenReward=${tokenReward}`);
+
+    const email = getCurrentUserEmail(userEmail);
+
+    const ss = getSpreadsheet();
+    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
+
+    // 1. 更新 TASK_PROGRESS 狀態為 completed
+    const progressData = progressSheet.getDataRange().getValues();
+    let rowIndex = -1;
+
+    for (let i = 1; i < progressData.length; i++) {
+      if (progressData[i][0] === taskProgressId) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (rowIndex === -1) {
+      throw new Error('找不到任務進度記錄');
+    }
+
+    // 更新狀態和完成時間
+    progressSheet.getRange(rowIndex, 5).setValue('completed');  // status
+    progressSheet.getRange(rowIndex, 7).setValue(new Date());   // complete_time
+
+    Logger.log(`✅ 更新 TASK_PROGRESS 狀態: completed`);
+
+    // 2. 記錄檢核結果到 SELF_CHECK_RECORDS
+    let checkRecordsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.SELF_CHECK_RECORDS);
+
+    if (!checkRecordsSheet) {
+      checkRecordsSheet = ss.insertSheet(SHEET_CONFIG.SHEETS.SELF_CHECK_RECORDS);
+      checkRecordsSheet.appendRow([
+        'record_id',
+        'task_progress_id',
+        'user_email',
+        'checklist_answers',
+        'submit_time'
+      ]);
+    }
+
+    const checkRecordId = generateUUID();
+    checkRecordsSheet.appendRow([
+      checkRecordId,
+      taskProgressId,
+      email,
+      checklistAnswers,
+      new Date()
+    ]);
+
+    Logger.log(`✅ 記錄檢核結果: record_id=${checkRecordId}`);
+
+    // 3. 記錄評量結果到 TASK_ASSESSMENT_RECORDS
+    const assessmentSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_ASSESSMENT_RECORDS);
+
+    const assessmentRecordId = generateUUID();
+    assessmentSheet.appendRow([
+      assessmentRecordId,
+      taskProgressId,
+      email,
+      assessmentAnswers,
+      accuracy,
+      new Date()
+    ]);
+
+    Logger.log(`✅ 記錄評量結果: accuracy=${accuracy}`);
+
+    // 4. 發放代幣給學生
+    const usersData = usersSheet.getDataRange().getValues();
+    let userRowIndex = -1;
+
+    for (let i = 1; i < usersData.length; i++) {
+      if (usersData[i][1] === email) {  // email 欄位
+        userRowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (userRowIndex !== -1) {
+      const currentTokens = usersData[userRowIndex - 1][11] || 0;  // tokens 欄位
+      const newTokens = Number(currentTokens) + Number(tokenReward);
+
+      usersSheet.getRange(userRowIndex, 12).setValue(newTokens);  // 更新 tokens
+
+      Logger.log(`💰 發放代幣: ${currentTokens} + ${tokenReward} = ${newTokens}`);
+    }
+
+    lock.releaseLock();
+
+    return {
+      success: true,
+      tokenReward: tokenReward,
+      accuracy: accuracy,
+      message: '任務完成！'
+    };
+
+  } catch (error) {
+    Logger.log('❌ 提交任務執行失敗：' + error);
+    lock.releaseLock();
+    return {
+      success: false,
+      message: '提交失敗：' + error.message
+    };
+  }
+}
+
+/**
+ * 取得任務詳細資料（用於 task-execution.html）
+ * @param {Object} params - 包含 taskId, userEmail
+ * @returns {Object} 包含 success, task (含 selfCheckList 和 questions)
+ */
+function getTaskDetail(params) {
+  try {
+    const { taskId, userEmail } = params;
+
+    if (!taskId) throw new Error('缺少任務ID (taskId)');
+    if (!userEmail) throw new Error('缺少使用者信箱 (userEmail)');
+
+    const email = getCurrentUserEmail(userEmail);
+
+    const ss = getSpreadsheet();
+    const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
+    const tasksData = tasksSheet.getDataRange().getValues();
+
+    // 找到任務
+    let taskRow = null;
+    for (let i = 1; i < tasksData.length; i++) {
+      if (tasksData[i][0] === taskId) {
+        taskRow = tasksData[i];
+        break;
+      }
+    }
+
+    if (!taskRow) {
+      throw new Error('找不到任務');
+    }
+
+    // 解析檢核表
+    let selfCheckList = [];
+    try {
+      if (taskRow[13]) {  // self_check_list 欄位
+        selfCheckList = JSON.parse(taskRow[13]);
+      }
+    } catch (e) {
+      Logger.log('解析檢核表失敗：' + e);
+    }
+
+    // 取得評量題目
+    const questionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+    const questionsData = questionsSheet.getDataRange().getValues();
+
+    const questions = [];
+    for (let i = 1; i < questionsData.length; i++) {
+      if (questionsData[i][1] === taskId) {  // task_id 欄位
+        questions.push({
+          questionId: questionsData[i][0],
+          question: questionsData[i][2],
+          options: JSON.parse(questionsData[i][3] || '[]'),
+          correctAnswer: questionsData[i][4]
+        });
+      }
+    }
+
+    const task = {
+      taskId: taskRow[0],
+      name: taskRow[1],
+      link: taskRow[2],
+      timeLimit: taskRow[4],
+      tokenReward: taskRow[5],
+      selfCheckList: selfCheckList,
+      questions: questions
+    };
+
+    Logger.log(`✅ 取得任務詳細資料: taskId=${taskId}, 檢核項目=${selfCheckList.length}, 評量題目=${questions.length}`);
+
+    return {
+      success: true,
+      task: task
+    };
+
+  } catch (error) {
+    Logger.log('❌ 取得任務詳細資料失敗：' + error);
+    return {
+      success: false,
+      message: '取得失敗：' + error.message
     };
   }
 }
