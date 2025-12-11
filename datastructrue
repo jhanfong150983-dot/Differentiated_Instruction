@@ -25,6 +25,12 @@ record_id	user_id	class_id	course_id	teacher_email	start_date	last_access_date	s
 任務進度表(學生完成任務的紀錄)
 progress_id	record_id	task_id	status	start_time	complete_time	time_spent
 
+自主檢核記錄表(學生完成自主檢核的紀錄，每個檢核項目一筆)
+check_record_id	task_progress_id	student_email	user_id	checklist_id	student_checked	check_time
+
+評量記錄表(學生完成評量的紀錄，每位學生一筆)
+assessment_id	task_progress_id	student_email	user_id	question_answers	accuracy	submit_time
+
 Peer_Review_Records(學生互評紀錄)
 review_id	task_progress_id	reviewee_email	reviewer_email	task_id	assigned_time	accepted_time	completed_time	status	result	reject_reason	reviewer_reward
 

@@ -859,6 +859,7 @@ async function submitAllData() {
             taskProgressId: taskProgressId,
             userEmail: studentEmail,
             checklistAnswers: JSON.stringify(checklistAnswers),
+            checklistItems: JSON.stringify(checklistItems),  // 新增：傳送檢核項目資料
             uploadedFileUrl: uploadedFileUrl,
             assessmentAnswers: JSON.stringify(assessmentAnswers),
             accuracy: accuracy,

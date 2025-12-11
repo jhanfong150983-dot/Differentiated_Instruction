@@ -2180,12 +2180,12 @@ function completeTask(e) {
     
     // 2. 更新進度狀態為完成
     const endTime = new Date();
-    const startTime = new Date(progressData[progressRow - 1][5]); // startTime
+    const startTime = new Date(progressData[progressRow - 1][4]); // start_time (欄5, index 4)
     const timeSpent = Math.round((endTime - startTime) / 1000); // 秒
     
-    progressSheet.getRange(progressRow, 5).setValue('completed'); // status
-    progressSheet.getRange(progressRow, 7).setValue(endTime);      // endTime
-    progressSheet.getRange(progressRow, 8).setValue(timeSpent);   // timeSpent
+    progressSheet.getRange(progressRow, 4).setValue('completed'); // status (欄4)
+    progressSheet.getRange(progressRow, 6).setValue(endTime);      // complete_time (欄6)
+    progressSheet.getRange(progressRow, 7).setValue(timeSpent);   // time_spent (欄7)
     
     // 3. 🪙 取得任務的代幣獎勵
     const tasksData = tasksSheet.getDataRange().getValues();
@@ -5346,11 +5346,11 @@ function resetTask(params) {
     }
 
     // 1. 重置任務進度狀態
-    progressSheet.getRange(progressRow, 4).setValue('not_started');  // status = not_started（完全重置）
-    progressSheet.getRange(progressRow, 5).setValue('');              // start_time 清空
-    progressSheet.getRange(progressRow, 6).setValue(0);               // time_spent = 0
-    progressSheet.getRange(progressRow, 7).setValue('');              // complete_time 清空
-    progressSheet.getRange(progressRow, 9).setValue('');              // self_check_status 清空
+    // 欄位順序: progress_id(1), record_id(2), task_id(3), status(4), start_time(5), complete_time(6), time_spent(7)
+    progressSheet.getRange(progressRow, 4).setValue('not_started');  // status (欄4)
+    progressSheet.getRange(progressRow, 5).setValue('');              // start_time (欄5)
+    progressSheet.getRange(progressRow, 6).setValue('');              // complete_time (欄6)
+    progressSheet.getRange(progressRow, 7).setValue(0);               // time_spent (欄7)
 
     // 2. 清除自主檢核記錄（SELF_CHECK_RECORDS）
     if (selfCheckSheet) {
@@ -5654,8 +5654,9 @@ function endClassSession(params) {
           const totalTimeSpent = currentTimeSpent + elapsed;
 
           // 保存時間並清空 start_time（避免累計課間休息時間）
-          progressSheet.getRange(i + 1, 5).setValue('');  // 清空 start_time
-          progressSheet.getRange(i + 1, 7).setValue(totalTimeSpent);  // 更新 time_spent
+          // 欄位順序: progress_id(1), record_id(2), task_id(3), status(4), start_time(5), complete_time(6), time_spent(7)
+          progressSheet.getRange(i + 1, 5).setValue('');  // 清空 start_time (欄5)
+          progressSheet.getRange(i + 1, 7).setValue(totalTimeSpent);  // 更新 time_spent (欄7)
 
           frozenTaskCount++;
 
@@ -7278,9 +7279,10 @@ function submitTaskExecution(params) {
     const {
       taskProgressId,
       userEmail,
-      checklistAnswers,
+      checklistAnswers,   // JSON 格式的檢核答案陣列 [true, true, false, ...]
+      checklistItems,     // JSON 格式的檢核項目陣列（包含 checklistId）
       uploadedFileUrl,
-      assessmentAnswers,
+      assessmentAnswers,  // JSON 格式的評量答案物件 { questionId: answer, ... }
       accuracy,
       tokenReward
     } = params;
@@ -7288,18 +7290,27 @@ function submitTaskExecution(params) {
     // 參數驗證
     if (!taskProgressId) throw new Error('缺少任務進度ID (taskProgressId)');
     if (!userEmail) throw new Error('缺少使用者信箱 (userEmail)');
-    if (!checklistAnswers) throw new Error('缺少檢核答案 (checklistAnswers)');
-    if (!assessmentAnswers) throw new Error('缺少評量答案 (assessmentAnswers)');
-    if (accuracy === undefined) throw new Error('缺少答對率 (accuracy)');
-    if (tokenReward === undefined) throw new Error('缺少代幣獎勵 (tokenReward)');
 
     Logger.log(`📝 提交任務執行: taskProgressId=${taskProgressId}, accuracy=${accuracy}, tokenReward=${tokenReward}`);
 
     const email = getCurrentUserEmail(userEmail);
-
+    
+    // 取得使用者 user_id
     const ss = getSpreadsheet();
-    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
     const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
+    const usersData = usersSheet.getDataRange().getValues();
+    let userId = '';
+    let userRowIndex = -1;
+    
+    for (let i = 1; i < usersData.length; i++) {
+      if (String(usersData[i][2]).toLowerCase() === email.toLowerCase()) {  // email 欄位 (index 2)
+        userId = usersData[i][0];  // user_id 欄位 (index 0)
+        userRowIndex = i + 1;
+        break;
+      }
+    }
+
+    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
 
     // 1. 更新 TASK_PROGRESS 狀態為 completed
     const progressData = progressSheet.getDataRange().getValues();
@@ -7317,67 +7328,110 @@ function submitTaskExecution(params) {
     }
 
     // 更新狀態和完成時間
-    progressSheet.getRange(rowIndex, 5).setValue('completed');  // status
-    progressSheet.getRange(rowIndex, 7).setValue(new Date());   // complete_time
+    // 欄位順序: progress_id(1), record_id(2), task_id(3), status(4), start_time(5), complete_time(6), time_spent(7)
+    progressSheet.getRange(rowIndex, 4).setValue('completed');  // status (欄4)
+    progressSheet.getRange(rowIndex, 6).setValue(new Date());   // complete_time (欄6)
 
     Logger.log(`✅ 更新 TASK_PROGRESS 狀態: completed`);
 
-    // 2. 記錄檢核結果到 SELF_CHECK_RECORDS
+    // 2. 記錄檢核結果到 SELF_CHECK_RECORDS（每個檢核項目一筆記錄）
+    // 新格式: check_record_id, task_progress_id, student_email, user_id, checklist_id, student_checked, check_time
     let checkRecordsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.SELF_CHECK_RECORDS);
+    const now = new Date();
 
     if (!checkRecordsSheet) {
       checkRecordsSheet = ss.insertSheet(SHEET_CONFIG.SHEETS.SELF_CHECK_RECORDS);
       checkRecordsSheet.appendRow([
-        'record_id',
+        'check_record_id',
         'task_progress_id',
-        'user_email',
-        'checklist_answers',
+        'student_email',
+        'user_id',
+        'checklist_id',
+        'student_checked',
+        'check_time'
+      ]);
+    }
+
+    // 解析檢核項目和答案
+    let parsedChecklistItems = [];
+    let parsedChecklistAnswers = [];
+    
+    try {
+      parsedChecklistItems = typeof checklistItems === 'string' ? JSON.parse(checklistItems) : (checklistItems || []);
+    } catch (e) {
+      Logger.log('⚠️ 解析 checklistItems 失敗: ' + e.message);
+    }
+    
+    try {
+      parsedChecklistAnswers = typeof checklistAnswers === 'string' ? JSON.parse(checklistAnswers) : (checklistAnswers || []);
+    } catch (e) {
+      Logger.log('⚠️ 解析 checklistAnswers 失敗: ' + e.message);
+    }
+
+    // 為每個檢核項目新增一筆記錄
+    for (let i = 0; i < parsedChecklistItems.length; i++) {
+      const item = parsedChecklistItems[i];
+      const checked = parsedChecklistAnswers[i] || false;
+      const checklistId = item.checklistId || item.id || `checklist_${i}`;
+      
+      checkRecordsSheet.appendRow([
+        generateUUID(),           // check_record_id
+        taskProgressId,           // task_progress_id
+        email,                    // student_email
+        userId,                   // user_id
+        checklistId,              // checklist_id
+        checked,                  // student_checked (true/false)
+        now                       // check_time
+      ]);
+    }
+
+    Logger.log(`✅ 記錄檢核結果: ${parsedChecklistItems.length} 筆`);
+
+    // 3. 記錄評量結果到 TASK_ASSESSMENT_RECORDS（1位學生1筆資料）
+    // 新格式: assessment_id, task_progress_id, student_email, user_id, question_answers(JSON), accuracy, submit_time
+    let assessmentSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_ASSESSMENT_RECORDS);
+    
+    if (!assessmentSheet) {
+      assessmentSheet = ss.insertSheet(SHEET_CONFIG.SHEETS.TASK_ASSESSMENT_RECORDS);
+      assessmentSheet.appendRow([
+        'assessment_id',
+        'task_progress_id',
+        'student_email',
+        'user_id',
+        'question_answers',
+        'accuracy',
         'submit_time'
       ]);
     }
 
-    const checkRecordId = generateUUID();
-    checkRecordsSheet.appendRow([
-      checkRecordId,
-      taskProgressId,
-      email,
-      checklistAnswers,
-      new Date()
-    ]);
+    // 整理評量答案格式
+    let questionAnswersJson = '{}';
+    try {
+      const parsedAnswers = typeof assessmentAnswers === 'string' ? JSON.parse(assessmentAnswers) : (assessmentAnswers || {});
+      questionAnswersJson = JSON.stringify(parsedAnswers);
+    } catch (e) {
+      Logger.log('⚠️ 解析 assessmentAnswers 失敗: ' + e.message);
+      questionAnswersJson = assessmentAnswers || '{}';
+    }
 
-    Logger.log(`✅ 記錄檢核結果: record_id=${checkRecordId}`);
-
-    // 3. 記錄評量結果到 TASK_ASSESSMENT_RECORDS
-    const assessmentSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_ASSESSMENT_RECORDS);
-
-    const assessmentRecordId = generateUUID();
     assessmentSheet.appendRow([
-      assessmentRecordId,
-      taskProgressId,
-      email,
-      assessmentAnswers,
-      accuracy,
-      new Date()
+      generateUUID(),           // assessment_id
+      taskProgressId,           // task_progress_id
+      email,                    // student_email
+      userId,                   // user_id
+      questionAnswersJson,      // question_answers (JSON格式，記錄每題答案)
+      accuracy || 0,            // accuracy (答對率)
+      now                       // submit_time
     ]);
 
     Logger.log(`✅ 記錄評量結果: accuracy=${accuracy}`);
 
     // 4. 發放代幣給學生
-    const usersData = usersSheet.getDataRange().getValues();
-    let userRowIndex = -1;
-
-    for (let i = 1; i < usersData.length; i++) {
-      if (usersData[i][1] === email) {  // email 欄位
-        userRowIndex = i + 1;
-        break;
-      }
-    }
-
     if (userRowIndex !== -1) {
-      const currentTokens = usersData[userRowIndex - 1][11] || 0;  // tokens 欄位
-      const newTokens = Number(currentTokens) + Number(tokenReward);
+      const currentTokens = usersData[userRowIndex - 1][8] || 0;  // total_tokens 欄位 (index 8)
+      const newTokens = Number(currentTokens) + Number(tokenReward || 0);
 
-      usersSheet.getRange(userRowIndex, 12).setValue(newTokens);  // 更新 tokens
+      usersSheet.getRange(userRowIndex, 9).setValue(newTokens);  // 更新 total_tokens (欄9)
 
       Logger.log(`💰 發放代幣: ${currentTokens} + ${tokenReward} = ${newTokens}`);
     }
