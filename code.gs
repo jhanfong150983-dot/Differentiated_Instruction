@@ -7407,57 +7407,104 @@ function getTaskDetail(params) {
     const ss = getSpreadsheet();
     const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
     const tasksData = tasksSheet.getDataRange().getValues();
+    const checklistSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLISTS);
+    const questionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
 
-    // 找到任務
+    // 處理帶有層級後綴的 taskId（如 task_xxx_tutorial）
+    let actualTaskId = taskId;
+    let taskTier = '';
+
+    if (taskId.includes('_tutorial')) {
+      actualTaskId = taskId.replace('_tutorial', '');
+      taskTier = 'tutorial';
+    } else if (taskId.includes('_adventure')) {
+      actualTaskId = taskId.replace('_adventure', '');
+      taskTier = 'adventure';
+    } else if (taskId.includes('_hardcore')) {
+      actualTaskId = taskId.replace('_hardcore', '');
+      taskTier = 'hardcore';
+    }
+
+    // 找到任務（使用實際的 taskId）
     let taskRow = null;
     for (let i = 1; i < tasksData.length; i++) {
-      if (tasksData[i][0] === taskId) {
+      if (tasksData[i][0] === actualTaskId) {
         taskRow = tasksData[i];
         break;
       }
     }
 
     if (!taskRow) {
-      throw new Error('找不到任務');
+      throw new Error('找不到任務 ID: ' + actualTaskId);
     }
 
-    // 解析檢核表
+    // 舊結構：task_id, course_id, sequence, task_name, time_limit,
+    //         tutorial_desc, tutorial_link, adventure_desc, adventure_link,
+    //         hardcore_desc, hardcore_link, token_reward, createDate
+
+    // 根據層級取得對應的 link
+    let taskLink = '';
+    let taskName = taskRow[3];  // task_name
+
+    if (taskTier === 'tutorial') {
+      taskLink = taskRow[6];  // tutorial_link
+    } else if (taskTier === 'adventure') {
+      taskLink = taskRow[8];  // adventure_link
+    } else if (taskTier === 'hardcore') {
+      taskLink = taskRow[10]; // hardcore_link
+    } else {
+      // 如果沒有指定層級，預設使用 tutorial
+      taskLink = taskRow[6];
+    }
+
+    // 從檢核表取得檢核項目
     let selfCheckList = [];
-    try {
-      if (taskRow[13]) {  // self_check_list 欄位
-        selfCheckList = JSON.parse(taskRow[13]);
+    if (checklistSheet) {
+      const checklistData = checklistSheet.getDataRange().getValues();
+      for (let i = 1; i < checklistData.length; i++) {
+        if (checklistData[i][1] === taskId || checklistData[i][1] === actualTaskId) {
+          selfCheckList.push({
+            id: checklistData[i][0],
+            description: checklistData[i][2],
+            type: checklistData[i][3] || 'checkbox'
+          });
+        }
       }
-    } catch (e) {
-      Logger.log('解析檢核表失敗：' + e);
     }
 
     // 取得評量題目
-    const questionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
-    const questionsData = questionsSheet.getDataRange().getValues();
-
     const questions = [];
-    for (let i = 1; i < questionsData.length; i++) {
-      if (questionsData[i][1] === taskId) {  // task_id 欄位
-        questions.push({
-          questionId: questionsData[i][0],
-          question: questionsData[i][2],
-          options: JSON.parse(questionsData[i][3] || '[]'),
-          correctAnswer: questionsData[i][4]
-        });
+    if (questionsSheet) {
+      const questionsData = questionsSheet.getDataRange().getValues();
+      for (let i = 1; i < questionsData.length; i++) {
+        if (questionsData[i][1] === taskId || questionsData[i][1] === actualTaskId) {
+          try {
+            questions.push({
+              questionId: questionsData[i][0],
+              question: questionsData[i][2],
+              options: JSON.parse(questionsData[i][3] || '[]'),
+              correctAnswer: questionsData[i][4]
+            });
+          } catch (e) {
+            Logger.log('⚠️ 解析題目選項失敗: ' + e.message);
+          }
+        }
       }
     }
 
     const task = {
-      taskId: taskRow[0],
-      name: taskRow[1],
-      link: taskRow[2],
-      timeLimit: taskRow[4],
-      tokenReward: taskRow[5],
+      taskId: taskId,  // 保留完整的 taskId（包含層級後綴）
+      actualTaskId: actualTaskId,
+      name: taskName,
+      link: taskLink || '',
+      timeLimit: taskRow[4] || 0,
+      tokenReward: taskRow[11] || 10,
+      tier: taskTier,
       selfCheckList: selfCheckList,
       questions: questions
     };
 
-    Logger.log(`✅ 取得任務詳細資料: taskId=${taskId}, 檢核項目=${selfCheckList.length}, 評量題目=${questions.length}`);
+    Logger.log(`✅ 取得任務詳細資料: taskId=${taskId}, 層級=${taskTier}, 檢核項目=${selfCheckList.length}, 評量題目=${questions.length}`);
 
     return {
       success: true,

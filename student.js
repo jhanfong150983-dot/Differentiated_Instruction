@@ -2075,18 +2075,21 @@ window.openTaskModal = function(task, progress) {
                             currentCheckData.question = data.question;
                             currentCheckData.scenario = data.scenarioType || 'A';
 
+                            // 修復：移除舊的評量 Modal 邏輯，評量現在在 task-execution.html 中進行
                             // 關閉詳情，打開評量
                             closeTaskModal();
-                            
-                            // 手動顯示 Modal (因為 loadAssessment 依賴它)
-                            const selfCheckModal = document.getElementById('selfCheckModal');
-                            if(selfCheckModal) {
-                                selfCheckModal.style.display = 'flex';
-                                selfCheckModal.classList.add('active'); // 確保有 active class
-                            }
-                            
-                            // 載入題目
-                            loadAssessment(data.scenarioType, data.question);
+
+                            showToast('✅ 請在任務執行視窗中完成評量', 'info');
+
+                            // 手動顯示 Modal (因為 loadAssessment 依賴它)（已移除）
+                            // const selfCheckModal = document.getElementById('selfCheckModal');
+                            // if(selfCheckModal) {
+                            //     selfCheckModal.style.display = 'flex';
+                            //     selfCheckModal.classList.add('active'); // 確保有 active class
+                            // }
+
+                            // 載入題目（已移除：使用 task-execution.html）
+                            // loadAssessment(data.scenarioType, data.question);
                         } else {
                             showToast('無法載入題目，請稍後重試', 'error');
                         }
@@ -2112,12 +2115,15 @@ window.openTaskModal = function(task, progress) {
                 closeTaskModal();
                 const pid = (progress && progress.taskProgressId) ? progress.taskProgressId : task.taskId;
                 
+                // 修復：移除舊的檢核面板調用，因為現在所有檢核和評量都在 task-execution.html 中進行
                 // 初始化 currentCheckData
-                if (!window.currentCheckData) window.currentCheckData = {};
-                currentCheckData.progressId = pid;
-                currentCheckData.taskId = task.taskId;
-                
-                showSelfCheckPanel(pid, task.taskId);
+                // if (!window.currentCheckData) window.currentCheckData = {};
+                // currentCheckData.progressId = pid;
+                // currentCheckData.taskId = task.taskId;
+
+                // showSelfCheckPanel(pid, task.taskId);  // 已移除：使用 task-execution.html 代替
+
+                showToast('✅ 任務已提交！請在任務執行視窗中繼續', 'success');
             };
         }
 
@@ -2724,27 +2730,28 @@ window.openTaskModal = function(task, progress) {
                    }
                    // ==========================================
    
+                   // 修復：移除舊的檢核/評量 Modal 邏輯，因為現在都在 task-execution.html 中進行
                    // 核心路由邏輯
                    switch (response.nextStep) {
                        case 'checklist':
-                           showToast('✅ 任務已提交，請進行自主檢查...', 'success');
-                           showSelfCheckPanel(response.taskProgressId, taskToSubmit.taskId);
+                           showToast('✅ 任務已提交！檢核和評量請在任務執行視窗中完成', 'success');
+                           // showSelfCheckPanel(response.taskProgressId, taskToSubmit.taskId);  // 已移除
                            break;
-   
+
                        case 'assessment':
-                           showToast('✅ 此任務無需檢查，直接進入評量！', 'success');
-                           
-                           // 手動顯示 Modal
-                           const modal = document.getElementById('selfCheckModal');
-                           if(modal) {
-                               modal.style.display = 'flex';
-                               modal.classList.add('active');
-                           }
-                           
-                           // 直接載入題目
-                           if (window.loadAssessment) {
-                                loadAssessment(response.scenarioType, response.question);
-                           }
+                           showToast('✅ 任務已提交！評量請在任務執行視窗中完成', 'success');
+
+                           // 手動顯示 Modal（已移除：使用 task-execution.html）
+                           // const modal = document.getElementById('selfCheckModal');
+                           // if(modal) {
+                           //     modal.style.display = 'flex';
+                           //     modal.classList.add('active');
+                           // }
+
+                           // 直接載入題目（已移除：使用 task-execution.html）
+                           // if (window.loadAssessment) {
+                           //      loadAssessment(response.scenarioType, response.question);
+                           // }
                            break;
    
                        case 'completed':
