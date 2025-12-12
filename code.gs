@@ -441,6 +441,25 @@ function doGet(e) {
         });
         break;
 
+      case 'updateTaskStage':
+        response = updateTaskStage({
+          taskProgressId: params.taskProgressId,
+          userEmail: params.userEmail,
+          stage: params.stage
+        });
+        break;
+
+      case 'saveStageData':
+        response = saveStageData({
+          taskProgressId: params.taskProgressId,
+          userEmail: params.userEmail,
+          stage: params.stage,
+          checklistAnswers: params.checklistAnswers,
+          checklistItems: params.checklistItems,
+          uploadedFileUrl: params.uploadedFileUrl
+        });
+        break;
+
       case 'submitTaskExecution':
         response = submitTaskExecution({
           taskProgressId: params.taskProgressId,
@@ -7292,6 +7311,190 @@ function uploadTaskWork(params) {
       success: false,
       message: '上傳失敗：' + error.message
     };
+  }
+}
+
+/**
+ * 更新任務執行階段狀態（用於階段間同步）
+ * @param {Object} params - { taskProgressId, userEmail, stage }
+ * @returns {Object} 包含 success, message
+ */
+function updateTaskStage(params) {
+  const lock = LockService.getScriptLock();
+
+  try {
+    lock.waitLock(30000);
+
+    const { taskProgressId, userEmail, stage } = params;
+
+    if (!taskProgressId || !userEmail || !stage) {
+      throw new Error('缺少必要參數');
+    }
+
+    const email = getCurrentUserEmail(userEmail);
+    const ss = getSpreadsheet();
+    const progressSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_PROGRESS);
+
+    if (!progressSheet) {
+      throw new Error('找不到任務進度表');
+    }
+
+    // 查找任務進度記錄
+    const progressData = progressSheet.getDataRange().getValues();
+    let rowIndex = -1;
+
+    for (let i = 1; i < progressData.length; i++) {
+      if (String(progressData[i][0]) === String(taskProgressId)) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (rowIndex === -1) {
+      throw new Error('找不到任務進度記錄');
+    }
+
+    // 將階段數字轉換為狀態（每個階段都有唯一狀態）
+    let status = 'in_progress';
+    if (stage === '1') {
+      status = 'in_progress';   // 階段1：教材階段
+    } else if (stage === '2') {
+      status = 'self_checking'; // 階段2：檢核階段
+    } else if (stage === '3') {
+      status = 'uploading';     // 階段3：上傳階段（新增狀態）
+    } else if (stage === '4') {
+      status = 'assessment';    // 階段4：評量階段
+    }
+
+    // 更新狀態（D欄 = 第4欄）
+    progressSheet.getRange(rowIndex, 4).setValue(status);
+
+    Logger.log(`✅ 更新任務階段: ${taskProgressId} -> 階段${stage} (${status})`);
+
+    return {
+      success: true,
+      message: '階段狀態已更新',
+      stage: stage,
+      status: status
+    };
+
+  } catch (error) {
+    Logger.log('❌ 更新任務階段失敗：' + error);
+    return {
+      success: false,
+      message: '更新失敗：' + error.message
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 保存階段資料（用於階段完成時上傳該階段的資料）
+ * @param {Object} params - { taskProgressId, userEmail, stage, checklistAnswers, checklistItems, uploadedFileUrl }
+ * @returns {Object} 包含 success, message
+ */
+function saveStageData(params) {
+  const lock = LockService.getScriptLock();
+
+  try {
+    lock.waitLock(30000);
+
+    const { taskProgressId, userEmail, stage, checklistAnswers, checklistItems, uploadedFileUrl } = params;
+
+    if (!taskProgressId || !userEmail || !stage) {
+      throw new Error('缺少必要參數');
+    }
+
+    const email = getCurrentUserEmail(userEmail);
+    const ss = getSpreadsheet();
+
+    Logger.log(`📝 保存階段${stage}資料: ${taskProgressId}`);
+
+    // 根據不同階段保存不同的資料
+    if (stage === '2' && checklistAnswers) {
+      // 階段2：保存檢核資料到 TASK_CHECKLIST_RECORDS 表
+      const checkRecordsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLIST_RECORDS);
+      const answers = JSON.parse(checklistAnswers);
+      const items = JSON.parse(checklistItems || '[]');
+
+      if (checkRecordsSheet && answers.length > 0) {
+        // 先刪除舊的檢核記錄（如果存在）
+        const existingData = checkRecordsSheet.getDataRange().getValues();
+        for (let i = existingData.length - 1; i >= 1; i--) {
+          if (String(existingData[i][1]) === String(taskProgressId)) {
+            checkRecordsSheet.deleteRow(i + 1);
+          }
+        }
+
+        // 保存新的檢核記錄
+        answers.forEach((answer, index) => {
+          const item = items[index] || {};
+          const recordId = 'check_' + Utilities.getUuid();
+          const now = new Date();
+
+          checkRecordsSheet.appendRow([
+            recordId,
+            taskProgressId,
+            email,
+            item.type || item.description || `檢核項目${index + 1}`,
+            answer ? '已完成' : '未完成',
+            item.referenceAnswer || '',
+            now
+          ]);
+
+          const lastRow = checkRecordsSheet.getLastRow();
+          checkRecordsSheet.getRange(lastRow, 7).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+        });
+
+        Logger.log(`✅ 已保存${answers.length}筆檢核記錄`);
+      }
+
+    } else if (stage === '3' && uploadedFileUrl) {
+      // 階段3：保存上傳檔案到 TASK_SUBMISSIONS 表
+      const submissionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_SUBMISSIONS);
+
+      if (submissionsSheet) {
+        // 先刪除舊的上傳記錄（如果存在）
+        const existingData = submissionsSheet.getDataRange().getValues();
+        for (let i = existingData.length - 1; i >= 1; i--) {
+          if (String(existingData[i][1]) === String(taskProgressId)) {
+            submissionsSheet.deleteRow(i + 1);
+          }
+        }
+
+        // 保存新的上傳記錄
+        const submissionId = 'sub_' + Utilities.getUuid();
+        const now = new Date();
+
+        submissionsSheet.appendRow([
+          submissionId,
+          taskProgressId,
+          email,
+          uploadedFileUrl,
+          now
+        ]);
+
+        const lastRow = submissionsSheet.getLastRow();
+        submissionsSheet.getRange(lastRow, 5).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+
+        Logger.log(`✅ 已保存上傳檔案: ${uploadedFileUrl}`);
+      }
+    }
+
+    return {
+      success: true,
+      message: `階段${stage}資料已保存`
+    };
+
+  } catch (error) {
+    Logger.log('❌ 保存階段資料失敗：' + error);
+    return {
+      success: false,
+      message: '保存失敗：' + error.message
+    };
+  } finally {
+    lock.releaseLock();
   }
 }
 

@@ -170,6 +170,98 @@ function formatActiveTime() {
     return `${minutes}分${seconds}秒`;
 }
 
+// ========== 階段資料與狀態同步 ==========
+
+/**
+ * 保存當前階段的資料到資料庫
+ */
+function saveCurrentStageData() {
+    console.log(`💾 保存階段${currentStage}資料...`);
+
+    // 根據當前階段保存對應的資料
+    if (currentStage === 2) {
+        // 階段2：檢核階段 - 保存檢核答案
+        if (checklistAnswers && checklistAnswers.length > 0) {
+            const params = new URLSearchParams({
+                action: 'saveStageData',
+                taskProgressId: taskProgressId,
+                userEmail: studentEmail,
+                stage: '2',
+                checklistAnswers: JSON.stringify(checklistAnswers),
+                checklistItems: JSON.stringify(checklistItems)
+            });
+
+            fetch(`${API_URL}?${params.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log(`✅ 檢核資料已保存 (${checklistAnswers.length}項)`);
+                    } else {
+                        console.error('❌ 檢核資料保存失敗:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ 檢核資料保存錯誤:', error);
+                });
+        }
+
+    } else if (currentStage === 3) {
+        // 階段3：上傳階段 - 保存上傳檔案URL
+        if (uploadedFileUrl) {
+            const params = new URLSearchParams({
+                action: 'saveStageData',
+                taskProgressId: taskProgressId,
+                userEmail: studentEmail,
+                stage: '3',
+                uploadedFileUrl: uploadedFileUrl
+            });
+
+            fetch(`${API_URL}?${params.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log(`✅ 上傳檔案已保存: ${uploadedFileUrl}`);
+                    } else {
+                        console.error('❌ 上傳檔案保存失敗:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ 上傳檔案保存錯誤:', error);
+                });
+        }
+    }
+    // 階段1（教材）和階段4（評量）不需要額外保存
+    // 評量會在 submitAllData 時一次性提交
+}
+
+/**
+ * 更新階段狀態到資料庫
+ */
+function updateStageToDatabase(stage) {
+    // 非同步更新，不阻塞UI
+    const params = new URLSearchParams({
+        action: 'updateTaskStage',
+        taskProgressId: taskProgressId,
+        userEmail: studentEmail,
+        stage: stage.toString()
+    });
+
+    console.log(`📤 同步階段狀態到資料庫: 階段${stage}`);
+
+    fetch(`${API_URL}?${params.toString()}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log(`✅ 階段狀態已同步: ${data.status}`);
+            } else {
+                console.error('❌ 階段狀態同步失敗:', data.message);
+            }
+        })
+        .catch(error => {
+            console.error('❌ 階段狀態同步錯誤:', error);
+        });
+}
+
 // ========== 載入任務資料 ==========
 async function loadTaskData(taskId) {
     showLoading(true);
@@ -498,13 +590,19 @@ function nextStage() {
         return;
     }
 
-    // 儲存進度
+    // ✅ 先保存當前階段的資料到資料庫
+    saveCurrentStageData();
+
+    // 儲存進度到 LocalStorage
     saveProgress();
 
     // 切換到下一階段
     if (currentStage < 4) {
         currentStage++;
         switchStage(currentStage);
+
+        // 同步新階段的狀態到資料庫
+        updateStageToDatabase(currentStage);
     } else {
         // 第4階段完成，提交所有資料
         submitAllData();

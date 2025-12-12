@@ -1903,14 +1903,17 @@
             statusBadge = '✅ 已完成';
             statusClass = 'status-completed';
         } else if (progress.status === 'self_checking') {
-            statusBadge = '⏱️ 檢查中';
+            statusBadge = '⏱️ 檢核中';
             statusClass = 'self-checking';
+        } else if (progress.status === 'uploading') {
+            statusBadge = '📤 上傳中';
+            statusClass = 'uploading';
+        } else if (progress.status === 'assessment') {
+            statusBadge = '📝 評量中';
+            statusClass = 'assessment';
         } else if (progress.status === 'in_progress') {
             statusBadge = '⏳ 進行中';
             statusClass = 'status-in-progress';
-        } else if (progress.status === 'assessment') {
-            statusBadge = '⏱️ 評量中';
-            statusClass = 'assessment';
         } else {
             statusBadge = '⭕ 未開始';
             statusClass = 'status-not-started';
@@ -2039,25 +2042,85 @@ window.openTaskModal = function(task, progress) {
     // ==========================================
 
     if (currentStatus === 'completed') {
-        // [狀態 4: 已完成]
+        // [狀態 4: 已完成] - 不顯示任何操作按鈕
         if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
-        if (completeBtn) {
-            completeBtn.style.display = 'inline-block';
-            completeBtn.textContent = '已完成';
-            completeBtn.className = 'btn btn-secondary';
-            completeBtn.disabled = true;
-        }
+        // ✅ 修復：已完成的任務不顯示任何提交按鈕
+        // completeBtn 保持隱藏 (已在上方設為 none)
 
     } else if (currentStatus === 'assessment') {
-        // [狀態 3: 評量中] - 斷點續傳邏輯
+        // [狀態 3: 評量中] - 重新開啟 task-execution.html（會自動恢復到評量階段）
         if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
 
         if (completeBtn) {
             completeBtn.style.display = 'inline-block';
             completeBtn.textContent = '✍️ 繼續評量';
+            completeBtn.className = 'btn btn-warning';
+            completeBtn.disabled = false;
+            completeBtn.onclick = function() {
+                closeTaskModal();
+
+                const taskProgressId = progress.taskProgressId || task.taskId;
+                const taskExecutionUrl = `task-execution.html?taskId=${task.taskId}&taskProgressId=${taskProgressId}&email=${encodeURIComponent(currentStudent.email)}`;
+
+                console.log('✍️ 重新開啟任務執行視窗（評量階段）:', taskExecutionUrl);
+                window.open(taskExecutionUrl, '_blank', 'width=1200,height=800');
+
+                showToast('✅ 已重新開啟任務視窗，請繼續評量', 'success');
+            };
+        }
+
+    } else if (currentStatus === 'self_checking') {
+        // [狀態 2: 檢核中] - 重新開啟 task-execution.html（會自動恢復到檢核階段）
+        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
+
+        if (completeBtn) {
+            completeBtn.style.display = 'inline-block';
+            completeBtn.textContent = '📋 繼續自主檢查';
+            completeBtn.className = 'btn btn-warning';
+            completeBtn.disabled = false;
+            completeBtn.onclick = function() {
+                closeTaskModal();
+
+                const taskProgressId = progress.taskProgressId || task.taskId;
+                const taskExecutionUrl = `task-execution.html?taskId=${task.taskId}&taskProgressId=${taskProgressId}&email=${encodeURIComponent(currentStudent.email)}`;
+
+                console.log('📋 重新開啟任務執行視窗（檢核階段）:', taskExecutionUrl);
+                window.open(taskExecutionUrl, '_blank', 'width=1200,height=800');
+
+                showToast('✅ 已重新開啟任務視窗，請繼續檢核', 'success');
+            };
+        }
+
+    } else if (currentStatus === 'uploading') {
+        // [狀態 2.5: 上傳中] - 重新開啟 task-execution.html（會自動恢復到上傳階段）
+        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
+
+        if (completeBtn) {
+            completeBtn.style.display = 'inline-block';
+            completeBtn.textContent = '📤 繼續上傳作業';
+            completeBtn.className = 'btn btn-warning';
+            completeBtn.disabled = false;
+            completeBtn.onclick = function() {
+                closeTaskModal();
+
+                const taskProgressId = progress.taskProgressId || task.taskId;
+                const taskExecutionUrl = `task-execution.html?taskId=${task.taskId}&taskProgressId=${taskProgressId}&email=${encodeURIComponent(currentStudent.email)}`;
+
+                console.log('📤 重新開啟任務執行視窗（上傳階段）:', taskExecutionUrl);
+                window.open(taskExecutionUrl, '_blank', 'width=1200,height=800');
+
+                showToast('✅ 已重新開啟任務視窗，請繼續上傳', 'success');
+            };
+        }
+
+    } else if (false) {
+        // 以下程式碼已廢棄，保留以防需要參考
+        if (completeBtn) {
+            completeBtn.style.display = 'inline-block';
+            completeBtn.textContent = '✍️ 繼續評量';
             completeBtn.className = 'btn btn-warning'; // 黃色
             completeBtn.disabled = false;
-            
+
             // 🔥 修正：點擊後，先去後端抓題目，再開視窗
             completeBtn.onclick = function() {
                 completeBtn.disabled = true;
@@ -2114,7 +2177,8 @@ window.openTaskModal = function(task, progress) {
             };
         }
 
-    } else if (currentStatus === 'self_checking') {
+    } else if (false && currentStatus === 'self_checking') {
+        // ❌ 已廢棄：此邏輯已移至上方統一處理
         // [狀態 2: 自主檢查中]
         if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
         if (completeBtn) {
@@ -2125,7 +2189,7 @@ window.openTaskModal = function(task, progress) {
             completeBtn.onclick = function() {
                 closeTaskModal();
                 const pid = (progress && progress.taskProgressId) ? progress.taskProgressId : task.taskId;
-                
+
                 // 修復：移除舊的檢核面板調用，因為現在所有檢核和評量都在 task-execution.html 中進行
                 // 初始化 currentCheckData
                 // if (!window.currentCheckData) window.currentCheckData = {};
@@ -2139,14 +2203,25 @@ window.openTaskModal = function(task, progress) {
         }
 
     } else if (currentStatus === 'in_progress') {
-        // [狀態 1: 進行中]
+        // [狀態 1: 進行中] - 顯示「繼續完成任務」按鈕，重新開啟 task-execution.html
         if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
         if (completeBtn) {
             completeBtn.style.display = 'inline-block';
-            completeBtn.textContent = '提交完成';
-            completeBtn.className = 'btn btn-success';
+            completeBtn.textContent = '🔄 繼續完成任務';
+            completeBtn.className = 'btn btn-warning'; // 使用警告色（橘色）強調這是繼續操作
             completeBtn.disabled = false;
-            completeBtn.onclick = handleCompleteTask; 
+            completeBtn.onclick = function() {
+                // 重新開啟任務執行視窗（會自動從 LocalStorage 恢復進度）
+                closeTaskModal();
+
+                const taskProgressId = progress.taskProgressId || task.taskId;
+                const taskExecutionUrl = `task-execution.html?taskId=${task.taskId}&taskProgressId=${taskProgressId}&email=${encodeURIComponent(currentStudent.email)}`;
+
+                console.log('🔄 重新開啟任務執行視窗:', taskExecutionUrl);
+                window.open(taskExecutionUrl, '_blank', 'width=1200,height=800');
+
+                showToast('✅ 已重新開啟任務視窗，請繼續完成', 'success');
+            };
         }
 
     } else {
