@@ -1995,10 +1995,22 @@ window.openTaskModal = function(task, progress) {
     if (task.tier === 'mixed') {
         displayTier = selectedTier || '混合';
     }
-    
+
     setText('modalTaskType', taskTypeName);
     setText('modalTaskTier', displayTier);
     setText('modalTaskReward', `💰 ${task.tokenReward || 0} 代幣`);
+
+    // ✅ 修復問題8：顯示 accuracy（如果任務已完成且有 accuracy 資料）
+    const accuracySection = document.getElementById('modalAccuracySection');
+    const accuracyText = document.getElementById('modalTaskAccuracy');
+    if (progress && progress.status === 'completed' && progress.accuracy !== null && progress.accuracy !== undefined) {
+        // 將小數轉換為百分比顯示
+        const accuracyPercent = (progress.accuracy * 100).toFixed(0);
+        setText('modalTaskAccuracy', `${accuracyPercent}%`);
+        if (accuracySection) accuracySection.style.display = 'block';
+    } else {
+        if (accuracySection) accuracySection.style.display = 'none';
+    }
 
     // 內容說明
     let taskContent = '';

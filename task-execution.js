@@ -1097,8 +1097,8 @@ async function submitAllData() {
             // 顯示完成訊息
             alert(`🎉 任務完成！\n答對率：${(accuracy * 100).toFixed(0)}%\n獲得代幣：${tokenReward}`);
 
-            // ✅ 通知父視窗刷新任務列表
-            if (window.opener) {
+            // ✅ 修復問題7：通知父視窗刷新任務列表（確保在關閉前完成）
+            if (window.opener && !window.opener.closed) {
                 console.log('📢 通知父視窗刷新任務列表...');
                 try {
                     // 先刷新進度數據，再更新顯示
@@ -1107,25 +1107,33 @@ async function submitAllData() {
                         // 獲取 recordId（從父視窗的課堂資訊中）
                         const recordId = window.opener.selectedClass?.recordId;
                         if (recordId) {
-                            window.opener.loadTaskProgress(recordId).then(() => {
-                                window.opener.displayQuestList();
-                                console.log('✅ 父視窗任務列表已刷新');
-                            });
+                            // 等待刷新完成後才關閉視窗
+                            await window.opener.loadTaskProgress(recordId);
+                            window.opener.displayQuestList();
+                            console.log('✅ 父視窗任務列表已刷新');
                         } else {
                             // 如果沒有 recordId，直接刷新顯示（使用快取的進度）
                             window.opener.displayQuestList();
+                            console.log('✅ 父視窗任務列表已刷新（使用快取）');
                         }
                     } else if (typeof window.opener.displayQuestList === 'function') {
                         // 降級方案：只刷新顯示
                         window.opener.displayQuestList();
+                        console.log('✅ 父視窗任務列表已刷新（降級方案）');
+                    } else {
+                        console.warn('⚠️ 父視窗沒有 displayQuestList 函數');
                     }
                 } catch (error) {
                     console.error('❌ 無法通知父視窗:', error);
                 }
+            } else {
+                console.warn('⚠️ 沒有父視窗或父視窗已關閉');
             }
 
-            // 關閉視窗
-            window.close();
+            // 延遲500ms後關閉視窗，確保父視窗有時間完成刷新
+            setTimeout(() => {
+                window.close();
+            }, 500);
         } else {
             showWarning('提交失敗：' + data.message);
         }

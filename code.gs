@@ -3711,15 +3711,32 @@ function getTaskProgress(recordId) {
     const progressData = progressSheet.getDataRange().getValues();
     const progress = {};
 
+    // ✅ 修復問題8：讀取 TASK_ASSESSMENT_RECORDS 表以獲取 accuracy
+    const assessmentSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_ASSESSMENT_RECORDS);
+    const assessmentMap = {}; // taskProgressId -> accuracy
+
+    if (assessmentSheet) {
+      const assessmentData = assessmentSheet.getDataRange().getValues();
+      // 表格結構: assessment_id(0), task_progress_id(1), student_email(2), user_id(3), question_answers(4), accuracy(5), submit_time(6)
+      for (let i = 1; i < assessmentData.length; i++) {
+        const taskProgressId = assessmentData[i][1];
+        const accuracy = assessmentData[i][5];
+        assessmentMap[taskProgressId] = accuracy;
+      }
+    }
+
     for (let i = 1; i < progressData.length; i++) {
       if (progressData[i][1] === recordId) {
         const taskId = progressData[i][2];
+        const taskProgressId = progressData[i][0];
+
         progress[taskId] = {
-          taskProgressId: progressData[i][0],  // ✅ 新增：進度 ID (progress_id)
+          taskProgressId: taskProgressId,  // ✅ 新增：進度 ID (progress_id)
           status: progressData[i][3],
           startTime: progressData[i][4],
           completeTime: progressData[i][5],
-          timeSpent: progressData[i][6]
+          timeSpent: progressData[i][6],
+          accuracy: assessmentMap[taskProgressId] || null  // ✅ 新增：答對率
         };
       }
     }
