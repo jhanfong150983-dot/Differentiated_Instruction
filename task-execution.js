@@ -1097,13 +1097,13 @@ async function submitAllData() {
             time_spent: timeSpentSeconds  // ✅ 修正：使用 time_spent（蛇形命名）匹配資料庫欄位
         });
 
-        // 🔍 Debug: 使用 alert 顯示參數
-        alert(`🔍 Debug 資訊:\n\n` +
-              `time_spent = ${timeSpentSeconds}\n` +
-              `型別 = ${typeof timeSpentSeconds}\n` +
-              `accuracy = ${accuracy}\n` +
-              `tokenReward = ${tokenReward}\n\n` +
-              `請檢查 time_spent 是否有值`);
+        // 🔍 Debug: 在控制台記錄參數（不使用 alert 避免干擾）
+        console.log(`🔍 Debug 資訊:`, {
+            time_spent: timeSpentSeconds,
+            time_spent_type: typeof timeSpentSeconds,
+            accuracy: accuracy,
+            tokenReward: tokenReward
+        });
 
         const response = await fetch(`${API_URL}?${params.toString()}`);
         const data = await response.json();
@@ -1114,10 +1114,7 @@ async function submitAllData() {
             // 清除進度
             clearProgress();
 
-            // 顯示完成訊息
-            alert(`🎉 任務完成！\n答對率：${(accuracy * 100).toFixed(0)}%\n獲得代幣：${tokenReward}`);
-
-            // ✅ 修復問題7：通知父視窗刷新任務列表（確保在關閉前完成）
+            // ✅ 修復問題7：先通知父視窗刷新任務列表（在顯示對話框前）
             if (window.opener && !window.opener.closed) {
                 console.log('📢 通知父視窗刷新任務列表...');
                 console.log('🔍 調試：父視窗物件檢查', {
@@ -1172,10 +1169,23 @@ async function submitAllData() {
                 console.warn('⚠️ 沒有父視窗或父視窗已關閉');
             }
 
-            // 延遲500ms後關閉視窗，確保父視窗有時間完成刷新
-            setTimeout(() => {
-                window.close();
-            }, 500);
+            // 🔍 顯示調試信息（包含後端返回的數據）
+            let debugMessage = `🎉 任務完成！\n答對率：${(accuracy * 100).toFixed(0)}%\n獲得代幣：${tokenReward}`;
+
+            if (data.debug) {
+                debugMessage += `\n\n📊 時間追蹤調試信息：\n`;
+                debugMessage += `前端發送: ${timeSpentSeconds}秒 (${Math.floor(timeSpentSeconds / 60)}分鐘)\n`;
+                debugMessage += `後端接收: ${data.debug.time_spent_received} (型別: ${data.debug.time_spent_type})\n`;
+                debugMessage += `後端保存: ${data.debug.time_spent_saved}秒 (${data.debug.time_in_minutes}分鐘)`;
+            }
+
+            debugMessage += `\n\n點擊「確定」後將關閉此視窗`;
+
+            // ⏸️ alert 會阻止代碼執行，確保用戶看到調試信息
+            alert(debugMessage);
+
+            // 用戶點擊確定後才關閉視窗（不再使用 setTimeout）
+            window.close();
         } else {
             showWarning('提交失敗：' + data.message);
         }
