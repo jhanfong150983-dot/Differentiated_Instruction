@@ -2413,6 +2413,18 @@ window.openTaskModal = function(task, progress) {
     };
 
     /**
+     * ✅ 修復問題7：暴露 loadTaskProgress 到全局作用域
+     * 讓子視窗可以調用此函數刷新任務進度
+     */
+    window.loadTaskProgress = loadTaskProgress;
+
+    /**
+     * ✅ 修復問題7：暴露 displayQuestList 到全局作用域
+     * 讓子視窗可以調用此函數更新任務列表顯示
+     */
+    window.displayQuestList = displayQuestList;
+
+    /**
      * ✅ 修復問題6：開啟任務執行視窗（防止重複開啟）
      * @param {string} taskProgressId - 任務進度 ID
      * @param {string} taskId - 任務 ID
