@@ -2425,6 +2425,18 @@ window.openTaskModal = function(task, progress) {
     window.displayQuestList = displayQuestList;
 
     /**
+     * ✅ 修復問題7：暴露 selectedClass 到全局作用域
+     * 讓子視窗可以獲取 recordId 來刷新任務進度
+     * 注意：這是一個 getter，會返回當前的 selectedClass 值
+     */
+    Object.defineProperty(window, 'selectedClass', {
+        get: function() {
+            return selectedClass;
+        },
+        configurable: true
+    });
+
+    /**
      * ✅ 修復問題6：開啟任務執行視窗（防止重複開啟）
      * @param {string} taskProgressId - 任務進度 ID
      * @param {string} taskId - 任務 ID
