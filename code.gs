@@ -7536,7 +7536,7 @@ function submitTaskExecution(params) {
       assessmentAnswers,  // JSON 格式的評量答案物件 { questionId: answer, ... }
       accuracy,
       tokenReward,
-      timeSpent           // ✅ 新增：實際活動時間（秒）
+      time_spent          // ✅ 修正：使用 time_spent（蛇形命名）匹配前端參數
     } = params;
 
     // 參數驗證
@@ -7583,7 +7583,7 @@ function submitTaskExecution(params) {
     // 欄位順序: progress_id(1), record_id(2), task_id(3), status(4), start_time(5), complete_time(6), time_spent(7)
     const completeTime = new Date();
     const completeTimeCell = progressSheet.getRange(rowIndex, 6);
-    const timeSpentValue = parseInt(timeSpent) || 0;  // 確保是數字
+    const timeSpentValue = parseInt(time_spent) || 0;  // 確保是數字
 
     progressSheet.getRange(rowIndex, 4).setValue('completed');  // status (欄4)
     completeTimeCell.setValue(completeTime);  // complete_time (欄6)

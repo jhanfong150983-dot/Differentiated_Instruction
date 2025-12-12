@@ -1094,7 +1094,7 @@ async function submitAllData() {
             assessmentAnswers: JSON.stringify(assessmentAnswers),
             accuracy: accuracy,
             tokenReward: tokenReward,
-            timeSpent: timeSpentSeconds  // ✅ 新增：實際活動時間（秒）
+            time_spent: timeSpentSeconds  // ✅ 修正：使用 time_spent（蛇形命名）匹配資料庫欄位
         });
 
         const response = await fetch(`${API_URL}?${params.toString()}`);
