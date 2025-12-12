@@ -1097,6 +1097,33 @@ async function submitAllData() {
             // 顯示完成訊息
             alert(`🎉 任務完成！\n答對率：${(accuracy * 100).toFixed(0)}%\n獲得代幣：${tokenReward}`);
 
+            // ✅ 通知父視窗刷新任務列表
+            if (window.opener) {
+                console.log('📢 通知父視窗刷新任務列表...');
+                try {
+                    // 先刷新進度數據，再更新顯示
+                    if (typeof window.opener.loadTaskProgress === 'function' &&
+                        typeof window.opener.displayQuestList === 'function') {
+                        // 獲取 recordId（從父視窗的課堂資訊中）
+                        const recordId = window.opener.selectedClass?.recordId;
+                        if (recordId) {
+                            window.opener.loadTaskProgress(recordId).then(() => {
+                                window.opener.displayQuestList();
+                                console.log('✅ 父視窗任務列表已刷新');
+                            });
+                        } else {
+                            // 如果沒有 recordId，直接刷新顯示（使用快取的進度）
+                            window.opener.displayQuestList();
+                        }
+                    } else if (typeof window.opener.displayQuestList === 'function') {
+                        // 降級方案：只刷新顯示
+                        window.opener.displayQuestList();
+                    }
+                } catch (error) {
+                    console.error('❌ 無法通知父視窗:', error);
+                }
+            }
+
             // 關閉視窗
             window.close();
         } else {
