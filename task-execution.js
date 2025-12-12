@@ -1101,7 +1101,13 @@ async function submitAllData() {
             if (window.opener && !window.opener.closed) {
                 console.log('📢 通知父視窗刷新任務列表...');
                 try {
-                    // 先刷新進度數據，再更新顯示
+                    // 1. 關閉父視窗的任務 modal（如果開著）
+                    if (typeof window.opener.closeTaskModal === 'function') {
+                        window.opener.closeTaskModal();
+                        console.log('✅ 已關閉父視窗的任務 modal');
+                    }
+
+                    // 2. 先刷新進度數據，再更新顯示
                     if (typeof window.opener.loadTaskProgress === 'function' &&
                         typeof window.opener.displayQuestList === 'function') {
                         // 獲取 recordId（從父視窗的課堂資訊中）
