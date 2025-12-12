@@ -339,6 +339,11 @@
 
         // 載入任務（會在完成後隱藏 loading）
         loadReviewTasks();
+
+        // ✅ 修復：無論是否上課，都啟動自動刷新（60秒）
+        // 這樣老師可以即時看到學生的進度變化
+        startAutoRefresh();
+        APP_CONFIG.log('✅ 已啟動自動刷新（選擇班級後）');
     };
 
     /**
@@ -909,15 +914,20 @@
         });
 
         // 啟動任務時間即時更新
-        // - 執行中任務：只在上課時更新
+        // - 執行中任務（包含所有活躍階段）：只在上課時更新
         // - 待審核任務：一直更新等待時間
         const hasPendingReview = filteredTasks.some(t => t.status === 'pending_review');
-        const hasInProgress = filteredTasks.some(t => t.status === 'in_progress');
+        const hasActiveTasks = filteredTasks.some(t =>
+            t.status === 'in_progress' ||
+            t.status === 'self_checking' ||
+            t.status === 'uploading' ||
+            t.status === 'assessment'
+        );
 
-        if (currentSession && (hasPendingReview || hasInProgress)) {
+        if (currentSession && (hasPendingReview || hasActiveTasks)) {
             // 上課中：更新所有任務時間
             startTaskTimeUpdate();
-            APP_CONFIG.log('✅ 上課中，啟動任務時間更新（執行中+待審核）');
+            APP_CONFIG.log('✅ 上課中，啟動任務時間更新（活躍任務+待審核）');
         } else if (!currentSession && hasPendingReview) {
             // 未上課但有待審核：只更新等待時間
             startWaitingTimeUpdateOnly();
@@ -1029,8 +1039,12 @@
             actionsHtml = '<span style="color: var(--text-muted); font-size: 14px;">進行中...</span>';
         }
 
-        // 為 in_progress 任務添加 data 屬性，用於前端即時更新
-        if (task.status === 'in_progress' && task.startTime) {
+        // 為執行中的任務添加 data 屬性，用於前端即時更新時間
+        // 包含所有活躍階段：in_progress, self_checking, uploading, assessment
+        if ((task.status === 'in_progress' ||
+             task.status === 'self_checking' ||
+             task.status === 'uploading' ||
+             task.status === 'assessment') && task.startTime) {
             tr.setAttribute('data-task-id', task.taskProgressId);
             tr.setAttribute('data-start-time', task.startTime);
             tr.setAttribute('data-time-limit', task.timeLimit || 0);
