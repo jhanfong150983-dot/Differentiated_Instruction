@@ -3346,12 +3346,15 @@ function getStudentClassEntryData(params) {
         recordId = learningData[i][0];
         const currentTierVal = learningData[i][10] || 'tutorial';
 
+        Logger.log('🔍 [Debug] 從資料庫讀取的 current_tier:', currentTierVal);
+        Logger.log('🔍 [Debug] 原始資料列:', learningData[i]);
+
         learningRecord = {
           recordId: recordId,
           userId: userId,
           classId: classId,
           courseId: courseId,
-          current_tier: currentTierVal, 
+          current_tier: currentTierVal,
           currentTier: currentTierVal,
           completedTasks: learningData[i][8] || 0,
           totalTasks: learningData[i][9] || 0
@@ -3837,9 +3840,13 @@ function startTask(params) {
           String(progressData[i][2]).trim() === String(taskId).trim()) {
         
         // 已經存在 -> 更新狀態
+        const restartTime = new Date();
+        const startTimeCell = progressSheet.getRange(i + 1, 5);
+
         progressSheet.getRange(i + 1, 4).setValue('in_progress');
-        progressSheet.getRange(i + 1, 5).setValue(new Date()); 
-        
+        startTimeCell.setValue(restartTime);
+        startTimeCell.setNumberFormat('yyyy-mm-dd hh:mm:ss');  // 設定日期時間格式
+
         return { success: true, message: '任務已重新開始', taskProgressId: progressData[i][0] };
       }
     }
@@ -3847,7 +3854,7 @@ function startTask(params) {
     // 不存在 -> 建立新紀錄
     const newProgressId = 'prog_' + Utilities.getUuid();
     const now = new Date();
-    
+
     progressSheet.appendRow([
       newProgressId,
       recordId,
@@ -3857,6 +3864,10 @@ function startTask(params) {
       '', // end_time
       0   // time_spent
     ]);
+
+    // 設定開始時間的日期時間格式
+    const newProgressRow = progressSheet.getLastRow();
+    progressSheet.getRange(newProgressRow, 5).setNumberFormat('yyyy-mm-dd hh:mm:ss');
 
     return { success: true, message: '任務開始', taskProgressId: newProgressId };
 
@@ -5263,9 +5274,13 @@ function approveTask(params) {
     progressSheet.getRange(progressRow, 4).setValue('completed');
 
     // 5. 更新學習記錄的完成任務數
+    const lastAccessTime = new Date();
+    const lastAccessCell = learningSheet.getRange(learningRow, 6);
+
     completedTasks++;
     learningSheet.getRange(learningRow, 9).setValue(completedTasks);
-    learningSheet.getRange(learningRow, 6).setValue(new Date());
+    lastAccessCell.setValue(lastAccessTime);
+    lastAccessCell.setNumberFormat('yyyy-mm-dd hh:mm:ss');  // 設定日期時間格式
 
     // 如果完成所有任務，更新狀態為 completed
     if (completedTasks >= totalTasks) {
@@ -5471,7 +5486,9 @@ function startClassSession(params) {
       if (sessionsData[i][1] === classId && sessionsData[i][5] === 'active') {
         // 找到進行中的 session，先結束它
         const oldSessionRow = i + 1;
-        sessionsSheet.getRange(oldSessionRow, 5).setValue(new Date()); // end_time
+        const endTimeCell = sessionsSheet.getRange(oldSessionRow, 5);
+        endTimeCell.setValue(new Date()); // end_time
+        endTimeCell.setNumberFormat('yyyy-mm-dd hh:mm:ss');  // 設定日期時間格式
         sessionsSheet.getRange(oldSessionRow, 6).setValue('ended'); // status
         Logger.log('⚠️ 自動結束舊的 session:', sessionsData[i][0]);
       }
@@ -5903,6 +5920,8 @@ function recordDifficultyChange(params) {
     // 更新學習記錄表為「新的難度」
     learningSheet.getRange(learningRowIndex, currentTierCol + 1).setValue(toTier);
     Logger.log(`✅ 更新 Current Tier: ${dbFromTier} -> ${toTier}`);
+    Logger.log(`🔍 [Debug] 更新位置: Row ${learningRowIndex}, Column ${currentTierCol + 1}`);
+    Logger.log(`🔍 [Debug] 更新後的值: ${learningSheet.getRange(learningRowIndex, currentTierCol + 1).getValue()}`);
 
     // 寫入變更歷程
     const changeId = 'change_' + Utilities.getUuid();
@@ -6434,8 +6453,12 @@ function submitAssessment(params) {
       }
 
       if (progressRow > 0) {
+        const taskCompleteTime = new Date();
+        const taskCompleteTimeCell = progressSheet.getRange(progressRow, 7);
+
         progressSheet.getRange(progressRow, 4).setValue('completed');  // status = completed
-        progressSheet.getRange(progressRow, 7).setValue(new Date());   // complete_time
+        taskCompleteTimeCell.setValue(taskCompleteTime);   // complete_time
+        taskCompleteTimeCell.setNumberFormat('yyyy-mm-dd hh:mm:ss');  // 設定日期時間格式
 
         // 獲取自檢情境
         const selfCheckStatus = progressData[progressRow - 1][8];  // 第9欄
@@ -7235,15 +7258,21 @@ function uploadTaskWork(params) {
     }
 
     const submissionId = generateUUID();
+    const uploadTime = new Date();
+
     submissionsSheet.appendRow([
       submissionId,
       taskProgressId,
       fileUrl,
       fileName,
-      new Date(),
+      uploadTime,
       email,
       '已上傳'
     ]);
+
+    // 設定上傳時間的日期時間格式
+    const lastRow = submissionsSheet.getLastRow();
+    submissionsSheet.getRange(lastRow, 5).setNumberFormat('yyyy-mm-dd hh:mm:ss');
 
     Logger.log(`✅ 記錄到 TASK_SUBMISSIONS: submissionId=${submissionId}`);
 
@@ -7285,7 +7314,8 @@ function submitTaskExecution(params) {
       uploadedFileUrl,
       assessmentAnswers,  // JSON 格式的評量答案物件 { questionId: answer, ... }
       accuracy,
-      tokenReward
+      tokenReward,
+      timeSpent           // ✅ 新增：實際活動時間（秒）
     } = params;
 
     // 參數驗證
@@ -7330,10 +7360,16 @@ function submitTaskExecution(params) {
 
     // 更新狀態和完成時間
     // 欄位順序: progress_id(1), record_id(2), task_id(3), status(4), start_time(5), complete_time(6), time_spent(7)
-    progressSheet.getRange(rowIndex, 4).setValue('completed');  // status (欄4)
-    progressSheet.getRange(rowIndex, 6).setValue(new Date());   // complete_time (欄6)
+    const completeTime = new Date();
+    const completeTimeCell = progressSheet.getRange(rowIndex, 6);
+    const timeSpentValue = parseInt(timeSpent) || 0;  // 確保是數字
 
-    Logger.log(`✅ 更新 TASK_PROGRESS 狀態: completed`);
+    progressSheet.getRange(rowIndex, 4).setValue('completed');  // status (欄4)
+    completeTimeCell.setValue(completeTime);  // complete_time (欄6)
+    completeTimeCell.setNumberFormat('yyyy-mm-dd hh:mm:ss');  // 設定日期時間格式
+    progressSheet.getRange(rowIndex, 7).setValue(timeSpentValue);  // time_spent (欄7，秒數)
+
+    Logger.log(`✅ 更新 TASK_PROGRESS 狀態: completed, 完成時間: ${completeTime.toLocaleString('zh-TW')}, 活動時間: ${timeSpentValue}秒 (${Math.floor(timeSpentValue / 60)}分鐘)`);
 
     // 2. 記錄檢核結果到 SELF_CHECK_RECORDS（每個檢核項目一筆記錄）
     // 新格式: check_record_id, task_progress_id, student_email, user_id, checklist_id, student_checked, check_time
@@ -7374,7 +7410,7 @@ function submitTaskExecution(params) {
       const item = parsedChecklistItems[i];
       const checked = parsedChecklistAnswers[i] || false;
       const checklistId = item.checklistId || item.id || `checklist_${i}`;
-      
+
       checkRecordsSheet.appendRow([
         generateUUID(),           // check_record_id
         taskProgressId,           // task_progress_id
@@ -7384,6 +7420,10 @@ function submitTaskExecution(params) {
         checked,                  // student_checked (true/false)
         now                       // check_time
       ]);
+
+      // 設定檢核時間的日期時間格式
+      const lastRow = checkRecordsSheet.getLastRow();
+      checkRecordsSheet.getRange(lastRow, 7).setNumberFormat('yyyy-mm-dd hh:mm:ss');
     }
 
     Logger.log(`✅ 記錄檢核結果: ${parsedChecklistItems.length} 筆`);
@@ -7424,6 +7464,10 @@ function submitTaskExecution(params) {
       accuracy || 0,            // accuracy (答對率)
       now                       // submit_time
     ]);
+
+    // 設定提交時間的日期時間格式
+    const assessmentLastRow = assessmentSheet.getLastRow();
+    assessmentSheet.getRange(assessmentLastRow, 7).setNumberFormat('yyyy-mm-dd hh:mm:ss');
 
     Logger.log(`✅ 記錄評量結果: accuracy=${accuracy}`);
 

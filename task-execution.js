@@ -13,6 +13,12 @@ let webcamStream = null; // webcam 串流
 let taskProgressId = null; // 任務進度ID
 let lastCheckTime = null; // 上次勾選時間（用於檢測快速勾選）
 
+// ========== 時間追蹤 ==========
+let totalActiveTime = 0; // 累計活動時間（秒）
+let sessionStartTime = null; // 當前活動開始時間
+let isWindowActive = true; // 視窗是否活躍
+let activityCheckInterval = null; // 活動檢查計時器
+
 // LocalStorage 鍵名
 const STORAGE_KEY_PREFIX = 'task_execution_';
 
@@ -55,15 +61,114 @@ window.addEventListener('DOMContentLoaded', function() {
     // 監聽檔案選擇
     document.getElementById('fileInput').addEventListener('change', handleFileSelect);
 
+    // ========== 初始化時間追蹤 ==========
+    initTimeTracking();
+
     // 監聽 beforeunload（提醒使用者）
     window.addEventListener('beforeunload', function(e) {
         if (currentStage < 4 || !isAllAssessmentAnswered()) {
             e.preventDefault();
             e.returnValue = '';
+            stopTimeTracking(); // 停止時間追蹤
             saveProgress(); // 儲存進度
         }
     });
 });
+
+// ========== 時間追蹤功能 ==========
+function initTimeTracking() {
+    // 開始追蹤時間
+    sessionStartTime = Date.now();
+    isWindowActive = true;
+
+    // 監聽視窗焦點變化
+    window.addEventListener('focus', function() {
+        if (!isWindowActive) {
+            console.log('🟢 視窗重新獲得焦點，繼續計時');
+            isWindowActive = true;
+            sessionStartTime = Date.now(); // 重新開始計時
+        }
+    });
+
+    window.addEventListener('blur', function() {
+        if (isWindowActive) {
+            console.log('🔴 視窗失去焦點，暫停計時');
+            isWindowActive = false;
+            // 累加這段活動時間
+            if (sessionStartTime) {
+                const activeSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+                totalActiveTime += activeSeconds;
+                console.log(`⏱️ 累加活動時間: ${activeSeconds}秒, 總計: ${totalActiveTime}秒`);
+                sessionStartTime = null;
+            }
+        }
+    });
+
+    // 監聽頁面可見性變化（切換分頁）
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            console.log('🔴 頁面隱藏，暫停計時');
+            isWindowActive = false;
+            if (sessionStartTime) {
+                const activeSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+                totalActiveTime += activeSeconds;
+                console.log(`⏱️ 累加活動時間: ${activeSeconds}秒, 總計: ${totalActiveTime}秒`);
+                sessionStartTime = null;
+            }
+        } else {
+            console.log('🟢 頁面顯示，繼續計時');
+            isWindowActive = true;
+            sessionStartTime = Date.now();
+        }
+    });
+
+    // 每30秒自動儲存時間（防止意外關閉）
+    activityCheckInterval = setInterval(function() {
+        if (isWindowActive && sessionStartTime) {
+            const activeSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+            totalActiveTime += activeSeconds;
+            sessionStartTime = Date.now(); // 重設計時起點
+            console.log(`⏱️ 自動儲存活動時間, 總計: ${totalActiveTime}秒 (${Math.floor(totalActiveTime / 60)}分鐘)`);
+            saveProgress(); // 自動儲存進度
+        }
+    }, 30000); // 30秒
+
+    console.log('✅ 時間追蹤已啟動');
+}
+
+function stopTimeTracking() {
+    // 累加最後一段時間
+    if (isWindowActive && sessionStartTime) {
+        const activeSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+        totalActiveTime += activeSeconds;
+        console.log(`⏱️ 停止計時，最終總計: ${totalActiveTime}秒 (${Math.floor(totalActiveTime / 60)}分鐘)`);
+    }
+
+    // 清除計時器
+    if (activityCheckInterval) {
+        clearInterval(activityCheckInterval);
+    }
+
+    sessionStartTime = null;
+    isWindowActive = false;
+}
+
+function getActiveTimeInSeconds() {
+    // 計算當前總活動時間（包含進行中的時間）
+    let currentTotal = totalActiveTime;
+    if (isWindowActive && sessionStartTime) {
+        const activeSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+        currentTotal += activeSeconds;
+    }
+    return currentTotal;
+}
+
+function formatActiveTime() {
+    const totalSeconds = getActiveTimeInSeconds();
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}分${seconds}秒`;
+}
 
 // ========== 載入任務資料 ==========
 async function loadTaskData(taskId) {
@@ -850,9 +955,15 @@ async function submitAllData() {
     showLoading(true);
 
     try {
+        // 停止時間追蹤，計算最終時間
+        stopTimeTracking();
+        const timeSpentSeconds = getActiveTimeInSeconds();
+
         // 計算答對率
         const accuracy = calculateAccuracy();
         const tokenReward = Math.floor((taskData.tokenReward || 100) * accuracy);
+
+        console.log(`📊 提交數據統計：活動時間=${timeSpentSeconds}秒 (${Math.floor(timeSpentSeconds / 60)}分鐘), 答對率=${(accuracy * 100).toFixed(0)}%, 代幣=${tokenReward}`);
 
         const params = new URLSearchParams({
             action: 'submitTaskExecution',
@@ -863,7 +974,8 @@ async function submitAllData() {
             uploadedFileUrl: uploadedFileUrl,
             assessmentAnswers: JSON.stringify(assessmentAnswers),
             accuracy: accuracy,
-            tokenReward: tokenReward
+            tokenReward: tokenReward,
+            timeSpent: timeSpentSeconds  // ✅ 新增：實際活動時間（秒）
         });
 
         const response = await fetch(`${API_URL}?${params.toString()}`);
@@ -892,6 +1004,13 @@ async function submitAllData() {
 
 // ========== LocalStorage 進度管理 ==========
 function saveProgress() {
+    // 儲存前先累加當前活動時間
+    if (isWindowActive && sessionStartTime) {
+        const activeSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+        totalActiveTime += activeSeconds;
+        sessionStartTime = Date.now(); // 重設起點
+    }
+
     const progress = {
         currentStage,
         currentChecklistIndex,
@@ -899,6 +1018,7 @@ function saveProgress() {
         assessmentAnswers,
         uploadedFileUrl,
         lastCheckTime,
+        totalActiveTime,  // ✅ 新增：儲存累計活動時間
         timestamp: Date.now()
     };
 
@@ -931,6 +1051,9 @@ function restoreProgress(progress) {
     assessmentAnswers = progress.assessmentAnswers || {};
     uploadedFileUrl = progress.uploadedFileUrl || null;
     lastCheckTime = progress.lastCheckTime || null;
+    totalActiveTime = progress.totalActiveTime || 0;  // ✅ 新增：恢復累計活動時間
+
+    console.log(`⏱️ 恢復進度：累計活動時間 ${totalActiveTime}秒 (${Math.floor(totalActiveTime / 60)}分鐘)`);
 
     // 切換到對應階段
     switchStage(currentStage);

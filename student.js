@@ -303,27 +303,35 @@
                 console.log('🔍 [Debug] 學習記錄:', learningRecord);
                 
                 if (learningRecord) {
+                    console.log('🔍 [Debug] 完整學習記錄物件:', learningRecord);
+
                     // 取得後端記錄的 current_tier (可能是 'tutorial' 或 '基礎層')
                     const savedTierRaw = learningRecord.current_tier || learningRecord.currentTier;
                     console.log('🔍 [Debug] 後端記錄的難度:', savedTierRaw);
+                    console.log('🔍 [Debug] 可用的層級:', courseTiers.map(t => `${t.tierId} (${t.name})`));
 
-                    if (savedTierRaw && savedTierRaw !== 'initial') {
+                    if (savedTierRaw && savedTierRaw !== 'initial' && savedTierRaw !== '') {
                         // 嘗試比對：比對 ID (tutorial) 或 名稱 (基礎層)
-                        const matchedTier = courseTiers.find(t => 
+                        const matchedTier = courseTiers.find(t =>
                             t.tierId === savedTierRaw || t.name === savedTierRaw
                         );
 
                         if (matchedTier) {
                             selectedTier = matchedTier.name; // ✅ 設定全域變數 (關鍵!)
                             console.log('✅ [Success] 成功匹配難度，準備跳轉:', selectedTier);
+                            console.log('✅ [Success] 匹配的層級資訊:', matchedTier);
                         } else {
                             console.warn('⚠️ [Warning] 有記錄但找不到對應層級:', savedTierRaw);
+                            console.warn('⚠️ [Warning] 可能的原因：層級ID不匹配或層級名稱不匹配');
                             selectedTier = null; // 重置
                         }
                     } else {
-                        console.log('ℹ️ [Info] 無有效難度記錄 (initial 或空)，停留在選擇畫面');
+                        console.log('ℹ️ [Info] 無有效難度記錄 (initial、空字串或null)，停留在選擇畫面');
+                        console.log('ℹ️ [Info] savedTierRaw 值:', savedTierRaw);
                         selectedTier = null;
                     }
+                } else {
+                    console.log('❌ [Error] 沒有學習記錄');
                 }
                 // ============================================================
 
@@ -1024,19 +1032,22 @@
         const tierName = tierInfo.name || tierInfo.tier; // 例如 "基礎層"
         const tierId = tierInfo.tierId || tierInfo.id;   // 例如 "tutorial"
 
+        console.log('🎯 [選擇難度] 層級資訊:', { tierName, tierId, fullInfo: tierInfo });
+
         // 呼叫後端記錄 (Record Change)
         // 注意：這裡我們傳 tierId 給後端存 (例如 tutorial)，但前端顯示用 tierName
         recordTierChange(
             null, // fromTier 設為 null，交給後端去查
             tierId, // toTier: 存入資料庫的值 (建議存 ID: tutorial)
-            'manual', 
-            null, 
+            'manual',
+            null,
             0
         );
 
         // 更新前端狀態
-        selectedTier = tierName; 
-        
+        selectedTier = tierName;
+        console.log('✅ [選擇難度] 已設定 selectedTier:', selectedTier);
+
         // 進入任務列表
         loadTierTasks();
     }
@@ -2327,6 +2338,10 @@ window.openTaskModal = function(task, progress) {
      * 記錄難度變更到後端
      */
     function recordTierChange(fromTier, toTier, reason, taskId, execTime) {
+        console.log('📝 [記錄難度變更] 開始記錄:', { fromTier, toTier, reason, taskId, execTime });
+        console.log('📝 [記錄難度變更] learningRecord:', learningRecord);
+        console.log('📝 [記錄難度變更] selectedCourse:', selectedCourse);
+
         if (!learningRecord || !selectedCourse) {
             APP_CONFIG.log('⚠️ 無法記錄難度變更：缺少必要資訊');
             return;
@@ -2345,14 +2360,17 @@ window.openTaskModal = function(task, progress) {
         });
 
         APP_CONFIG.log('📤 記錄難度變更:', { fromTier, toTier, reason });
+        console.log('📤 [API呼叫] URL:', `${APP_CONFIG.API_URL}?${params.toString()}`);
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
                 if (response.success) {
                     APP_CONFIG.log('✅ 難度變更已記錄:', response);
+                    console.log('✅ [API回應] 成功:', response);
                 } else {
                     APP_CONFIG.error('❌ 記錄難度變更失敗:', response.message);
+                    console.error('❌ [API回應] 失敗:', response);
                 }
             })
             .catch(function(error) {
