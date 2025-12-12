@@ -1230,16 +1230,20 @@
         // 原因：前端已經有即時更新執行中任務的時間（每 1 秒）
         // 自動刷新主要用於檢測新提交的任務或退回的任務
         autoRefreshInterval = setInterval(function() {
-            // 智能刷新：如果有待審核或執行中的任務才刷新
-            const hasPendingOrInProgress = allTasks.some(task =>
-                task.status === 'pending_review' || task.status === 'in_progress'
+            // 智能刷新：如果有任何活躍狀態的任務才刷新
+            const hasActiveTasks = allTasks.some(task =>
+                task.status === 'in_progress' ||
+                task.status === 'self_checking' ||
+                task.status === 'uploading' ||
+                task.status === 'assessment' ||
+                task.status === 'pending_review'
             );
 
-            if (hasPendingOrInProgress) {
-                APP_CONFIG.log('🔄 自動刷新任務資料...（有待處理任務）');
+            if (hasActiveTasks) {
+                APP_CONFIG.log('🔄 自動刷新任務資料...（有活躍任務）');
                 loadReviewTasks(true); // 傳入 true 表示是自動刷新
             } else {
-                APP_CONFIG.log('⏸️ 無待處理任務，跳過本次刷新（節省資源）');
+                APP_CONFIG.log('⏸️ 無活躍任務，跳過本次刷新（節省資源）');
                 refreshCountdown = 60; // 重置倒數
             }
         }, 60000); // 改為 60 秒
