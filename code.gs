@@ -469,7 +469,8 @@ function doGet(e) {
           uploadedFileUrl: params.uploadedFileUrl,
           assessmentAnswers: params.assessmentAnswers,
           accuracy: params.accuracy,
-          tokenReward: params.tokenReward
+          tokenReward: params.tokenReward,
+          time_spent: params.time_spent  // ✅ 修復：傳遞 time_spent 參數
         });
         break;
 
