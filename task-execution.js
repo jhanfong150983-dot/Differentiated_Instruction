@@ -1097,21 +1097,13 @@ async function submitAllData() {
             time_spent: timeSpentSeconds  // ✅ 修正：使用 time_spent（蛇形命名）匹配資料庫欄位
         });
 
-        // 🔍 Debug: 打印所有參數
-        console.log('🔍 準備提交的參數:', {
-            action: 'submitTaskExecution',
-            taskProgressId: taskProgressId,
-            userEmail: studentEmail,
-            accuracy: accuracy,
-            tokenReward: tokenReward,
-            time_spent: timeSpentSeconds,
-            time_spent_type: typeof timeSpentSeconds
-        });
-        console.log('🔍 完整 URL 預覽 (前200字元):', `${API_URL}?${params.toString()}`.substring(0, 200));
-
-        // ⏸️ 暫停10秒,讓您有時間看 console
-        console.log('⏸️ 暫停10秒,請查看上方的參數...');
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        // 🔍 Debug: 使用 alert 顯示參數
+        alert(`🔍 Debug 資訊:\n\n` +
+              `time_spent = ${timeSpentSeconds}\n` +
+              `型別 = ${typeof timeSpentSeconds}\n` +
+              `accuracy = ${accuracy}\n` +
+              `tokenReward = ${tokenReward}\n\n` +
+              `請檢查 time_spent 是否有值`);
 
         const response = await fetch(`${API_URL}?${params.toString()}`);
         const data = await response.json();
