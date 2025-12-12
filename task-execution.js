@@ -1107,10 +1107,10 @@ async function submitAllData() {
                         // 獲取 recordId（從父視窗的課堂資訊中）
                         const recordId = window.opener.selectedClass?.recordId;
                         if (recordId) {
-                            // 等待刷新完成後才關閉視窗
-                            await window.opener.loadTaskProgress(recordId);
+                            // ✅ 強制刷新（forceRefresh=true），確保獲取最新資料
+                            await window.opener.loadTaskProgress(recordId, true);
                             window.opener.displayQuestList();
-                            console.log('✅ 父視窗任務列表已刷新');
+                            console.log('✅ 父視窗任務列表已強制刷新');
                         } else {
                             // 如果沒有 recordId，直接刷新顯示（使用快取的進度）
                             window.opener.displayQuestList();

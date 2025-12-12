@@ -1271,9 +1271,9 @@
     /**
      * 載入任務進度
      */
-    function loadTaskProgress(recordId) {
-        // 性能優化：如果有緩存的進度數據，直接使用
-        if (cachedProgressData) {
+    function loadTaskProgress(recordId, forceRefresh = false) {
+        // 性能優化：如果有緩存的進度數據且不是強制刷新，直接使用
+        if (cachedProgressData && !forceRefresh) {
             APP_CONFIG.log('⚡ 使用緩存的任務進度數據，跳過重複調用');
 
             currentTasksProgress = cachedProgressData;
@@ -1295,7 +1295,13 @@
             return Promise.resolve(true);
         }
 
-        // 沒有緩存，正常調用 API
+        // ✅ 修復問題7：如果是強制刷新，清除緩存
+        if (forceRefresh) {
+            cachedProgressData = null;
+            APP_CONFIG.log('🔄 強制刷新任務進度，清除緩存');
+        }
+
+        // 沒有緩存或強制刷新，正常調用 API
         const params = new URLSearchParams({
             action: 'getTaskProgress',
             recordId: recordId
