@@ -1063,8 +1063,20 @@ async function submitAllData() {
 
     try {
         // 停止時間追蹤，計算最終時間
+        console.log('🔍 停止時間追蹤前的狀態：', {
+            totalActiveTime,
+            isWindowActive,
+            sessionStartTime,
+            sessionStartTimeDate: sessionStartTime ? new Date(sessionStartTime).toISOString() : null
+        });
+
         stopTimeTracking();
         const timeSpentSeconds = getActiveTimeInSeconds();
+
+        console.log('🔍 停止時間追蹤後：', {
+            totalActiveTime,
+            timeSpentSeconds
+        });
 
         // 計算答對率
         const accuracy = calculateAccuracy();
