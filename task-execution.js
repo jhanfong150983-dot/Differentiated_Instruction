@@ -1100,6 +1100,14 @@ async function submitAllData() {
             // ✅ 修復問題7：通知父視窗刷新任務列表（確保在關閉前完成）
             if (window.opener && !window.opener.closed) {
                 console.log('📢 通知父視窗刷新任務列表...');
+                console.log('🔍 調試：父視窗物件檢查', {
+                    hasSelectedClass: !!window.opener.selectedClass,
+                    selectedClass: window.opener.selectedClass,
+                    hasLoadTaskProgress: typeof window.opener.loadTaskProgress === 'function',
+                    hasDisplayQuestList: typeof window.opener.displayQuestList === 'function',
+                    hasCloseTaskModal: typeof window.opener.closeTaskModal === 'function'
+                });
+
                 try {
                     // 1. 關閉父視窗的任務 modal（如果開著）
                     if (typeof window.opener.closeTaskModal === 'function') {
@@ -1112,25 +1120,32 @@ async function submitAllData() {
                         typeof window.opener.displayQuestList === 'function') {
                         // 獲取 recordId（從父視窗的課堂資訊中）
                         const recordId = window.opener.selectedClass?.recordId;
+                        console.log('🔍 調試：recordId =', recordId);
+
                         if (recordId) {
                             // ✅ 強制刷新（forceRefresh=true），確保獲取最新資料
+                            console.log('🔄 開始強制刷新任務進度...');
                             await window.opener.loadTaskProgress(recordId, true);
+                            console.log('✅ 任務進度已刷新，開始更新顯示...');
                             window.opener.displayQuestList();
                             console.log('✅ 父視窗任務列表已強制刷新');
                         } else {
+                            console.warn('⚠️ 沒有 recordId，直接刷新顯示');
                             // 如果沒有 recordId，直接刷新顯示（使用快取的進度）
                             window.opener.displayQuestList();
                             console.log('✅ 父視窗任務列表已刷新（使用快取）');
                         }
                     } else if (typeof window.opener.displayQuestList === 'function') {
                         // 降級方案：只刷新顯示
+                        console.log('⚠️ 使用降級方案刷新');
                         window.opener.displayQuestList();
                         console.log('✅ 父視窗任務列表已刷新（降級方案）');
                     } else {
-                        console.warn('⚠️ 父視窗沒有 displayQuestList 函數');
+                        console.error('❌ 父視窗沒有必要的函數');
                     }
                 } catch (error) {
                     console.error('❌ 無法通知父視窗:', error);
+                    console.error('錯誤詳情:', error.stack);
                 }
             } else {
                 console.warn('⚠️ 沒有父視窗或父視窗已關閉');
