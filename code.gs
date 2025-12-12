@@ -4758,8 +4758,13 @@ function getTeacherTaskMonitor(params) {
       const completeTime = progressData[i][5];
       const timeSpent = progressData[i][6];
 
-      // 階段 2：處理執行中、待審核和已完成狀態
-      if (status !== 'in_progress' && status !== 'pending_review' && status !== 'completed') continue;
+      // 階段 2：處理所有活躍狀態（包含各階段）
+      if (status !== 'in_progress' &&
+          status !== 'self_checking' &&
+          status !== 'uploading' &&
+          status !== 'assessment' &&
+          status !== 'pending_review' &&
+          status !== 'completed') continue;
 
       // 6. 找到學習記錄（使用索引優化）
       const learningRecord = learningRecordsMap[recordId];
@@ -4915,12 +4920,15 @@ function getTeacherTaskMonitor(params) {
         const existing = userProgressMap[userId];
         let shouldReplace = false;
 
-        // 狀態優先級判斷
+        // 狀態優先級判斷（數字越大優先級越高）
         const statusPriority = {
-          'in_progress': 3,
-          'pending_review': 2,
-          'completed': 1,
-          'not_started': 0
+          'in_progress': 6,      // 最高優先級：正在執行
+          'self_checking': 5,    // 檢核階段
+          'uploading': 4,        // 上傳階段
+          'assessment': 3,       // 評量階段
+          'pending_review': 2,   // 待審核
+          'completed': 1,        // 已完成
+          'not_started': 0       // 未開始
         };
 
         const newPriority = statusPriority[status] || 0;
@@ -7711,13 +7719,7 @@ function submitTaskExecution(params) {
       success: true,
       tokenReward: tokenReward,
       accuracy: accuracy,
-      message: '任務完成！',
-      debug: {
-        time_spent_received: time_spent,
-        time_spent_type: typeof time_spent,
-        time_spent_saved: timeSpentValue,
-        time_in_minutes: Math.floor(timeSpentValue / 60)
-      }
+      message: '任務完成！'
     };
 
   } catch (error) {

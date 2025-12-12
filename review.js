@@ -976,8 +976,28 @@
                 statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⚡ 執行中</span>';
             }
             showActions = true; // 執行中也可以重置任務
+        } else if (task.status === 'self_checking') {
+            // 檢核階段：綠燈
+            lightColor = 'green';
+            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">📝 檢核中</span>';
+            showActions = true;
+        } else if (task.status === 'uploading') {
+            // 上傳階段：綠燈
+            lightColor = 'green';
+            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">📤 上傳中</span>';
+            showActions = true;
+        } else if (task.status === 'assessment') {
+            // 評量階段：黃燈
+            lightColor = 'yellow';
+            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">📝 評量中</span>';
+            showActions = true;
+        } else if (task.status === 'pending_review') {
+            // 待審核：黃燈
+            lightColor = 'yellow';
+            statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">⏳ 待審核</span>';
+            showActions = false;
         } else if (task.status === 'completed') {
-            // 已完成：顯示完成標記
+            // 已完成：藍燈
             lightColor = 'blue';
             statusBadge = '<span style="display: inline-block; padding: 4px 12px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;">✅ 已完成</span>';
             showActions = false; // 已完成不需要重置
