@@ -25,6 +25,7 @@
     let taskTimeLimitCheckInterval = null; // 任務時間限制檢查計時器（檢查是否超時）
     let currentTaskStartTime = null; // 当前任务开始时间
     let hasShownSlowSuggestion = false; // 是否已显示过太慢建议
+    let taskExecutionWindow = null; // ✅ 修復問題6：追蹤任務執行視窗，防止重複開啟
 
     // 性能優化：緩存數據避免重複 API 調用
     let cachedSessionStatus = null; // 緩存課堂狀態
@@ -2067,14 +2068,8 @@ window.openTaskModal = function(task, progress) {
                 closeTaskModal();
 
                 const taskProgressId = progress.taskProgressId;
-                const taskExecutionUrl = new URL('task-execution.html', window.location.href);
-                taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
-                taskExecutionUrl.searchParams.set('taskId', task.taskId);
-                taskExecutionUrl.searchParams.set('userEmail', currentStudent.email);
-                taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
-
-                console.log('✍️ 重新開啟任務執行視窗（評量階段）:', taskExecutionUrl.toString());
-                window.open(taskExecutionUrl.toString(), '_blank', 'width=1200,height=800');
+                console.log('✍️ 重新開啟任務執行視窗（評量階段）');
+                openTaskExecutionWindow(taskProgressId, task.taskId, currentStudent.email);
 
                 showToast('✅ 已重新開啟任務視窗，請繼續評量', 'success');
             };
@@ -2100,14 +2095,8 @@ window.openTaskModal = function(task, progress) {
                 closeTaskModal();
 
                 const taskProgressId = progress.taskProgressId;
-                const taskExecutionUrl = new URL('task-execution.html', window.location.href);
-                taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
-                taskExecutionUrl.searchParams.set('taskId', task.taskId);
-                taskExecutionUrl.searchParams.set('userEmail', currentStudent.email);
-                taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
-
-                console.log('📋 重新開啟任務執行視窗（檢核階段）:', taskExecutionUrl.toString());
-                window.open(taskExecutionUrl.toString(), '_blank', 'width=1200,height=800');
+                console.log('📋 重新開啟任務執行視窗（檢核階段）');
+                openTaskExecutionWindow(taskProgressId, task.taskId, currentStudent.email);
 
                 showToast('✅ 已重新開啟任務視窗，請繼續檢核', 'success');
             };
@@ -2133,14 +2122,8 @@ window.openTaskModal = function(task, progress) {
                 closeTaskModal();
 
                 const taskProgressId = progress.taskProgressId;
-                const taskExecutionUrl = new URL('task-execution.html', window.location.href);
-                taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
-                taskExecutionUrl.searchParams.set('taskId', task.taskId);
-                taskExecutionUrl.searchParams.set('userEmail', currentStudent.email);
-                taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
-
-                console.log('📤 重新開啟任務執行視窗（上傳階段）:', taskExecutionUrl.toString());
-                window.open(taskExecutionUrl.toString(), '_blank', 'width=1200,height=800');
+                console.log('📤 重新開啟任務執行視窗（上傳階段）');
+                openTaskExecutionWindow(taskProgressId, task.taskId, currentStudent.email);
 
                 showToast('✅ 已重新開啟任務視窗，請繼續上傳', 'success');
             };
@@ -2255,14 +2238,8 @@ window.openTaskModal = function(task, progress) {
                 closeTaskModal();
 
                 const taskProgressId = progress.taskProgressId;
-                const taskExecutionUrl = new URL('task-execution.html', window.location.href);
-                taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
-                taskExecutionUrl.searchParams.set('taskId', task.taskId);
-                taskExecutionUrl.searchParams.set('userEmail', currentStudent.email);
-                taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
-
-                console.log('🔄 重新開啟任務執行視窗:', taskExecutionUrl.toString());
-                window.open(taskExecutionUrl.toString(), '_blank', 'width=1200,height=800');
+                console.log('🔄 重新開啟任務執行視窗');
+                openTaskExecutionWindow(taskProgressId, task.taskId, currentStudent.email);
 
                 showToast('✅ 已重新開啟任務視窗，請繼續完成', 'success');
             };
@@ -2416,6 +2393,46 @@ window.openTaskModal = function(task, progress) {
 
         selectedTask = null;
     };
+
+    /**
+     * ✅ 修復問題6：開啟任務執行視窗（防止重複開啟）
+     * @param {string} taskProgressId - 任務進度 ID
+     * @param {string} taskId - 任務 ID
+     * @param {string} userEmail - 用戶 email
+     */
+    function openTaskExecutionWindow(taskProgressId, taskId, userEmail) {
+        // 檢查是否已經有開啟的視窗
+        if (taskExecutionWindow && !taskExecutionWindow.closed) {
+            // 視窗已存在，將焦點切換到該視窗
+            taskExecutionWindow.focus();
+            showToast('✅ 任務視窗已開啟，已切換至該視窗', 'info');
+            return taskExecutionWindow;
+        }
+
+        // 建立視窗 URL
+        const taskExecutionUrl = new URL('task-execution.html', window.location.href);
+        taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
+        taskExecutionUrl.searchParams.set('taskId', taskId);
+        taskExecutionUrl.searchParams.set('userEmail', userEmail);
+        taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
+
+        // 開啟新視窗
+        console.log('🔄 開啟任務執行視窗:', taskExecutionUrl.toString());
+        taskExecutionWindow = window.open(taskExecutionUrl.toString(), '_blank', 'width=1400,height=900');
+
+        // 監聽視窗關閉事件，清除引用
+        if (taskExecutionWindow) {
+            const checkClosed = setInterval(function() {
+                if (taskExecutionWindow.closed) {
+                    clearInterval(checkClosed);
+                    taskExecutionWindow = null;
+                    console.log('📪 任務視窗已關閉');
+                }
+            }, 1000);
+        }
+
+        return taskExecutionWindow;
+    }
 
     /**
      * 重新打開任務教材
@@ -2709,29 +2726,21 @@ window.openTaskModal = function(task, progress) {
                           completeBtn.textContent = '🔄 繼續完成任務';
                           completeBtn.className = 'btn btn-warning';
                           completeBtn.onclick = function() {
+                              // ✅ 修復問題5：在 closeTaskModal 之前先取得 taskId（避免 selectedTask 被設為 null）
+                              const capturedTaskId = selectedTask.taskId;
+                              const capturedUserEmail = currentStudent.email;
+
                               closeTaskModal();
 
-                              const taskExecutionUrl = new URL('task-execution.html', window.location.href);
-                              taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
-                              taskExecutionUrl.searchParams.set('taskId', selectedTask.taskId);
-                              taskExecutionUrl.searchParams.set('userEmail', currentStudent.email);
-                              taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
-
-                              console.log('🔄 重新開啟任務執行視窗:', taskExecutionUrl.toString());
-                              window.open(taskExecutionUrl.toString(), '_blank', 'width=1200,height=800');
+                              console.log('🔄 重新開啟任務執行視窗');
+                              openTaskExecutionWindow(taskProgressId, capturedTaskId, capturedUserEmail);
 
                               showToast('✅ 已重新開啟任務視窗，請繼續完成', 'success');
                           };
                       }
 
                       // 打開任務執行視窗
-                      const taskExecutionUrl = new URL('task-execution.html', window.location.href);
-                      taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
-                      taskExecutionUrl.searchParams.set('taskId', selectedTask.taskId);
-                      taskExecutionUrl.searchParams.set('userEmail', currentStudent.email);
-                      taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
-
-                      window.open(taskExecutionUrl.toString(), '_blank', 'width=1400,height=900');
+                      openTaskExecutionWindow(taskProgressId, selectedTask.taskId, currentStudent.email);
 
                       if (typeof displayQuestList === 'function') {
                           displayQuestList();
