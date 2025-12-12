@@ -7710,7 +7710,13 @@ function submitTaskExecution(params) {
       success: true,
       tokenReward: tokenReward,
       accuracy: accuracy,
-      message: '任務完成！'
+      message: '任務完成！',
+      debug: {
+        time_spent_received: time_spent,
+        time_spent_type: typeof time_spent,
+        time_spent_saved: timeSpentValue,
+        time_in_minutes: Math.floor(timeSpentValue / 60)
+      }
     };
 
   } catch (error) {
