@@ -7543,7 +7543,7 @@ function submitTaskExecution(params) {
     if (!taskProgressId) throw new Error('缺少任務進度ID (taskProgressId)');
     if (!userEmail) throw new Error('缺少使用者信箱 (userEmail)');
 
-    Logger.log(`📝 提交任務執行: taskProgressId=${taskProgressId}, accuracy=${accuracy}, tokenReward=${tokenReward}`);
+    Logger.log(`📝 提交任務執行: taskProgressId=${taskProgressId}, accuracy=${accuracy}, tokenReward=${tokenReward}, time_spent=${time_spent}`);
 
     const email = getCurrentUserEmail(userEmail);
     
@@ -7584,6 +7584,8 @@ function submitTaskExecution(params) {
     const completeTime = new Date();
     const completeTimeCell = progressSheet.getRange(rowIndex, 6);
     const timeSpentValue = parseInt(time_spent) || 0;  // 確保是數字
+
+    Logger.log(`🔍 Debug time_spent: 原始值=${time_spent}, 轉換後=${timeSpentValue}, 型別=${typeof time_spent}`);
 
     progressSheet.getRange(rowIndex, 4).setValue('completed');  // status (欄4)
     completeTimeCell.setValue(completeTime);  // complete_time (欄6)
