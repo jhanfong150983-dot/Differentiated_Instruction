@@ -2437,6 +2437,18 @@ window.openTaskModal = function(task, progress) {
     });
 
     /**
+     * ✅ 修復問題7：暴露 learningRecord 到全局作用域
+     * 讓子視窗可以獲取 recordId 來刷新任務進度
+     * 注意：這是一個 getter，會返回當前的 learningRecord 值
+     */
+    Object.defineProperty(window, 'learningRecord', {
+        get: function() {
+            return learningRecord;
+        },
+        configurable: true
+    });
+
+    /**
      * ✅ 修復問題6：開啟任務執行視窗（防止重複開啟）
      * @param {string} taskProgressId - 任務進度 ID
      * @param {string} taskId - 任務 ID

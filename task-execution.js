@@ -1118,9 +1118,10 @@ async function submitAllData() {
                     // 2. 先刷新進度數據，再更新顯示
                     if (typeof window.opener.loadTaskProgress === 'function' &&
                         typeof window.opener.displayQuestList === 'function') {
-                        // 獲取 recordId（從父視窗的課堂資訊中）
-                        const recordId = window.opener.selectedClass?.recordId;
+                        // 獲取 recordId（從父視窗的學習記錄中）
+                        const recordId = window.opener.learningRecord?.recordId;
                         console.log('🔍 調試：recordId =', recordId);
+                        console.log('🔍 調試：learningRecord =', window.opener.learningRecord);
 
                         if (recordId) {
                             // ✅ 強制刷新（forceRefresh=true），確保獲取最新資料
