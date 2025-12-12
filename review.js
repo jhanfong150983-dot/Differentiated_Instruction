@@ -12,7 +12,7 @@
     let allTasks = [];
     let filteredTasks = [];
     let currentQuickFilter = 'all';
-    let autoRefreshInterval = null;
+    // ✅ Removed: autoRefreshInterval (merged into countdownInterval)
     let countdownInterval = null;
     let refreshCountdown = 30;
 
@@ -1232,10 +1232,7 @@
      * 啟動自動刷新（階段 2：只在上課時啟動）
      */
     function startAutoRefresh() {
-        // 清除舊的計時器
-        if (autoRefreshInterval) {
-            clearInterval(autoRefreshInterval);
-        }
+        // ✅ Fixed: 清除舊的計時器（只需要 countdownInterval）
         if (countdownInterval) {
             clearInterval(countdownInterval);
         }
@@ -1243,38 +1240,34 @@
         // 性能優化：改為 60 秒自動刷新（原本 30 秒太頻繁）
         // 原因：前端已經有即時更新執行中任務的時間（每 1 秒）
         // 自動刷新主要用於檢測新提交的任務或退回的任務
-        autoRefreshInterval = setInterval(function() {
-            // ✅ 修復：總是執行刷新，確保能即時看到學生的進度變化
-            // 之前的"智能刷新"會造成死锁：需要有活躍任務才刷新，但需要刷新才能知道有沒有活躍任務
-            APP_CONFIG.log('🔄 自動刷新任務資料...');
-            loadReviewTasks(true); // 傳入 true 表示是自動刷新
-            refreshCountdown = 60; // 重置倒數
-        }, 60000); // 60 秒自動刷新
+        // ✅ 修復：使用單一計時器確保倒數和刷新同步
+        refreshCountdown = 60;
 
-        // 倒數計時（每秒更新）
-        refreshCountdown = 60; // 改為 60 秒
         countdownInterval = setInterval(function() {
             refreshCountdown--;
-            if (refreshCountdown <= 0) {
-                refreshCountdown = 60; // 改為 60 秒
-            }
+
+            // 更新倒數顯示
             const countdownElement = document.getElementById('refreshCountdown');
             if (countdownElement) {
                 countdownElement.textContent = refreshCountdown;
             }
-        }, 1000);
 
-        APP_CONFIG.log('✅ 智能自動刷新已啟動（每 60 秒，無任務時跳過）');
+            // 當倒數到 0 時執行刷新
+            if (refreshCountdown <= 0) {
+                APP_CONFIG.log('🔄 自動刷新任務資料...（倒數到 0）');
+                loadReviewTasks(true); // 傳入 true 表示是自動刷新
+                refreshCountdown = 60; // 重置倒數
+            }
+        }, 1000); // 每秒檢查一次
+
+        APP_CONFIG.log('✅ 自動刷新已啟動（每 60 秒）');
     }
 
     /**
      * 停止自動刷新
      */
     function stopAutoRefresh() {
-        if (autoRefreshInterval) {
-            clearInterval(autoRefreshInterval);
-            autoRefreshInterval = null;
-        }
+        // ✅ Fixed: 只需清除 countdownInterval（已包含刷新功能）
         if (countdownInterval) {
             clearInterval(countdownInterval);
             countdownInterval = null;
