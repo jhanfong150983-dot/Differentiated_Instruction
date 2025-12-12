@@ -3715,6 +3715,7 @@ function getTaskProgress(recordId) {
       if (progressData[i][1] === recordId) {
         const taskId = progressData[i][2];
         progress[taskId] = {
+          taskProgressId: progressData[i][0],  // ✅ 新增：進度 ID (progress_id)
           status: progressData[i][3],
           startTime: progressData[i][4],
           completeTime: progressData[i][5],
