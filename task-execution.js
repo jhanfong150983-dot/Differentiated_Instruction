@@ -43,11 +43,22 @@ window.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
+    // 監聽檔案選擇
+    document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+
+    // ========== 初始化時間追蹤 ==========
+    initTimeTracking();
+
+    // ========== 載入任務資料（必須先載入） ==========
     // 嘗試從 LocalStorage 恢復進度
     const savedProgress = loadProgress();
     if (savedProgress) {
         if (confirm('偵測到未完成的任務，是否繼續？')) {
-            restoreProgress(savedProgress);
+            // ✅ 修復：先載入任務資料，再恢復進度
+            loadTaskData(taskId).then(() => {
+                console.log('📋 任務資料載入完成，恢復進度...');
+                restoreProgress(savedProgress);
+            });
             return;
         } else {
             // 清除舊進度
@@ -55,14 +66,11 @@ window.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // 載入任務資料
-    loadTaskData(taskId);
-
-    // 監聽檔案選擇
-    document.getElementById('fileInput').addEventListener('change', handleFileSelect);
-
-    // ========== 初始化時間追蹤 ==========
-    initTimeTracking();
+    // 正常載入任務資料（新任務）
+    loadTaskData(taskId).then(() => {
+        console.log('📋 任務資料載入完成，初始化第一階段...');
+        updateStageDisplay();
+    });
 
     // 監聽 beforeunload（提醒使用者）
     window.addEventListener('beforeunload', function(e) {
@@ -549,8 +557,9 @@ async function loadTaskData(taskId) {
                 console.warn('⚠️ 此任務沒有評量題目');
             }
 
-            // 初始化第一階段
-            updateStageDisplay();
+            // ✅ 修復：不在這裡初始化階段，讓外部決定
+            // 如果是新任務，外部會調用 updateStageDisplay()
+            // 如果是恢復進度，外部會調用 restoreProgress()
             showLoading(false);
         } else {
             alert('載入任務失敗：' + data.message);
