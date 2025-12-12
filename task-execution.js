@@ -1153,11 +1153,9 @@ async function submitAllData() {
             }
 
             // 延遲500ms後關閉視窗，確保父視窗有時間完成刷新
-            // ⚠️ 暫時註解掉自動關閉，方便調試
-            console.log('⚠️ 調試模式：視窗不會自動關閉，請查看上方的調試訊息');
-            // setTimeout(() => {
-            //     window.close();
-            // }, 500);
+            setTimeout(() => {
+                window.close();
+            }, 500);
         } else {
             showWarning('提交失敗：' + data.message);
         }
