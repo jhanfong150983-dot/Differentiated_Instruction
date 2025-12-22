@@ -1175,6 +1175,7 @@
     /**
      * 載入並篩選任務列表
      */
+    function loadTasksData() {
         const params = new URLSearchParams({
             action: 'getCourseDetails',
             courseId: selectedCourse.courseId
