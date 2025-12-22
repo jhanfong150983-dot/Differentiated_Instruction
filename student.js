@@ -96,7 +96,6 @@
         const params = new URLSearchParams({
             action: 'getStudentClasses',
             userEmail: currentStudent.email
-        });
 
         APP_CONFIG.log('📤 載入班級列表...', { userEmail: currentStudent.email });
 
@@ -243,26 +242,27 @@
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
-
         if (!selectedClass || !selectedClass.classId || !selectedCourse || !selectedCourse.courseId) {
             hideLoading('mainLoading');
             showToast('無法取得班級或課程資訊', 'error');
             return;
         }
 
-        // UI 設定檔
+        // UI 設定檔（本地描述用，實際層級以後端為準）
         const UI_DEFINITIONS = [
             { id: 'tutorial',  name: '基礎層', icon: '📘', color: '#10B981', description: '適合初學者...' },
-            { id: 'adventure', name: '進階層', icon: '📗', color: '#F59E0B', description: '適合具備基礎能力者...' },
+            { id: 'adventure', name: '進階層', icon: '📙', color: '#F59E0B', description: '適合具備基礎能力者...' },
             { id: 'hardcore',  name: '困難層', icon: '📕', color: '#EF4444', description: '適合進階學習者...' }
         ];
+
+        const params = new URLSearchParams({
+            action: 'getCourseTiersAndRecord',
             userEmail: currentStudent.email,
             classId: selectedClass.classId,
             courseId: selectedCourse.courseId
         });
 
-        APP_CONFIG.log('🚀 載入課程資料...', { classId: selectedClass.classId });
-
+        APP_CONFIG.log('?? 載入課程資料...', { classId: selectedClass.classId });
         fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
             .then(response => response.json())
             .then(function(data) {
@@ -410,9 +410,7 @@
         const params = new URLSearchParams({
             action: 'getTaskProgress',
             recordId: learningRecord.recordId
-        });
-
-        APP_CONFIG.log('📤 檢查是否有未完成的任務（課堂開始時）...', { recordId: learningRecord.recordId });
+                APP_CONFIG.log('📤 檢查是否有未完成的任務（課堂開始時）...', { recordId: learningRecord.recordId });
 
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
@@ -574,9 +572,7 @@
             userEmail: currentStudent.email,
             taskId: selectedTask.taskId,
             classId: selectedClass.classId  // 修復：加入 classId
-        });
-
-        APP_CONFIG.log('📤 自動繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
+                APP_CONFIG.log('📤 自動繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
@@ -676,9 +672,7 @@
         const params = new URLSearchParams({
             action: 'getCourseTiers',
             courseId: selectedCourse.courseId
-        });
-
-        APP_CONFIG.log('📤 載入課程層級...', { courseId: selectedCourse.courseId });
+                APP_CONFIG.log('📤 載入課程層級...', { courseId: selectedCourse.courseId });
 
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
@@ -737,9 +731,7 @@
             action: 'getStudentDashboard',
             userEmail: currentStudent.email,
             classId: selectedClass.classId  // ✓ 新增：指定班級 ID
-        });
-
-        APP_CONFIG.log('📤 載入學習記錄...', {
+                APP_CONFIG.log('📤 載入學習記錄...', {
             userEmail: currentStudent.email,
             classId: selectedClass.classId
         });
@@ -767,9 +759,7 @@
             userEmail: currentStudent.email,
             classId: selectedClass.classId,
             courseId: selectedCourse.courseId
-        });
-
-        APP_CONFIG.log('📤 開始學習課程...', { classId: selectedClass.classId, courseId: selectedCourse.courseId });
+                APP_CONFIG.log('📤 開始學習課程...', { classId: selectedClass.classId, courseId: selectedCourse.courseId });
 
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
@@ -878,9 +868,7 @@
                 action: 'getCurrentSession',
                 classId: selectedClass.classId,
                 userEmail: currentStudent.email
-            });
-
-            APP_CONFIG.log('🔄 自動檢查課堂狀態（課程階段）...');
+                    APP_CONFIG.log('🔄 自動檢查課堂狀態（課程階段）...');
 
             fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
                 .then(response => response.json())
@@ -1134,9 +1122,7 @@
             action: 'getCurrentSession',
             classId: selectedClass.classId,
             userEmail: currentStudent.email
-        });
-
-        APP_CONFIG.log('📤 檢查課堂狀態...', { classId: selectedClass.classId });
+                APP_CONFIG.log('📤 檢查課堂狀態...', { classId: selectedClass.classId });
 
         // ✅ 重點修正：這裡必須加上 return
         return fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
@@ -1187,9 +1173,7 @@
         const params = new URLSearchParams({
             action: 'getCourseDetails',
             courseId: selectedCourse.courseId
-        });
-
-        APP_CONFIG.log('📤 載入任務列表...', { courseId: selectedCourse.courseId });
+                APP_CONFIG.log('📤 載入任務列表...', { courseId: selectedCourse.courseId });
 
         // ✅ 這裡有 return，這是正確的
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
@@ -1314,9 +1298,7 @@
         const params = new URLSearchParams({
             action: 'getTaskProgress',
             recordId: recordId
-        });
-
-        APP_CONFIG.log('📤 載入任務進度...', { recordId });
+                APP_CONFIG.log('📤 載入任務進度...', { recordId });
 
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
@@ -1439,9 +1421,7 @@
                 action: 'getCurrentSession',
                 classId: selectedClass.classId,
                 userEmail: currentStudent.email
-            });
-
-            APP_CONFIG.log('🔄 自動檢查課堂狀態...');
+                    APP_CONFIG.log('🔄 自動檢查課堂狀態...');
 
             fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
                 .then(response => response.json())
@@ -1727,9 +1707,7 @@
                 action: 'getCurrentSession',
                 classId: selectedClass.classId,
                 userEmail: currentStudent.email
-            });
-
-            APP_CONFIG.log('🔄 檢查課堂狀態（進行中）...');
+                    APP_CONFIG.log('🔄 檢查課堂狀態（進行中）...');
 
             fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
                 .then(response => response.json())
@@ -2497,9 +2475,7 @@ window.openTaskModal = function(task, progress) {
             userEmail: currentStudent.email,
             taskId: selectedTask.taskId,
             classId: selectedClass.classId  // 修復：加入 classId
-        });
-
-        APP_CONFIG.log('📤 繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
+                APP_CONFIG.log('📤 繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
@@ -2685,9 +2661,7 @@ window.openTaskModal = function(task, progress) {
             changeReason: reason,  // manual/too_fast/too_slow/system_suggest
             triggeredByTask: taskId || '',
             executionTime: execTime || 0
-        });
-
-        APP_CONFIG.log('📤 記錄難度變更:', { fromTier, toTier, reason });
+                APP_CONFIG.log('📤 記錄難度變更:', { fromTier, toTier, reason });
         console.log('📤 [API呼叫] URL:', `${APP_CONFIG.API_URL}?${params.toString()}`);
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
@@ -2826,9 +2800,7 @@ function startTaskTimeLimitCheck(task) {
               userEmail: currentStudent.email,
               taskId: selectedTask.taskId,
               classId: selectedClass.classId
-          });
-
-          APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
+                  APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
 
           fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
               .then(response => response.json())
@@ -3799,6 +3771,8 @@ window.submitAssessmentAnswer = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
+
 
 
 
