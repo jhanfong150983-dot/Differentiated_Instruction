@@ -96,9 +96,9 @@
         const params = new URLSearchParams({
             action: 'getStudentClasses',
             userEmail: currentStudent.email
+        });
 
-        APP_CONFIG.log('📤 載入班級列表...', { userEmail: currentStudent.email });
-
+        APP_CONFIG.log('?? 載入班級列表...', { userEmail: currentStudent.email });
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
