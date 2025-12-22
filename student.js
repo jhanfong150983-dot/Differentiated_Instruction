@@ -1,4 +1,4 @@
-﻿/* ==========================================
+/* ==========================================
    學生端 - student.js (遊戲化版本)
    ========================================== */
 
@@ -3794,4 +3794,6 @@ window.submitAssessmentAnswer = function() {
        currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
    };
 })(); // IIFE
+
+
 

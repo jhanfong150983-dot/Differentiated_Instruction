@@ -289,7 +289,7 @@
                 option.value = tier;
                 let tierDisplay = tier;
                 if (tier === 'tutorial') tierDisplay = '基礎層';
-                else if (tier === 'adventure') tierDisplay = '挑戰層';
+                else if (tier === 'adventure') tierDisplay = '進階層';
                 else if (tier === 'hardcore') tierDisplay = '困難層';
                 option.textContent = tierDisplay;
                 tierSelect.appendChild(option);

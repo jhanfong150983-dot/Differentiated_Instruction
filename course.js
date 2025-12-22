@@ -338,7 +338,7 @@ function displayTasks(tasks) {
         let tierBadges = '';
         if (hasTutorial) tierBadges += '<span style="background:#10B981;color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:4px;">基礎</span>';
         if (hasAdventure) tierBadges += '<span style="background:#F59E0B;color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:4px;">進階</span>';
-        if (hasHardcore) tierBadges += '<span style="background:#EF4444;color:white;padding:2px 8px;border-radius:4px;font-size:12px;">精通</span>';
+        if (hasHardcore) tierBadges += '<span style="background:#EF4444;color:white;padding:2px 8px;border-radius:4px;font-size:12px;">困難</span>';
 
         item.innerHTML = `
             <div class="task-sequence">${index + 1}</div>

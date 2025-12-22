@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // 設定區
 // ==========================================
 
@@ -3496,7 +3496,7 @@ function getStudentClassEntryData(params) {
     const tiersArray = [
       { tier: 'tutorial', id: 'tutorial', name: '基礎層' },
       { tier: 'adventure', id: 'adventure', name: '進階層' },
-      { tier: 'hardcore', id: 'hardcore', name: '精通層' }
+      { tier: 'hardcore', id: 'hardcore', name: '困難層' }
     ];
 
     // ===== 3. 載入或創建學習記錄 (Learning Record) =====
@@ -4487,8 +4487,8 @@ function getCourseTiers(courseId) {
       }
     }
 
-    // 將 Set 轉換為陣列並排序（基礎層 -> 進階層 -> 精通層）
-    const tierOrder = ['基礎層', '進階層', '精通層', 'tutorial', 'adventure', 'hardcore'];
+    // 將 Set 轉換為陣列並排序（基礎層 -> 進階層 -> 困難層）
+    const tierOrder = ['基礎層', '進階層', '困難層', 'tutorial', 'adventure', 'hardcore'];
     const tiers = Array.from(tiersSet).sort((a, b) => {
       const aIndex = tierOrder.indexOf(a);
       const bIndex = tierOrder.indexOf(b);
@@ -4512,7 +4512,7 @@ function getCourseTiers(courseId) {
         icon = '📙';
         description = '適合具備基礎能力者，挑戰更深入的內容';
         color = '#F59E0B';
-      } else if (tier === '精通層' || tier === 'hardcore') {
+      } else if (tier === '困難層' || tier === 'hardcore') {
         icon = '📕';
         description = '適合進階學習者，挑戰高難度任務';
         color = '#EF4444';
@@ -4780,7 +4780,7 @@ function getTeacherTaskMonitor(params) {
       // 層級顯示名稱
       let tierDisplay = '';
       if (taskTier === 'tutorial') tierDisplay = '基礎層';
-      else if (taskTier === 'adventure') tierDisplay = '挑戰層';
+      else if (taskTier === 'adventure') tierDisplay = '進階層';
       else if (taskTier === 'hardcore') tierDisplay = '困難層';
       else tierDisplay = taskTier;
 
@@ -4995,7 +4995,7 @@ function getTeacherTaskMonitor(params) {
           // 修復：格式化學生選擇的層級顯示
           let studentTierDisplay = '';
           if (progress.currentTier === 'tutorial') studentTierDisplay = '基礎層';
-          else if (progress.currentTier === 'adventure') studentTierDisplay = '挑戰層';
+          else if (progress.currentTier === 'adventure') studentTierDisplay = '進階層';
           else if (progress.currentTier === 'hardcore') studentTierDisplay = '困難層';
           else if (progress.currentTier) studentTierDisplay = progress.currentTier;
           else studentTierDisplay = '未選擇';
@@ -5082,7 +5082,7 @@ function getTeacherTaskMonitor(params) {
           // 修復：格式化學生選擇的層級顯示
           let studentTierDisplay = '';
           if (progress.currentTier === 'tutorial') studentTierDisplay = '基礎層';
-          else if (progress.currentTier === 'adventure') studentTierDisplay = '挑戰層';
+          else if (progress.currentTier === 'adventure') studentTierDisplay = '進階層';
           else if (progress.currentTier === 'hardcore') studentTierDisplay = '困難層';
           else if (progress.currentTier) studentTierDisplay = progress.currentTier;
           else studentTierDisplay = '未選擇';
@@ -9270,6 +9270,7 @@ function getClassTaskTimeStats(params) {
     };
   }
 }
+
 
 
 
