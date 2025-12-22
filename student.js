@@ -247,7 +247,6 @@
             showToast('無法取得班級或課程資訊', 'error');
             return;
         }
-
         // UI 設定檔（本地描述用，實際層級以後端為準）
         const UI_DEFINITIONS = [
             { id: 'tutorial',  name: '基礎層', icon: '📘', color: '#10B981', description: '適合初學者...' },
