@@ -409,8 +409,9 @@
         const params = new URLSearchParams({
             action: 'getTaskProgress',
             recordId: learningRecord.recordId
-                APP_CONFIG.log('📤 檢查是否有未完成的任務（課堂開始時）...', { recordId: learningRecord.recordId });
+        });
 
+        APP_CONFIG.log('?? 檢查是否有未完成的任務（課堂開始時）...', { recordId: learningRecord.recordId });
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
