@@ -13,19 +13,20 @@
 
         body {
             font-family: 'Microsoft JhengHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
-            overflow: hidden;
+            background: #f3f4f6;
+            min-height: 100vh;
+            overflow: auto;
         }
 
         .container {
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            height: calc(100vh - 16px);
+            width: calc(100vw - 16px);
             background: white;
-            margin: 20px;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            margin: 8px;
+            border-radius: 12px;
+            box-shadow: 0 14px 44px rgba(0, 0, 0, 0.18);
             overflow: hidden;
         }
 
@@ -109,6 +110,8 @@
             flex: 1;
             display: flex;
             overflow: hidden;
+            padding: 0 20px 20px;
+            background: #f8fafc;
         }
 
         /* 階段容器 */
@@ -116,7 +119,9 @@
             width: 100%;
             height: 100%;
             display: none;
+            flex: 1;
             flex-direction: column;
+            min-height: 0;
         }
 
         .stage-container.active {
@@ -125,15 +130,41 @@
 
         /* 階段1：教材顯示 */
         #stage-material {
-            padding: 30px;
+            padding: 16px 0 8px;
+        }
+
+        .material-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .material-header h2 {
+            margin: 0;
+            color: #1f2937;
+        }
+
+        .material-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .material-frame-wrapper {
+            flex: 1;
+            min-height: 65vh;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
         }
 
         .material-frame {
             width: 100%;
-            height: calc(100vh - 300px);
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
-            overflow: hidden;
+            height: 100%;
+            border: none;
         }
 
         /* 階段2：檢核 */
@@ -434,6 +465,17 @@
             background: #d1d5db;
         }
 
+        .btn-ghost {
+            background: white;
+            border: 1px solid #d1d5db;
+            color: #374151;
+            padding: 10px 16px;
+        }
+
+        .btn-ghost:hover {
+            background: #f3f4f6;
+        }
+
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -556,8 +598,17 @@
         <div class="main-content">
             <!-- 階段1：教材顯示 -->
             <div id="stage-material" class="stage-container active">
-                <h2 style="margin-bottom: 20px; color: #1f2937;">📚 學習教材</h2>
-                <iframe id="materialFrame" class="material-frame" src="about:blank"></iframe>
+                <div class="material-header">
+                    <h2 class="section-title">?? 學習教材</h2>
+                    <div class="material-actions">
+                        <button class="btn-secondary btn-ghost" type="button" onclick="openMaterialInNewTab()">
+                            在新分頁開啟
+                        </button>
+                    </div>
+                </div>
+                <div class="material-frame-wrapper">
+                    <iframe id="materialFrame" class="material-frame" src="about:blank"></iframe>
+                </div>
             </div>
 
             <!-- 階段2：檢核 -->
@@ -587,11 +638,19 @@
 
                     <div class="upload-buttons">
                         <input type="file" id="fileInput" accept="image/*" style="display: none;">
-                        <button class="btn-primary" onclick="document.getElementById('fileInput').click()">
+                        <button class="btn-primary" onclick="document.getElementById(\"fileInput\").click()">
                             選擇檔案
                         </button>
                         <button class="btn-secondary" onclick="startWebcam()">
-                            📷 使用相機
+                            ?? 使用相機
+                        </button>
+                    </div>
+                    <div id="cameraSelectRow" style="display:none; margin-top:12px; align-items:center; gap:8px;">
+                        <label for="videoDeviceSelect" style="color:#4b5563; font-size:14px;">選擇相機：</label>
+                        <select id="videoDeviceSelect" style="flex:1; min-width:200px; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; color:#374151;"></select>
+                        <button class="btn-secondary btn-ghost" type="button" onclick="switchCamera()">切換</button>
+                    </div>
+                    </div>
                         </button>
                     </div>
                 </div>

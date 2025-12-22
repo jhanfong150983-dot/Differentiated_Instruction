@@ -253,12 +253,9 @@
         // UI 設定檔
         const UI_DEFINITIONS = [
             { id: 'tutorial',  name: '基礎層', icon: '📘', color: '#10B981', description: '適合初學者...' },
-            { id: 'adventure', name: '進階層', icon: '📙', color: '#F59E0B', description: '適合具備基礎能力者...' },
-            { id: 'hardcore',  name: '精通層', icon: '📕', color: '#EF4444', description: '適合進階學習者...' }
+            { id: 'adventure', name: '進階層', icon: '📗', color: '#F59E0B', description: '適合具備基礎能力者...' },
+            { id: 'hardcore',  name: '困難層', icon: '📕', color: '#EF4444', description: '適合進階學習者...' }
         ];
-
-        const params = new URLSearchParams({
-            action: 'getStudentClassEntryData',
             userEmail: currentStudent.email,
             classId: selectedClass.classId,
             courseId: selectedCourse.courseId
@@ -668,8 +665,8 @@
             },
             {
                 id: 'hardcore',
-                name: '精通層',     // ✅ 強制顯示中文
-                icon: '📕',         // 紅色書本 Emoji
+                name: '困難層',     // 強制顯示中文
+                icon: '📕',         // 紅色書本
                 color: '#EF4444',   // 紅色
                 description: '適合進階學習者，挑戰高難度任務'
             }
@@ -1239,7 +1236,7 @@
                             return !!(task.tutorialDesc || task.tutorialLink);
                         } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
                             return !!(task.adventureDesc || task.adventureLink);
-                        } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
+                        } else if (selectedTier === 'hardcore' || selectedTier === '精通層' || selectedTier === '困難層') {
                             return !!(task.hardcoreDesc || task.hardcoreLink);
                         }
 
@@ -2161,7 +2158,7 @@ window.openTaskModal = function(task, progress) {
         } else if (selectedTier === '進階層' || selectedTier === 'adventure') {
             taskContent = task.adventureDesc;
             taskLink = task.adventureLink;
-        } else if (selectedTier === '精通層' || selectedTier === 'hardcore') {
+        } else if (selectedTier === '精通層' || selectedTier === '困難層' || selectedTier === 'hardcore') {
             taskContent = task.hardcoreDesc;
             taskLink = task.hardcoreLink;
         }
@@ -2605,7 +2602,15 @@ window.openTaskModal = function(task, progress) {
 
         // 開啟新視窗
         console.log('🔄 開啟任務執行視窗:', taskExecutionUrl.toString());
-        taskExecutionWindow = window.open(taskExecutionUrl.toString(), '_blank', 'width=1400,height=900');
+
+        // 放大視窗以便閱讀教材
+        const windowWidth = Math.min(window.screen.availWidth ? window.screen.availWidth - 20 : 1600, 1800);
+        const windowHeight = Math.min(window.screen.availHeight ? window.screen.availHeight - 20 : 1000, 1100);
+        taskExecutionWindow = window.open(
+            taskExecutionUrl.toString(),
+            '_blank',
+            'width=' + windowWidth + ',height=' + windowHeight + ',left=0,top=0,resizable=yes,scrollbars=yes'
+        );
 
         // 監聽視窗關閉事件，清除引用
         if (taskExecutionWindow) {
@@ -2639,7 +2644,7 @@ window.openTaskModal = function(task, progress) {
                 taskLink = selectedTask.tutorialLink || '';
             } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
                 taskLink = selectedTask.adventureLink || '';
-            } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
+            } else if (selectedTier === 'hardcore' || selectedTier === '精通層' || selectedTier === '困難層') {
                 taskLink = selectedTask.hardcoreLink || '';
             }
         } else {

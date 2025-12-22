@@ -212,12 +212,8 @@
                     allTasks = response.tasks || [];
                     reviewClasses = response.classes || [];
 
-                    // 只在首次載入時填充班級選擇器
-                    if (!isAutoRefresh) {
-                        populateClassSelector();
-                    }
-
-                    // 填充進階篩選選項
+                    // 每次載入都更新班級與層級選單，避免切換班級後層級選單為空
+                    populateClassSelector();
                     populateAdvancedFilters();
 
                     // 應用篩選並顯示
@@ -272,6 +268,34 @@
         if (currentValue) {
             select.value = currentValue;
         }
+
+        // 同步填充層級篩選選單
+        populateTierFilter();
+    }
+
+    /**
+     * 填充層級篩選選單（基礎/進階/困難 + 全部）
+     */
+    function populateTierFilter() {
+        const tierSelect = document.getElementById('reviewTierFilter');
+        if (!tierSelect) return;
+
+        const currentValue = tierSelect.value;
+        tierSelect.innerHTML = '<option value=\"\" selected>全部層級</option>';
+
+        const options = [
+            { value: 'tutorial', text: '基礎層' },
+            { value: 'adventure', text: '進階層' },
+            { value: 'hardcore', text: '困難層' }
+        ];
+        options.forEach(opt => {
+            const optionEl = document.createElement('option');
+            optionEl.value = opt.value;
+            optionEl.textContent = opt.text;
+            tierSelect.appendChild(optionEl);
+        });
+
+        if (currentValue) tierSelect.value = currentValue;
     }
 
     /**
@@ -311,6 +335,7 @@
             });
             if (currentValue) taskSelect.value = currentValue;
         }
+        populateTierFilter();
     }
 
     // ==========================================
@@ -339,6 +364,12 @@
 
         // 載入任務（會在完成後隱藏 loading）
         loadReviewTasks();
+
+        // 重置層級篩選
+        const tierSelect = document.getElementById('reviewTierFilter');
+        if (tierSelect) {
+            tierSelect.value = '';
+        }
 
         // ✅ 修復：無論是否上課，都啟動自動刷新（60秒）
         // 這樣老師可以即時看到學生的進度變化
@@ -950,21 +981,28 @@
     window.applyFilters = function() {
         let tasks = [...allTasks];
 
+        const overtimeStatuses = ['in_progress', 'self_checking', 'uploading', 'assessment'];
         // 1. 快速篩選
         if (currentQuickFilter === 'in_progress') {
-            tasks = tasks.filter(task => task.status === 'in_progress');
+            tasks = tasks.filter(task => overtimeStatuses.includes(task.status));
         } else if (currentQuickFilter === 'completed') {
             tasks = tasks.filter(task => task.status === 'completed');
         } else if (currentQuickFilter === 'overtime') {
-            // 紅燈只篩選執行中且超時的任務
-            tasks = tasks.filter(task => task.status === 'in_progress' && task.isOvertime);
+            // 紅燈：執行/檢核/上傳/評量且超時
+            tasks = tasks.filter(task => overtimeStatuses.includes(task.status) && task.isOvertime);
         }
         // 'all' 不過濾
 
-        // 2. 層級篩選
-        const filterTier = document.getElementById('filterTier').value;
-        if (filterTier) {
-            tasks = tasks.filter(task => task.tier === filterTier);
+        // 2. 層級篩選（優先用頂部 reviewTierFilter，若沒選則用進階篩選 filterTier）
+        const reviewTierSelect = document.getElementById('reviewTierFilter');
+        const topTierValue = reviewTierSelect ? reviewTierSelect.value : '';
+        let tierFilterValue = topTierValue;
+        if (!tierFilterValue) {
+            const filterTier = document.getElementById('filterTier');
+            tierFilterValue = filterTier ? filterTier.value : '';
+        }
+        if (tierFilterValue) {
+            tasks = tasks.filter(task => task.tier === tierFilterValue);
         }
 
         // 3. 任務篩選
@@ -1010,10 +1048,11 @@
      */
     function updateCounts() {
         const countAll = allTasks.length;
-        const countInProgress = allTasks.filter(task => task.status === 'in_progress').length;
+        const overtimeStatuses = ['in_progress', 'self_checking', 'uploading', 'assessment'];
+        const countInProgress = allTasks.filter(task => overtimeStatuses.includes(task.status)).length;
         const countCompleted = allTasks.filter(task => task.status === 'completed').length;
-        // 紅燈只統計執行中且超時的任務
-        const countOvertime = allTasks.filter(task => task.status === 'in_progress' && task.isOvertime).length;
+        // 紅燈：執行/檢核/上傳/評量且超時
+        const countOvertime = allTasks.filter(task => overtimeStatuses.includes(task.status) && task.isOvertime).length;
 
         document.getElementById('countAll').textContent = countAll;
         document.getElementById('countInProgress').textContent = countInProgress;
@@ -1197,10 +1236,15 @@
             tr.setAttribute('data-status', 'pending_review');
         }
 
-        // ✅ 新增：登入狀態標記
-        const loginStatusBadge = task.hasLoggedIn === false
-            ? '<span style="display: inline-block; margin-left: 6px; padding: 2px 6px; background: rgba(239, 68, 68, 0.1); color: #ef4444; border-radius: 8px; font-size: 11px; font-weight: 600;">未登入</span>'
-            : '';
+        // 層級顏色標籤
+        const tierName = task.tierDisplay || '-';
+        const tierColorMap = {
+            '基礎層': { bg: 'rgba(16, 185, 129, 0.15)', fg: '#0f9f6e' },
+            '進階層': { bg: 'rgba(245, 158, 11, 0.15)', fg: '#f59e0b' },
+            '困難層': { bg: 'rgba(239, 68, 68, 0.15)', fg: '#ef4444' }
+        };
+        const tierStyle = tierColorMap[tierName] || { bg: 'rgba(59, 130, 246, 0.1)', fg: '#3498db' };
+        const tierBadge = `<span style="display:inline-block; padding:4px 10px; border-radius:10px; font-size:12px; font-weight:700; background:${tierStyle.bg}; color:${tierStyle.fg};">${escapeHtml(tierName)}</span>`;
 
         tr.innerHTML = `
             <td style="text-align: center;">
@@ -1210,23 +1254,13 @@
                 ${escapeHtml(task.studentNumber)}
             </td>
             <td style="font-weight: 600;">
-                ${escapeHtml(task.studentName)}${loginStatusBadge}
+                ${escapeHtml(task.studentName)}
             </td>
             <td style="color: var(--text-medium);">
                 ${escapeHtml(task.className)}
             </td>
-            <td style="font-weight: 600;">
-                ${escapeHtml(task.taskName)}
-            </td>
-            <td>
-                <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
-                    <span style="display: inline-block; padding: 3px 8px; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-radius: 8px; font-size: 11px; font-weight: 600;">
-                        學生: ${escapeHtml(task.studentTierDisplay || '未選擇')}
-                    </span>
-                    <span style="display: inline-block; padding: 3px 8px; background: rgba(59, 130, 246, 0.1); color: #3498db; border-radius: 8px; font-size: 11px; font-weight: 600;">
-                        任務: ${escapeHtml(task.tierDisplay || '-')}
-                    </span>
-                </div>
+            <td style="text-align: center;">
+                ${tierBadge}
             </td>
             <td>
                 <span class="task-time ${timeClass}" data-time-cell="true">${timeStr}</span>

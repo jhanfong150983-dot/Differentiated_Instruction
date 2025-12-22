@@ -7828,7 +7828,7 @@ function submitTaskExecution(params) {
       const updatedProgressData = progressSheet.getDataRange().getValues();
       let completedCount = 0;
       for (let i = 1; i < updatedProgressData.length; i++) {
-        if (updatedProgressData[i][1] === recordId &&
+        if (String(updatedProgressData[i][1]) === String(recordId) &&
             String(updatedProgressData[i][3]) === 'completed') {
           completedCount++;
         }
@@ -7838,7 +7838,7 @@ function submitTaskExecution(params) {
       let learningRow = -1;
       let currentCompleted = 0;
       for (let i = 1; i < learningData.length; i++) {
-        if (learningData[i][0] === recordId) {
+        if (String(learningData[i][0]) === String(recordId)) {
           learningRow = i + 1;
           currentCompleted = learningData[i][8] || 0; // completed_tasks 在索引8（第9欄）
           break;

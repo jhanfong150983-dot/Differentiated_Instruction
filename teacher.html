@@ -2354,6 +2354,13 @@
                     </select>
                 </div>
 
+                <!-- 層級篩選 -->
+                <div class="review-control-item">
+                    <label for="reviewTierFilter" class="control-label">🎚 層級</label>
+                    <select id="reviewTierFilter" class="control-select" onchange="handleTierFilterChange()">
+                        <option value="" selected>全部層級</option>
+                    </select>
+                </div>
                 <!-- 課堂狀態顯示 -->
                 <div class="session-status" id="sessionStatus" style="display: none;">
                     <span class="session-indicator" id="sessionIndicator">⏸️ 未上課</span>
@@ -2447,9 +2454,8 @@
                             <th width="60px">座號</th>
                             <th width="120px">學生</th>
                             <th width="120px">班級</th>
-                            <th width="200px">任務名稱</th>
-                            <th width="100px">層級</th>
-                            <th width="100px">時間</th>
+                            <th width="140px">層級</th>
+                            <th width="120px">時間</th>
                             <th width="180px">操作</th>
                         </tr>
                     </thead>

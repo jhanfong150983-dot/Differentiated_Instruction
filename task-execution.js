@@ -10,8 +10,12 @@ let assessmentQuestions = []; // 評量題目
 let assessmentAnswers = {}; // 評量答案
 let uploadedFileUrl = null; // 已上傳檔案URL
 let webcamStream = null; // webcam 串流
+let uploadInProgress = false; // 作業上傳中
 let taskProgressId = null; // 任務進度ID
 let lastCheckTime = null; // 上次勾選時間（用於檢測快速勾選）
+let materialOriginalLink = ''; // 原始教材連結（供新分頁開啟）
+let cameraDevices = []; // 可用攝影機列表
+let selectedCameraId = null; // 目前選擇的攝影機
 
 // ========== 時間追蹤 ==========
 let totalActiveTime = 0; // 累計活動時間（秒）
@@ -286,6 +290,7 @@ async function loadTaskData(taskId) {
 
         if (data.success) {
             taskData = data.task;
+            materialOriginalLink = '';
 
             // 🔍 調試：顯示完整的任務資料
             console.log('📦 完整任務資料：', taskData);
@@ -304,6 +309,7 @@ async function loadTaskData(taskId) {
             if (taskData.link && taskData.link.trim() !== '') {
                 let finalLink = taskData.link.trim();
                 let originalLink = finalLink; // 保留原始連結用於新分頁開啟
+                materialOriginalLink = originalLink;
 
                 // 🔧 檢測是否為 Google Drive 連結
                 const isGoogleDrive = finalLink.includes('drive.google.com');
@@ -344,6 +350,7 @@ async function loadTaskData(taskId) {
                         fileId = fileId.split('?')[0].split('&')[0];
                         // 保留原始連結用於新分頁開啟
                         originalLink = `https://drive.google.com/file/d/${fileId}/view`;
+                        materialOriginalLink = originalLink;
                         // 🔧 使用 /preview 端點來嵌入 Google Drive 檔案
                         finalLink = `https://drive.google.com/file/d/${fileId}/preview`;
                         console.log('✅ 已轉換為 Google Drive 預覽連結:', finalLink);
@@ -609,6 +616,15 @@ function updateStageDisplay() {
     updateButtons(1);
 
     console.log('✅ 初始化完成，當前階段：1（教材）');
+}
+
+// 開新分頁閱讀教材
+function openMaterialInNewTab() {
+    if (materialOriginalLink) {
+        window.open(materialOriginalLink, '_blank');
+    } else {
+        alert('目前沒有可開啟的教材連結');
+    }
 }
 
 // ========== 階段切換 ==========
@@ -893,13 +909,19 @@ function handleFileSelect(event) {
 }
 
 async function uploadFileToServer(file) {
+    if (uploadInProgress) {
+        showWarning('目前正在上傳，請稍候');
+        return;
+    }
+
+    uploadInProgress = true;
     showLoading(true);
 
     try {
         // 轉為 Base64
         const base64Data = await fileToBase64(file);
 
-        // 🔧 修復：改用 POST 請求，避免 URL 過長導致 413 錯誤
+        // 改用 POST 請求，避免 URL 過長導致 413 錯誤
         const requestBody = {
             action: 'uploadTaskWork',
             taskProgressId: taskProgressId,
@@ -909,27 +931,50 @@ async function uploadFileToServer(file) {
             userEmail: studentEmail
         };
 
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'text/plain;charset=utf-8'
-            },
-            body: JSON.stringify(requestBody)
-        });
-        const data = await response.json();
+        const doUpload = async () => {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            return response.json();
+        };
+
+        let data = null;
+        let lastError = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                data = await doUpload();
+                if (data && data.success && data.fileUrl) {
+                    break;
+                } else {
+                    lastError = new Error(data ? data.message || '上傳失敗' : '上傳失敗');
+                }
+            } catch (err) {
+                lastError = err;
+            }
+            await new Promise(res => setTimeout(res, 500));
+        }
 
         showLoading(false);
 
-        if (data.success) {
+        if (data && data.success && data.fileUrl) {
             uploadedFileUrl = data.fileUrl;
-            showWarning('✅ 作業上傳成功！', 'success');
+            showWarning('? 作業上傳成功！', 'success');
         } else {
-            showWarning('上傳失敗：' + data.message);
+            uploadedFileUrl = null;
+            const msg = (data && data.message) ? data.message : (lastError ? lastError.message : '未知錯誤');
+            console.error('上傳失敗詳細：', msg);
+            showWarning('上傳失敗：' + msg);
         }
     } catch (error) {
         showLoading(false);
         console.error('上傳失敗：', error);
         showWarning('上傳失敗，請稍後再試');
+    } finally {
+        uploadInProgress = false;
     }
 }
 
@@ -956,11 +1001,25 @@ function showUploadPreview(dataUrl) {
 }
 
 // ========== Webcam 邏輯 ==========
-async function startWebcam() {
+async function startWebcam(deviceId = null) {
     try {
-        webcamStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 }
-        });
+        // 若已有串流，先關閉
+        if (webcamStream) {
+            webcamStream.getTracks().forEach(track => track.stop());
+            webcamStream = null;
+        }
+
+        const constraints = { video: { width: 640, height: 480 } };
+        if (deviceId) {
+            constraints.video.deviceId = { exact: deviceId };
+        } else {
+            constraints.video.facingMode = 'user';
+        }
+
+        webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        // 取得相機列表（需權限後才能拿到 label）
+        await refreshCameraList();
 
         const video = document.getElementById('webcam-video');
         video.srcObject = webcamStream;
@@ -981,8 +1040,56 @@ function closeWebcam() {
         webcamStream = null;
     }
 
+    const selectRow = document.getElementById('cameraSelectRow');
+    if (selectRow) {
+        selectRow.style.display = 'none';
+    }
+
     document.getElementById('uploadArea').style.display = 'block';
     document.getElementById('webcamContainer').classList.remove('active');
+}
+
+async function refreshCameraList() {
+    const row = document.getElementById('cameraSelectRow');
+    const select = document.getElementById('videoDeviceSelect');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !row || !select) return;
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    cameraDevices = devices.filter(d => d.kind === 'videoinput');
+
+    if (cameraDevices.length === 0) {
+        row.style.display = 'none';
+        return;
+    }
+
+    const previous = selectedCameraId;
+    select.innerHTML = '';
+    cameraDevices.forEach((dev, idx) => {
+        const option = document.createElement('option');
+        option.value = dev.deviceId;
+        option.textContent = dev.label || `相機 ${idx + 1}`;
+        select.appendChild(option);
+    });
+
+    if (previous && cameraDevices.some(d => d.deviceId === previous)) {
+        select.value = previous;
+        selectedCameraId = previous;
+    } else {
+        selectedCameraId = select.value;
+    }
+
+    // 只有多個相機時顯示切換區
+    row.style.display = cameraDevices.length > 1 ? 'flex' : 'none';
+}
+
+function switchCamera() {
+    const select = document.getElementById('videoDeviceSelect');
+    if (!select || select.options.length === 0) {
+        showWarning('沒有可切換的相機');
+        return;
+    }
+    selectedCameraId = select.value;
+    startWebcam(selectedCameraId);
 }
 
 function capturePhoto() {
@@ -1213,13 +1320,45 @@ async function submitAllData() {
             showCompletionResults(accuracy, tokenReward);
 
             // 不自動關閉視窗，讓學生查看結果後自行關閉
+            if (btnNext) {
+                btnNext.disabled = false;
+                btnNext.textContent = '關閉視窗';
+                btnNext.style.opacity = '1';
+                btnNext.style.cursor = 'pointer';
+                btnNext.onclick = function() { window.close(); };
+            }
+            if (btnPrev) {
+                btnPrev.disabled = true;
+            }
         } else {
             showWarning('提交失敗：' + data.message);
+            if (btnNext) {
+                btnNext.disabled = false;
+                btnNext.textContent = '提交評量';
+                btnNext.style.opacity = '1';
+                btnNext.style.cursor = 'pointer';
+            }
+            if (btnPrev) {
+                btnPrev.disabled = false;
+                btnPrev.style.opacity = '1';
+                btnPrev.style.cursor = 'pointer';
+            }
         }
     } catch (error) {
         showLoading(false);
         console.error('提交失敗：', error);
         showWarning('提交失敗，請稍後再試');
+        if (btnNext) {
+            btnNext.disabled = false;
+            btnNext.textContent = '提交評量';
+            btnNext.style.opacity = '1';
+            btnNext.style.cursor = 'pointer';
+        }
+        if (btnPrev) {
+            btnPrev.disabled = false;
+            btnPrev.style.opacity = '1';
+            btnPrev.style.cursor = 'pointer';
+        }
     }
 }
 
@@ -1461,3 +1600,5 @@ function escapeHtml(text) {
     };
     return String(text).replace(/[&<>"']/g, m => map[m]);
 }
+
+

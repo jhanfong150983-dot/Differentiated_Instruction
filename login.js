@@ -117,6 +117,13 @@ function handleGoogleLoginSuccess(response) {
     console.log('🔐 Google 登入成功！');
     
     try {
+        // 鎖定 Google 按鈕，避免重複點擊
+        const googleBtn = document.getElementById('googleLoginButton');
+        if (googleBtn) {
+            googleBtn.style.pointerEvents = 'none';
+            googleBtn.style.opacity = '0.6';
+        }
+
         const userData = parseJWT(response.credential);
         console.log('👤 使用者資料：', userData);
         
@@ -693,3 +700,5 @@ if (APP_CONFIG.TEST_MODE) {
     console.log('🔧 測試模式已啟用');
     console.log('='.repeat(50));
 }
+
+
