@@ -1073,6 +1073,7 @@
         // 停止檢查
         stopSessionCheck();
         stopTaskStatusCheck();
+        stopTimeTracking && stopTimeTracking();
 
         displayTierSelection();
     };
@@ -1209,10 +1210,11 @@
                         '基礎層': 'tutorial',
                         '進階層': 'adventure',
                         '精通層': 'hardcore',
+                        '困難層': 'hardcore',
                         // 反向對照也加進去，防呆
                         'tutorial': '基礎層',
                         'adventure': '進階層',
-                        'hardcore': '精通層'
+                        'hardcore': '困難層'
                     };
 
                     // 取得對應的英文 ID (例如 selectedTier='基礎層' -> targetId='tutorial')
@@ -2017,6 +2019,7 @@
             '基礎層': 'tutorial',
             '進階層': 'adventure',
             '精通層': 'hardcore',
+            '困難層': 'hardcore',
             '挑戰層': 'adventure',
             '困難層': 'hardcore'
         };
@@ -2027,7 +2030,7 @@
         const map = {
             tutorial: '基礎層',
             adventure: '進階層',
-            hardcore: '精通層'
+            hardcore: '困難層'
         };
         return map[tierId] || tierId;
     }

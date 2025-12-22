@@ -1392,6 +1392,10 @@ function showCompletionResults(accuracy, tokenReward) {
 
     // 在評量內容最上方插入總結卡片
     const taskContent = document.getElementById('taskContent');
+    if (!taskContent) {
+        console.error('taskContent 容器不存在，無法顯示完成總結卡片');
+        return;
+    }
     const summaryDiv = document.createElement('div');
     summaryDiv.id = 'completionSummary';
     summaryDiv.style.cssText = `
