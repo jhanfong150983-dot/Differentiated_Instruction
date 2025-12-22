@@ -1,0 +1,64 @@
+﻿function displayCourses(courses) {
+    const grid = document.getElementById('courseGrid');
+    if (!grid) return;
+    
+    // 空狀態
+    if (!courses || courses.length === 0) {
+        grid.innerHTML = `
+            <div class="empty-state" style="grid-column: 1 / -1;">
+                <div class="empty-state-icon">📚</div>
+                <h3>尚未建立任何課程</h3>
+                <p>點擊「建立新課程」按鈕開始建立您的第一個課程</p>
+                <button class="btn btn-primary" onclick="openCreateCourseModal()">
+                    ➕ 建立新課程
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    // 清空
+    grid.innerHTML = '';
+    
+    // 生成課程卡片
+    courses.forEach(function(course) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        
+        card.innerHTML = `
+            <div class="card-header">
+                <div>
+                    <div class="card-title">${escapeHtml(course.courseName)}</div>
+                    <div style="font-size: 14px; color: #95A5A6; margin-top: 4px;">
+                        ${escapeHtml(course.description || '(無說明)')}
+                    </div>
+                </div>
+                <div class="card-badge">課程</div>
+            </div>
+            <div class="card-meta">
+                <div class="card-meta-item">
+                    <span class="card-meta-icon">📅</span>
+                    <span>${formatDate(course.createDate || new Date().toISOString())}</span>
+                </div>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-primary btn-flex" onclick="viewCourseTasks('${course.courseId}', '${escapeHtml(course.courseName)}')">
+                    <span class="btn-icon">📝</span>
+                    <span>查看任務</span>
+                </button>
+                <button class="btn btn-secondary btn-flex" onclick="editCourse('${course.courseId}')">
+                    <span class="btn-icon">✏️</span>
+                    <span>編輯</span>
+                </button>
+                <button class="btn btn-danger btn-flex" onclick="deleteCourse('${course.courseId}', '${escapeHtml(course.courseName)}')">
+                    <span class="btn-icon">🗑️</span>
+                    <span>刪除</span>
+                </button>
+            </div>
+        `;
+        
+        grid.appendChild(card);
+    });
+}
+
+

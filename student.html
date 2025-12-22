@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>冒險者學習平台 - 分層教學管理系統</title>
+
+    <!-- 引入外部 CSS 樣式表 -->
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="management-page.css">
+    <link rel="stylesheet" href="navbar.css">
+
+    <!-- 引入 Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+
+    <style>
+        /* ==========================================
+           遊戲化學生端樣式
+           ========================================== */
+        :root {
+            --game-bg-dark: #0F172A;
+            --game-bg-medium: #1E293B;
+            --game-bg-light: #334155;
+            --game-primary: #3B82F6;
+            --game-secondary: #8B5CF6;
+            --game-accent: #F59E0B;
+            --game-success: #10B981;
+            --game-danger: #EF4444;
+            --game-text-light: #F1F5F9;
+            --game-text-medium: #CBD5E1;
+            --game-text-dark: #64748B;
+            --game-border: #475569;
+            --game-glow: rgba(59, 130, 246, 0.5);
+            --game-gold: #FCD34D;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+            color: var(--game-text-light);
+            line-height: 1.6;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* 背景動畫效果 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ========== 主要內容區 ========== */
+        .main-content {
+            flex: 1;
+            padding: 32px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* ========== 載入動畫（遮罩式） ========== */
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            display: none; /* 默認隱藏 */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999; /* 確保在所有元素之上，包括 modal */
+            pointer-events: auto; /* 確保可以攔截點擊事件 */
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(52, 152, 219, 0.3);
+            border-top-color: var(--game-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            box-shadow: 0 0 20px var(--game-glow);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            margin-top: 24px;
+            font-size: 18px;
+            color: #ffffff;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        /* ========== 標題區 ========== */
+        .page-header {
+            text-align: center;
+            margin-bottom: 48px;
+            animation: fadeInDown 0.6s ease;
+        }
+
+        .page-title {
+            font-size: 48px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+            text-shadow: 0 0 40px var(--game-glow);
+        }
+
+        .page-subtitle {
+            font-size: 20px;
+            color: var(--game-text-medium);
+        }
+
+        /* ========== 班級選擇畫面 ========== */
+        .class-selection {
+            display: none;
+        }
+
+        .class-selection.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .class-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 24px;
+            margin-top: 32px;
+        }
+
+        .class-card {
+            background: linear-gradient(135deg, var(--game-bg-medium) 0%, var(--game-bg-light) 100%);
+            border: 2px solid var(--game-border);
+            border-radius: 16px;
+            padding: 32px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .class-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .class-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--game-primary);
+            box-shadow: 0 0 30px var(--game-glow), 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        .class-card:hover::before {
+            opacity: 1;
+        }
+
+        .class-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            display: block;
+        }
+
+        .class-name {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--game-text-light);
+            margin-bottom: 12px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .class-info {
+            font-size: 16px;
+            color: var(--game-text-medium);
+            margin-bottom: 16px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .class-course {
+            background: rgba(59, 130, 246, 0.2);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--game-primary);
+            position: relative;
+            z-index: 1;
+        }
+
+        .class-course-label {
+            font-size: 12px;
+            color: var(--game-text-dark);
+            margin-bottom: 4px;
+        }
+
+        .class-course-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--game-text-light);
+        }
+
+        .no-course {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: var(--game-danger);
+            color: var(--game-text-medium);
+        }
+
+        /* ========== 層級選擇畫面 ========== */
+        .tier-selection {
+            display: none;
+        }
+
+        .tier-selection.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .course-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 48px 32px;
+            border-radius: 20px;
+            margin-bottom: 48px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .course-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+            to { transform: rotate(360deg); }
+        }
+
+        .course-title {
+            font-size: 40px;
+            font-weight: 900;
+            margin-bottom: 16px;
+            color: white;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 1;
+        }
+
+        .course-description {
+            font-size: 18px;
+            color: rgba(255,255,255,0.95);
+            margin-bottom: 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .progress-section {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .progress-bar-container {
+            flex: 1;
+            background: rgba(255,255,255,0.2);
+            height: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10B981, #34D399);
+            border-radius: 8px;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+
+        .progress-text {
+            font-size: 20px;
+            font-weight: 700;
+            color: white;
+            white-space: nowrap;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .tier-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 48px;
+        }
+
+        .tier-card {
+            background: linear-gradient(135deg, var(--game-bg-medium), var(--game-bg-light));
+            border: 3px solid var(--game-border);
+            border-radius: 16px;
+            padding: 32px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tier-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .tier-card:hover::before {
+            opacity: 1;
+        }
+
+        .tier-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        }
+
+        .tier-card.selected {
+            border-width: 4px;
+            box-shadow: 0 0 40px currentColor, 0 20px 60px rgba(0,0,0,0.4);
+        }
+
+        .tier-card.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 32px;
+            height: 32px;
+            background: currentColor;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .tier-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            display: block;
+            position: relative;
+            z-index: 1;
+        }
+
+        .tier-name {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--game-text-light);
+            position: relative;
+            z-index: 1;
+        }
+
+        .tier-description {
+            font-size: 14px;
+            color: var(--game-text-medium);
+            line-height: 1.6;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ========== 任務列表畫面 ========== */
+        .quest-board {
+            display: none;
+        }
+
+        .quest-board.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .back-button {
+            background: var(--game-bg-medium);
+            border: 2px solid var(--game-border);
+            color: var(--game-text-light);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 24px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-button:hover {
+            background: var(--game-bg-light);
+            border-color: var(--game-primary);
+            transform: translateX(-4px);
+        }
+
+        .quest-list {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .quest-item {
+            background: linear-gradient(135deg, var(--game-bg-medium), var(--game-bg-light));
+            border: 2px solid var(--game-border);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .quest-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 4px;
+            background: var(--game-border);
+            transition: all 0.3s ease;
+        }
+
+        .quest-item:hover {
+            transform: translateX(8px);
+            border-color: var(--game-primary);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        .quest-item:hover::before {
+            width: 100%;
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.1), transparent);
+        }
+
+        .quest-item.completed {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1));
+            border-color: var(--game-success);
+            opacity: 0.8;
+        }
+
+        .quest-item.completed::before {
+            background: var(--game-success);
+        }
+
+        .quest-item.locked {
+            opacity: 0.5;
+            cursor: not-allowed;
+            filter: grayscale(0.7);
+        }
+
+        .quest-item.locked:hover {
+            transform: none;
+            border-color: var(--game-border);
+            box-shadow: none;
+        }
+
+        .quest-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--game-primary), var(--game-secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 900;
+            color: white;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .quest-item.completed .quest-number {
+            background: linear-gradient(135deg, var(--game-success), #059669);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .quest-item.locked .quest-number {
+            background: linear-gradient(135deg, #475569, #334155);
+            box-shadow: none;
+        }
+
+        .quest-icon {
+            width: 70px;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            font-size: 40px;
+            flex-shrink: 0;
+        }
+
+        .quest-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .quest-header-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .quest-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--game-text-light);
+        }
+
+        .quest-type-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-tutorial {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60A5FA;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+        }
+
+        .badge-practice {
+            background: rgba(245, 158, 11, 0.2);
+            color: #FBBF24;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+
+        .badge-assessment {
+            background: rgba(139, 92, 246, 0.2);
+            color: #A78BFA;
+            border: 1px solid rgba(139, 92, 246, 0.4);
+        }
+
+        .quest-tier {
+            color: var(--game-text-dark);
+            font-size: 14px;
+        }
+
+        .quest-status {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .status-not-started {
+            background: rgba(100, 116, 139, 0.2);
+            color: var(--game-text-medium);
+            border: 1px solid var(--game-border);
+        }
+
+        .status-in-progress {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60A5FA;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .self-checking {
+            background: rgba(245, 158, 11, 0.2);
+            color: #FBBF24;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        .status-completed {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34D399;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .assessment {
+            background: #F59E0B;
+            color: white;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .status-locked {
+            background: rgba(239, 68, 68, 0.2);
+            color: #F87171;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .token-reward {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--game-gold);
+            background: rgba(252, 211, 77, 0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 2px solid rgba(252, 211, 77, 0.3);
+            white-space: nowrap;
+        }
+
+        /* ========== 空狀態 ========== */
+        .empty-state {
+            text-align: center;
+            padding: 80px 32px;
+        }
+
+        .empty-state-icon {
+            font-size: 80px;
+            margin-bottom: 24px;
+            opacity: 0.6;
+        }
+
+        .empty-state h3 {
+            font-size: 28px;
+            color: var(--game-text-light);
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        .empty-state p {
+            font-size: 18px;
+            color: var(--game-text-medium);
+        }
+
+        /* ========== 任務詳情 Modal ========== */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, var(--game-bg-medium), var(--game-bg-light));
+            border: 2px solid var(--game-border);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 2px solid var(--game-border);
+        }
+
+        .modal-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--game-text-light);
+            flex: 1;
+        }
+
+        .close-btn {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #F87171;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-btn:hover {
+            background: rgba(239, 68, 68, 0.3);
+            transform: rotate(90deg);
+        }
+
+        .task-detail-section {
+            margin-bottom: 24px;
+        }
+
+        .task-detail-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--game-text-dark);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .task-detail-value {
+            font-size: 16px;
+            color: var(--game-text-light);
+            line-height: 1.6;
+            background: rgba(255,255,255,0.03);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--game-border);
+        }
+
+        .task-link {
+            display: inline-block;
+            color: var(--game-primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .task-link:hover {
+            color: #60A5FA;
+            text-decoration: underline;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            border: 2px solid;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--game-primary), var(--game-secondary));
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--game-success), #059669);
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
+        }
+
+        .btn-secondary {
+            background: var(--game-bg-medium);
+            color: var(--game-text-light);
+            border-color: var(--game-border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--game-bg-light);
+            border-color: var(--game-primary);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* ========== 動畫 ========== */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ========== 響應式設計 ========== */
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 20px;
+            }
+
+            .page-title {
+                font-size: 32px;
+            }
+
+            .page-subtitle {
+                font-size: 16px;
+            }
+
+            .class-grid,
+            .tier-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .quest-item {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .quest-status {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* 內容區塊顯示/隱藏邏輯 */
+        .class-selection,
+        .tier-selection,
+        .quest-board {
+            display: none !important;
+        }
+
+        .class-selection.active {
+            display: block !important;
+        }
+
+        .tier-selection.active {
+            display: block !important;
+        }
+
+        .quest-board.active {
+            display: block !important;
+        }
+
+
+        .ref-image-container {
+            margin: 15px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: zoom-in;
+            background: #000;
+            /* 防止圖片容器被 flex 壓縮 */
+            flex-shrink: 0 !important;
+        }
+
+        .ref-image-container:hover {
+           border-color: var(--game-accent);
+           transform: translateY(-2px);
+        }
+        
+        .ref-thumbnail {
+            width: 100%;
+            height: 200px; /* 固定高度，保持版面整齊 */
+            object-fit: contain; /* 圖片保持比例顯示 */
+            display: block;
+        }
+
+        .lightbox-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9); /* 深黑背景 */
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            cursor: zoom-out;
+        }
+        
+        .lightbox-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .lightbox-img {
+            max-width: 95%;
+            max-height: 95%;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            transform: scale(0.95);
+            transition: transform 0.3s;
+        }
+        
+        .lightbox-overlay.active .lightbox-img {
+            transform: scale(1);
+        }
+        
+        /* 右側：檢核清單區 */
+        .checklist-section {
+            flex: 1 !important;
+            height: 100% !important;
+            overflow-y: auto !important;   /* 這裡也要能捲動 */
+            background: var(--game-bg-dark);
+            padding: 20px;
+        }
+
+        /* 單個檢核項目卡片 */
+        .check-item-card {
+            background: var(--game-bg-medium);
+            border: 1px solid var(--game-border);
+            border-radius: 8px;
+            padding: 12px;
+            transition: all 0.2s;
+        }
+
+        .check-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start !important; /* 讓左邊的文字靠上對齊 */
+            gap: 10px;
+        }
+
+        .check-desc {
+            font-size: 15px;
+            color: var(--game-text-light);
+            flex: 1;
+            line-height: 1.4;
+        }
+
+        /* 通過/待改進 切換按鈕 */
+        .status-toggle {
+            display: flex;
+            flex-direction: column !important; /* 🔥 關鍵：由 row 改為 column (直向) */
+            gap: 8px;               /* 增加兩個按鈕之間的距離 */
+            
+            /* 以下是為了美觀做的微調 */
+            border: none !important; /* 移除原本包裹兩個按鈕的外框(視個人喜好) */
+            background: transparent !important; 
+            padding: 0 !important;
+            min-width: 110px;       /* 設定最小寬度，避免按鈕太窄 */
+        }
+
+        .status-btn {
+            width: 100%;            /* 讓按鈕填滿容器寬度 */
+            text-align: center;     /* 文字置中 */
+            padding: 8px 12px;      /* 增加一點點擊範圍 */
+            border: 1px solid var(--game-border); /* 確保每個按鈕都有獨立邊框 */
+        }
+
+        .status-btn:hover {
+            color: white;
+        }
+
+        /* 狀態激活樣式 */
+        .status-btn.pass.active {
+            background: #10B981; /* 綠色 */
+            color: white;
+            font-weight: bold;
+        }
+
+        .status-btn.fail.active {
+            background: #F59E0B; /* 橘黃色 */
+            color: white;
+            font-weight: bold;
+            border-color: #D97706;
+        }
+
+        /* 錯誤說明輸入區 (預設隱藏) */
+        .improvement-box {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px dashed var(--game-border);
+            display: none; /* JS 控制顯示 */
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .improvement-box.show {
+            display: block;
+        }
+
+        .improvement-input {
+            width: 100%;
+            background: var(--game-bg-dark);
+            border: 1px solid var(--game-danger);
+            color: white;
+            border-color: #F59E0B;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .improvement-box label {
+            color: #F59E0B;
+        }
+
+        /* 評量階段容器 */
+        .assessment-container {
+            text-align: center;
+            padding: 20px;
+            animation: fadeIn 0.5s;
+        }
+
+        .assessment-question {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 24px;
+            color: var(--game-accent);
+        }
+
+        .assessment-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .assessment-option-btn {
+            background: var(--game-bg-medium);
+            border: 1px solid var(--game-border);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--game-text-light);
+            position: relative;
+        }
+
+        .assessment-option-btn:hover {
+            border-color: var(--game-accent);
+            background: var(--game-bg-light);
+        }
+
+        .assessment-option-btn.selected {
+            border-color: var(--game-accent);
+            background: rgba(var(--game-accent-rgb), 0.1); /* 假設有這個變數，若無可改固定色 */
+            box-shadow: 0 0 0 2px var(--game-accent);
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .btn-warning {
+            background: #F59E0B;
+            color: white;
+            border: none;
+        }
+        
+        .btn-warning:hover { background: #D97706; }
+
+
+/* 6. 右側：檢核清單區 (50%) */
+.checklist-section {
+    flex: 1 !important;            /* 50% 寬度 */
+    height: 100% !important;       /* 填滿高度 */
+    overflow-y: auto !important;   /* 🔥 這裡產生捲軸 */
+    
+    /* 深色主題外觀 */
+    background: var(--game-bg-dark) !important;
+    padding: 30px !important;
+}
+
+/* --- 圖片縮圖樣式 --- */
+.ref-image-container {
+    margin: 20px 0;
+    border: 1px solid var(--game-border);
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: zoom-in;
+    flex-shrink: 0 !important; 
+}
+
+.ref-thumbnail {
+    width: 100%;
+    height: 200px;
+    object-fit: contain;
+    display: block;
+}
+    .checklist-section {
+        height: 50% !important;
+    }
+}
+
+/* =======================================================
+自主檢查 Modal - 穩健版 (整體捲動，拒絕跑版)
+======================================================= */
+    
+    /* 1. Modal 容器：設定最大高度，並允許產生唯一的主捲軸 */
+    #selfCheckModal .modal-content {
+        max-height: 90vh !important;    /* 佔螢幕 90% */
+        height: auto !important;        /* 高度隨內容自動伸縮 */
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;    /* 外框不捲動 */
+        
+        /* 深色主題 */
+        background: #1E293B !important; 
+        border: 2px solid #475569 !important;
+        color: #F1F5F9 !important;
+    }
+    
+    /* 2. 標題區：固定在上方 */
+    #selfCheckModal .modal-header {
+        flex-shrink: 0 !important;
+        padding: 20px 30px !important;
+        background: #1E293B !important;
+        border-bottom: 2px solid #475569 !important;
+        z-index: 10;
+    }
+    
+    /* 3. 內容區：這是唯一產生捲軸的地方！ */
+    #selfCheckModal .modal-body {
+        flex: 1 1 auto !important;
+        overflow-y: auto !important;    /* 🔥 關鍵：唯一的捲軸在這裡 */
+        height: auto !important;
+        min-height: 300px !important;   /* 最小高度 */
+        display: block !important;      /* 回歸最單純的 block */
+        padding: 20px !important;
+    }
+    
+    /* 4. 底部按鈕區：固定在下方 */
+    #selfCheckModal .modal-footer {
+        flex-shrink: 0 !important;
+        background: #1E293B !important;
+        border-top: 2px solid #475569 !important;
+        padding: 15px 30px !important;
+        z-index: 10;
+    }
+    
+    /* =========================================
+       自主檢查佈局 (Flex 排版，但高度自適應)
+       ========================================= */
+    .self-check-layout {
+        display: flex !important;
+        flex-direction: row !important; /* 電腦版左右並排 */
+        gap: 30px;                      /* 兩欄間距 */
+        align-items: stretch;           /* 等高對齊 */
+    }
+    
+    /* 左側與右側區塊：不再鎖定高度，讓內容撐開 */
+    .ref-section, 
+    .checklist-section {
+        flex: 1 !important;             /* 各佔 50% */
+        width: 50% !important;          /* 確保寬度 */
+        height: auto !important;        /* 🔥 關鍵：高度自動，不要鎖死 */
+        overflow: visible !important;   /* 🔥 關鍵：不要內部捲動 */
+    }
+    
+    /* 左側樣式優化 */
+    .ref-section {
+        background: #253346;            /* 稍微深一點的背景區隔 */
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #475569;
+        white-space: pre-wrap;
+    }
+    
+    /* 右側樣式優化 */
+    .checklist-section {
+        padding: 10px;
+    }
+    
+    /* 手機版：自動變為上下堆疊 */
+    @media (max-width: 768px) {
+        .self-check-layout {
+            flex-direction: column !important;
+        }
+        .ref-section, .checklist-section {
+            width: 100% !important;
+            flex: none !important;
+        }
+    }
+    
+    /* =========================================
+       評量階段樣式 (簡單明瞭)
+       ========================================= */
+    #assessmentStageContainer {
+        width: 100%;
+        max-width: 600px;
+        margin: 40px auto; /* 上下留白，置中 */
+        text-align: center;
+    }
+
+    /* =========================================
+       評量答錯後的樣式優化
+       ========================================= */
+    .correct-answer-badge,
+    .wrong-answer-badge {
+        display: inline-block;
+        margin-left: 12px;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+        color: white;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .correct-answer-badge {
+        background: #10B981;
+    }
+
+    .wrong-answer-badge {
+        background: #EF4444;
+    }
+
+    #correctAnswerHint {
+        margin-top: 16px;
+        padding: 12px;
+        background: rgba(16, 185, 129, 0.1);
+        border-left: 4px solid #10B981;
+        border-radius: 4px;
+        font-size: 16px;
+        color: var(--game-text-light);
+        animation: slideDown 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 導航欄 -->
+        <div id="navbarContainer"></div>
+
+        <!-- 主要內容區 -->
+        <main class="main-content">
+            <!-- 載入動畫 -->
+            <div class="loading" id="mainLoading">
+                <div class="spinner"></div>
+                <p class="loading-text">載入冒險世界...</p>
+            </div>
+
+            <!-- ========== 班級選擇畫面 ========== -->
+            <div class="class-selection" id="classSelection">
+                <div class="page-header">
+                    <h1 class="page-title">🗺️ 選擇你的冒險世界</h1>
+                    <p class="page-subtitle">選擇一個班級開始你的學習冒險</p>
+                </div>
+
+                <div class="empty-state" id="noClassState" style="display: none;">
+                    <div class="empty-state-icon">📚</div>
+                    <h3>尚未加入班級</h3>
+                    <p>請聯繫老師將你加入班級</p>
+                </div>
+
+                <div class="class-grid" id="classGrid">
+                    <!-- 動態生成班級卡片 -->
+                </div>
+            </div>
+
+            <!-- ========== 層級選擇畫面 ========== -->
+            <div class="tier-selection" id="tierSelection">
+                <div class="course-header">
+                    <div class="course-title" id="courseName">課程名稱</div>
+                    <div class="course-description" id="courseDescription">課程說明</div>
+                    <div class="progress-section">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="progressBarFill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text" id="progressText">0 / 0</div>
+                    </div>
+                </div>
+
+                <div class="page-header">
+                    <h1 class="page-title">⚔️ 選擇挑戰難度</h1>
+                    <p class="page-subtitle">根據你的能力選擇適合的挑戰層級</p>
+                </div>
+
+                <div class="tier-grid" id="tierGrid">
+                    <!-- 動態生成層級卡片 -->
+                </div>
+
+                <div style="text-align: center; margin-top: 32px;">
+                    <button class="back-button" onclick="backToClassSelection()">
+                        ← 返回班級選擇
+                    </button>
+                </div>
+            </div>
+
+            <!-- ========== 任務列表畫面 ========== -->
+            <div class="quest-board" id="questBoard">
+                <div class="course-header">
+                    <div class="course-title" id="courseNameQuest">課程名稱</div>
+                    <div class="course-description" id="courseDescriptionQuest">課程說明</div>
+                    <div class="progress-section">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="progressBarFillQuest" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text" id="progressTextQuest">0 / 0</div>
+                    </div>
+                </div>
+
+                <div class="page-header">
+                    <h1 class="page-title" id="tierTitle">📘 基礎層 任務</h1>
+                    <p class="page-subtitle">完成任務以獲得經驗和代幣獎勵</p>
+                </div>
+
+                <button class="back-button" onclick="backToTierSelection()">
+                    ← 返回難度選擇
+                </button>
+
+                <div class="quest-list" id="questList">
+                    <!-- 動態生成任務列表 -->
+                </div>
+
+                <div class="empty-state" id="noQuestState" style="display: none;">
+                    <div class="empty-state-icon">📝</div>
+                    <h3>此層級暫無任務</h3>
+                    <p>請選擇其他層級或等待老師新增任務</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 任務詳情 Modal -->
+    <div class="modal" id="taskModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTaskName">任務名稱</h3>
+                <button class="close-btn" onclick="closeTaskModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="task-detail-section">
+                    <div class="task-detail-label">任務類型</div>
+                    <div class="task-detail-value" id="modalTaskType">教學</div>
+                </div>
+                <div class="task-detail-section">
+                    <div class="task-detail-label">難度層級</div>
+                    <div class="task-detail-value" id="modalTaskTier">基礎層</div>
+                </div>
+                <div class="task-detail-section">
+                    <div class="task-detail-label">代幣獎勵</div>
+                    <div class="task-detail-value" id="modalTaskReward">💰 10 代幣</div>
+                </div>
+                <div class="task-detail-section" id="modalAccuracySection" style="display: none;">
+                    <div class="task-detail-label">答對率</div>
+                    <div class="task-detail-value" id="modalTaskAccuracy">--</div>
+                </div>
+                <div class="task-detail-section" id="modalContentSection">
+                    <div class="task-detail-label">任務內容</div>
+                    <div class="task-detail-value" id="modalTaskContent">內容載入中...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeTaskModal()">關閉</button>
+                <button class="btn btn-secondary" id="reopenMaterialBtn" onclick="reopenTaskMaterial()" style="display: none;">
+                    📖 重新打開教材
+                </button>
+                <button class="btn btn-primary" id="startTaskBtn" onclick="handleStartTask()" style="display: none;">開始任務</button>
+                <button class="btn btn-success" id="completeTaskBtn" onclick="handleCompleteTask()" style="display: none;">提交完成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 自主檢查與評量面板 -->
+    <div class="modal" id="selfCheckModal" style="display: none;">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="selfCheckTitle">📋 自主檢查</h3>
+            </div>
+            
+            <div class="modal-body">
+                <div id="checkStageContainer">
+                    <div class="self-check-layout">
+                        <div class="ref-section">
+                            <h4 style="color: var(--game-accent); margin-bottom: 12px;">📌 參考標準</h4>
+                            <div id="referenceDisplay" style="color: var(--game-text-light); line-height: 1.6;">
+                                </div>
+                        </div>
+
+                        <div class="checklist-section" id="checklistDynamicContainer">
+                            </div>
+                    </div>
+                </div>
+
+                <div id="assessmentStageContainer" style="display: none;">
+                    <div class="assessment-container">
+                        <div style="font-size: 48px; margin-bottom: 10px;">🧠</div>
+                        <h4 style="margin-bottom: 10px;">隨堂測驗</h4>
+                        <p style="color: var(--game-text-medium); margin-bottom: 20px;" id="assessmentHintText">
+                            完成此題即可結束任務。
+                        </p>
+                        
+                        <div class="assessment-question" id="assessmentQuestionText"></div>
+                        <div class="assessment-options" id="assessmentOptionsContainer"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSelfCheckModal()">取消</button>
+                
+                <button class="btn btn-primary" id="finishCheckBtn" onclick="submitSelfCheck()">
+                    完成檢查，進入評量 →
+                </button>
+                
+                <button class="btn btn-success" id="submitAssessmentBtn" onclick="submitAssessmentAnswer()" style="display: none;">
+                    提交答案
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="imageLightbox" class="lightbox-overlay" onclick="closeLightbox()">
+        <img id="lightboxImage" class="lightbox-img" src="" alt="放大預覽">
+    </div>
+
+    <!-- 載入 JS -->
+    <script src="config.js"></script>
+    <script src="navbar.js"></script>
+    <script src="management-utils.js"></script>
+    <script src="student.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+

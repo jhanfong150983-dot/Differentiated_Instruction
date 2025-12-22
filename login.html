@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+    <title>登入 - 分層教學平台</title>
+    
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="navbar.css">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+    <div class="container">
+        
+        <!-- ✅ 方案 1：使用動態導覽列容器 -->
+        <div id="navbarContainer"></div>
+        
+        <!-- 移除原本的靜態導覽列 -->
+        <!-- <nav class="navbar">...</nav> -->
+
+        <main class="login-main">
+            
+            <div class="login-container">
+                
+                <div class="login-card">
+                    
+                    <div class="login-header">
+                        <h2 class="login-title">歡迎回來</h2>
+                        <p class="login-subtitle">使用 Google 帳號登入，開始您的學習之旅</p>
+                    </div>
+                    
+                    <div class="login-body">
+                        
+                        <div id="googleLoginButton" class="google-login-wrapper">
+                            <!-- Google 登入按鈕會由 JavaScript 自動插入這裡 -->
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="login-footer">
+                        <p class="privacy-text">
+                            登入即表示您同意我們的<a href="#">服務條款</a>和<a href="#">隱私政策</a>
+                        </p>
+                    </div>
+                    
+                </div>
+                
+                <div class="login-decoration">
+                    <div class="deco-circle deco-circle-1"></div>
+                    <div class="deco-circle deco-circle-2"></div>
+                    <div class="deco-circle deco-circle-3"></div>
+                </div>
+                
+            </div>
+            
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 分層教學平台</p>
+        </footer>
+
+    </div>
+
+    <!-- JavaScript 載入順序很重要 -->
+    <script src="config.js"></script>
+    <script src="navbar.js"></script>
+    <script src="login.js"></script>
+</body>
+</html>

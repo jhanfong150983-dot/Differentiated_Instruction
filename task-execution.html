@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任務執行視窗</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft JhengHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: white;
+            margin: 20px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        /* 頂部進度條 */
+        .progress-header {
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            padding: 20px 30px;
+            color: white;
+        }
+
+        .task-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .progress-step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 8px;
+            font-size: 18px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.active .progress-step-circle {
+            background: white;
+            color: #667eea;
+            transform: scale(1.2);
+        }
+
+        .progress-step.completed .progress-step-circle {
+            background: #10b981;
+            color: white;
+        }
+
+        .progress-step-label {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .progress-step.active .progress-step-label {
+            opacity: 1;
+            font-weight: bold;
+        }
+
+        .progress-line {
+            height: 3px;
+            background: rgba(255, 255, 255, 0.3);
+            flex: 1;
+            margin: 0 -10px;
+            position: relative;
+            top: -30px;
+        }
+
+        .progress-line.completed {
+            background: #10b981;
+        }
+
+        /* 主內容區 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* 階段容器 */
+        .stage-container {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+        }
+
+        .stage-container.active {
+            display: flex;
+        }
+
+        /* 階段1：教材顯示 */
+        #stage-material {
+            padding: 30px;
+        }
+
+        .material-frame {
+            width: 100%;
+            height: calc(100vh - 300px);
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        /* 階段2：檢核 */
+        #stage-checklist {
+            padding: 30px;
+            /* ❌ 移除 display: flex，避免覆蓋 .stage-container 的 display: none */
+        }
+
+        #stage-checklist.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .checklist-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .checklist-item {
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .checklist-item.active {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .checklist-item h3 {
+            color: #1f2937;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+
+        .reference-answer {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+
+        .reference-answer h4 {
+            color: #1e40af;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .reference-answer p {
+            color: #1e3a8a;
+            line-height: 1.6;
+        }
+
+        .reference-image {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .check-control {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .check-control input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        .check-control label {
+            font-size: 16px;
+            color: #374151;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .checklist-progress {
+            background: #f3f4f6;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .checklist-progress-bar {
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .checklist-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #059669);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .checklist-progress-text {
+            font-size: 14px;
+            color: #6b7280;
+            text-align: center;
+        }
+
+        /* 階段3：上傳 */
+        #stage-upload {
+            padding: 30px;
+            /* ❌ 移除 display: flex，避免覆蓋 .stage-container 的 display: none */
+            overflow-y: auto; /* ✅ 允許垂直滾動 */
+        }
+
+        #stage-upload.active {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start; /* ✅ 改為從頂部開始，避免內容被擠壓 */
+            overflow-y: auto; /* ✅ 允許滾動 */
+        }
+
+        .upload-area {
+            width: 100%;
+            max-width: 600px;
+            background: #f9fafb;
+            border: 3px dashed #d1d5db;
+            border-radius: 16px;
+            padding: 60px 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f5f7ff;
+        }
+
+        .upload-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .upload-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .upload-preview {
+            margin-top: 30px;
+            max-width: 600px;
+            padding-bottom: 30px; /* ✅ 底部留白，方便滾動 */
+            flex-shrink: 0; /* ✅ 防止被壓縮 */
+        }
+
+        .upload-preview img {
+            max-width: 100%;
+            max-height: 400px; /* ✅ 限制圖片最大高度 */
+            object-fit: contain; /* ✅ 保持比例 */
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .webcam-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .webcam-container.active {
+            display: flex;
+        }
+
+        #webcam-video {
+            width: 640px;
+            height: 480px;
+            border-radius: 12px;
+            background: #000;
+        }
+
+        #webcam-canvas {
+            display: none;
+        }
+
+        /* 階段4：評量 */
+        #stage-assessment {
+            padding: 30px;
+            /* ❌ 移除 display: flex，避免覆蓋 .stage-container 的 display: none */
+        }
+
+        #stage-assessment.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .assessment-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .assessment-question {
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .assessment-question h3 {
+            color: #1f2937;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+
+        .assessment-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .assessment-option {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .assessment-option:hover {
+            border-color: #667eea;
+            background: #f5f7ff;
+        }
+
+        .assessment-option input[type="radio"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .assessment-option label {
+            flex: 1;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* 底部按鈕區 */
+        .action-buttons {
+            padding: 20px 30px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #d1d5db;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 警告提示 */
+        .warning-toast {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 15px 25px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+        }
+
+        .warning-toast.show {
+            display: flex;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -20px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+
+        .warning-icon {
+            font-size: 24px;
+        }
+
+        .warning-text {
+            color: #92400e;
+            font-weight: 600;
+        }
+
+        /* Loading 遮罩 */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .loading-overlay.show {
+            display: flex;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 頂部進度條 -->
+        <div class="progress-header">
+            <div class="task-title" id="taskTitle">載入中...</div>
+            <div class="progress-bar-container">
+                <div class="progress-step active" data-stage="1">
+                    <div class="progress-step-circle">1</div>
+                    <div class="progress-step-label">教材</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-stage="2">
+                    <div class="progress-step-circle">2</div>
+                    <div class="progress-step-label">檢核</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-stage="3">
+                    <div class="progress-step-circle">3</div>
+                    <div class="progress-step-label">上傳</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-stage="4">
+                    <div class="progress-step-circle">4</div>
+                    <div class="progress-step-label">評量</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主內容區 -->
+        <div class="main-content">
+            <!-- 階段1：教材顯示 -->
+            <div id="stage-material" class="stage-container active">
+                <h2 style="margin-bottom: 20px; color: #1f2937;">📚 學習教材</h2>
+                <iframe id="materialFrame" class="material-frame" src="about:blank"></iframe>
+            </div>
+
+            <!-- 階段2：檢核 -->
+            <div id="stage-checklist" class="stage-container">
+                <h2 style="margin-bottom: 20px; color: #1f2937;">✅ 自主檢核</h2>
+
+                <div class="checklist-progress">
+                    <div class="checklist-progress-bar">
+                        <div class="checklist-progress-fill" id="checklistProgressFill"></div>
+                    </div>
+                    <div class="checklist-progress-text" id="checklistProgressText">已完成 0 / 0</div>
+                </div>
+
+                <div class="checklist-content" id="checklistContent">
+                    <!-- 檢核項目會動態生成 -->
+                </div>
+            </div>
+
+            <!-- 階段3：上傳 -->
+            <div id="stage-upload" class="stage-container">
+                <h2 style="margin-bottom: 30px; color: #1f2937;">📤 繳交作業</h2>
+
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <h3 style="margin-bottom: 10px; color: #374151;">上傳作業檔案</h3>
+                    <p style="color: #6b7280; margin-bottom: 20px;">支援圖片格式：JPG、PNG</p>
+
+                    <div class="upload-buttons">
+                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                        <button class="btn-primary" onclick="document.getElementById('fileInput').click()">
+                            選擇檔案
+                        </button>
+                        <button class="btn-secondary" onclick="startWebcam()">
+                            📷 使用相機
+                        </button>
+                    </div>
+                </div>
+
+                <div class="webcam-container" id="webcamContainer">
+                    <video id="webcam-video" autoplay></video>
+                    <div style="display: flex; gap: 15px;">
+                        <button class="btn-primary" onclick="capturePhoto()">📸 拍照</button>
+                        <button class="btn-secondary" onclick="closeWebcam()">取消</button>
+                    </div>
+                </div>
+
+                <div class="upload-preview" id="uploadPreview"></div>
+            </div>
+
+            <!-- 階段4：評量 -->
+            <div id="stage-assessment" class="stage-container">
+                <h2 style="margin-bottom: 20px; color: #1f2937;">📝 完成評量</h2>
+
+                <div class="assessment-content" id="assessmentContent">
+                    <!-- 評量題目會動態生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部按鈕區 -->
+        <div class="action-buttons">
+            <button class="btn-secondary" id="btnPrev" onclick="previousStage()" style="display: none;">
+                ← 上一步
+            </button>
+            <div style="flex: 1;"></div>
+            <button class="btn-primary" id="btnNext" onclick="nextStage()">
+                下一步 →
+            </button>
+        </div>
+    </div>
+
+    <!-- 警告提示 -->
+    <div class="warning-toast" id="warningToast">
+        <span class="warning-icon">⚠️</span>
+        <span class="warning-text" id="warningText"></span>
+    </div>
+
+    <!-- Loading 遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <canvas id="webcam-canvas"></canvas>
+
+    <script src="task-execution.js"></script>
+</body>
+</html>

@@ -1,0 +1,3203 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教師後台 - 分層教學管理系統</title>
+
+    <!-- 引入外部 CSS 樣式表 -->
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="management-page.css">
+    <link rel="stylesheet" href="navbar.css">
+    <link rel="stylesheet" href="student-modal.css">
+
+    <!-- 引入 Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+
+    <style>
+        /* ==========================================
+           CSS 變數設定區
+           ========================================== */
+        :root {
+            --primary-color: #2C5F7C;
+            --primary-light: #4A8DAD;
+            --primary-dark: #1A3F52;
+            --accent-color: #E8A87C;
+            --accent-light: #F5C9A6;
+            --text-dark: #2C3E50;
+            --text-medium: #5A6C7D;
+            --text-light: #95A5A6;
+            --bg-primary: #FFFFFF;
+            --bg-secondary: #F8F9FA;
+            --bg-card: #FFFFFF;
+            --border-color: #E1E8ED;
+            --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --spacing-xs: 8px;
+            --spacing-sm: 16px;
+            --spacing-md: 24px;
+            --spacing-lg: 32px;
+            --spacing-xl: 48px;
+            --font-primary: 'Noto Sans TC', sans-serif;
+            --font-display: 'Playfair Display', serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-primary);
+            background: var(--bg-secondary);
+            color: var(--text-dark);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ========== 主要內容區 ========== */
+        .main-content {
+            flex: 1;
+            padding: var(--spacing-lg);
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .page-header {
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .page-subtitle {
+            color: var(--text-medium);
+            font-size: 16px;
+        }
+
+        /* ========== 建立班級區塊 ========== */
+        .create-class-section {
+            background: var(--bg-card);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .form-group {
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-dark);
+            font-weight: 500;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            font-family: var(--font-primary);
+            transition: border-color 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary {
+            padding: 14px 32px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: var(--font-primary);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:disabled {
+            background: var(--text-light);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ========== 班級列表 ========== */
+        .classes-section {
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .classes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: var(--spacing-md);
+        }
+
+        .class-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            padding: var(--spacing-lg);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .class-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary-color);
+        }
+
+        .class-card.active {
+            border-color: var(--accent-color);
+            background: #FFF9F5;
+        }
+
+        .class-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .class-name {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .class-badge {
+            background: var(--primary-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .class-info {
+            color: var(--text-medium);
+            font-size: 14px;
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .class-actions {
+            margin-top: var(--spacing-md);
+            padding-top: var(--spacing-md);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .btn-secondary {
+            padding: 8px 16px;
+            background: transparent;
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: var(--font-primary);
+            margin-right: var(--spacing-xs);
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-danger {
+            padding: 8px 16px;
+            background: #EF4444;
+            color: white;
+            border: 1px solid #EF4444;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: var(--font-primary);
+        }
+
+        .btn-danger:hover {
+            background: #DC2626;
+            border-color: #DC2626;
+        }
+
+        .btn-danger:disabled {
+            background: #FCA5A5;
+            border-color: #FCA5A5;
+            cursor: not-allowed;
+        }
+
+        /* ========== 匯入學生區塊 ========== */
+        .import-section {
+            display: none;
+            background: var(--bg-card);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            margin-top: var(--spacing-lg);
+        }
+
+        .import-section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .import-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-medium);
+            transition: color 0.3s ease;
+        }
+
+        .close-btn:hover {
+            color: var(--text-dark);
+        }
+
+        .paste-area {
+            width: 100%;
+            min-height: 200px;
+            padding: 16px;
+            border: 2px dashed var(--border-color);
+            border-radius: var(--radius-md);
+            font-family: monospace;
+            font-size: 14px;
+            resize: vertical;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .paste-area:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .help-text {
+            color: var(--text-medium);
+            font-size: 14px;
+            margin-bottom: var(--spacing-md);
+            padding: var(--spacing-sm);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .preview-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .preview-table td {
+            padding: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .preview-table tr:nth-child(even) {
+            background: var(--bg-secondary);
+        }
+
+        .btn-success {
+            background: #27AE60;
+        }
+
+        .btn-success:hover {
+            background: #229954;
+        }
+
+        /* ========== 載入動畫遮罩 ========== */
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        .loading-content {
+            background: white;
+            padding: 40px;
+            border-radius: var(--radius-lg);
+            text-align: center;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .spinner {
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px auto;
+        }
+
+        .loading-text {
+            color: var(--text-dark);
+            font-size: 16px;
+            margin: 0;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ========== 空狀態 ========== */
+        .empty-state {
+            text-align: center;
+            padding: var(--spacing-xl);
+            color: var(--text-medium);
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: var(--spacing-md);
+            opacity: 0.5;
+        }
+
+        /* ========== 代幣管理樣式 ========== */
+        .class-selector {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .class-selector label {
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .class-selector select {
+            min-width: 200px;
+        }
+
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+
+        .stat-card-gold {
+            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+            color: white;
+        }
+
+        .stat-card-green {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            color: white;
+        }
+
+        .stat-card-blue {
+            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+            color: white;
+        }
+
+        .stat-icon {
+            font-size: 48px;
+        }
+
+        .stat-info {
+            flex: 1;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        /* ========== 響應式設計 ========== */
+        @media (max-width: 768px) {
+            .classes-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .main-content {
+                padding: var(--spacing-sm);
+            }
+        }
+
+        /* ========== 課程管理樣式 ========== */
+        
+        .page-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        .breadcrumb {
+            color: #95A5A6;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .breadcrumb a {
+            color: #2C5F7C;
+            text-decoration: none;
+        }
+        
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+        
+        .breadcrumb-separator {
+            margin: 0 8px;
+            color: #E1E8ED;
+        }
+        
+        /* 課程列表檢視 */
+        .course-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 24px;
+            margin-top: 30px;
+        }
+        
+        .course-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .course-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+        
+        .course-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+        
+        .course-name {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2C3E50;
+            margin-bottom: 8px;
+        }
+        
+        .course-badge {
+            background: #E8A87C;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .course-description {
+            color: #5A6C7D;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+            max-height: 60px;
+            overflow: hidden;
+        }
+        
+        .course-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 13px;
+            color: #95A5A6;
+            margin-bottom: 16px;
+        }
+        
+        .course-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        /* 任務管理檢視 */
+        .task-view {
+            display: none;
+        }
+        
+        .task-view.active {
+            display: block;
+        }
+        
+        .course-info-bar {
+            background: linear-gradient(135deg, #2C5F7C 0%, #4A8DAD 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+        
+        .course-info-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .course-info-desc {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .task-list {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .task-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .task-list-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2C3E50;
+        }
+        
+        .task-item {
+            border: 1px solid #E1E8ED;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .task-item:hover {
+            background: #F8F9FA;
+            border-color: #2C5F7C;
+        }
+
+        /* 拖放模式樣式 */
+        .task-item.draggable {
+            cursor: move;
+            transition: all 0.3s ease;
+        }
+
+        .task-item.dragging {
+            opacity: 0.5;
+            background: #E3F2FD;
+            border: 2px dashed #2C5F7C;
+        }
+
+        .task-item.drag-over {
+            border-top: 3px solid #2C5F7C;
+            margin-top: 8px;
+        }
+        
+        .task-sequence {
+            background: #2C5F7C;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        
+        .task-info {
+            flex: 1;
+        }
+        
+        .task-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2C3E50;
+            margin-bottom: 4px;
+        }
+        
+        .task-meta {
+            font-size: 13px;
+            color: #95A5A6;
+        }
+        
+        .task-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-icon {
+            background: none;
+            border: none;
+            padding: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: transform 0.2s ease;
+        }
+        
+        .btn-icon:hover {
+            transform: scale(1.2);
+        }
+        
+        /* Modal 樣式 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-overlay.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid #E1E8ED;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2C3E50;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #95A5A6;
+        }
+        
+        .modal-body {
+            padding: 24px;
+        }
+        
+        .form-label.required::after {
+            content: ' *';
+            color: #EF4444;
+        }
+        
+        .form-textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        .form-hint {
+            font-size: 12px;
+            color: #95A5A6;
+            margin-top: 4px;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #E1E8ED;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: 600;
+            color: #95A5A6;
+            transition: all 0.3s ease;
+        }
+        
+        .tab.active {
+            color: #2C5F7C;
+            border-bottom-color: #2C5F7C;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .modal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid #E1E8ED;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        
+        .token-input-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #FFF9E6;
+            border: 2px solid #FFD700;
+            border-radius: 8px;
+            padding: 4px 12px;
+        }
+
+        .token-input-icon {
+            font-size: 24px;
+        }
+
+        .token-input {
+            flex: 1;
+            border: none !important;
+            background: transparent !important;
+            font-size: 16px;
+            font-weight: 600;
+            color: #1F2937;
+        }
+
+        .token-input:focus {
+            outline: none;
+            box-shadow: none !important;
+        }
+
+        .task-divider {
+            margin: 0 8px;
+            color: #E1E8ED;
+        }
+
+        .task-token {
+            color: #F59E0B;
+            font-weight: 600;
+        }
+
+        /* ========== 代幣管理樣式 ========== */
+        
+        .token-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .token-table-container {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .token-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .token-table th {
+            background: #F3F4F6;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #1F2937;
+            border-bottom: 2px solid #E5E7EB;
+        }
+        
+        .token-table td {
+            padding: 12px;
+            border-bottom: 1px solid #E5E7EB;
+        }
+        
+        .token-table tr:hover {
+            background: #F9FAFB;
+        }
+        
+        .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        
+        .rank-1 {
+            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+            color: #1F2937;
+        }
+        
+        .rank-2 {
+            background: linear-gradient(135deg, #C0C0C0 0%, #A8A8A8 100%);
+            color: #1F2937;
+        }
+        
+        .rank-3 {
+            background: linear-gradient(135deg, #CD7F32 0%, #B87333 100%);
+            color: white;
+        }
+        
+        .rank-other {
+            background: #E5E7EB;
+            color: #6B7280;
+        }
+        
+        .token-amount-cell {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F59E0B;
+        }
+        
+        .adjust-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-adjust {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-add {
+            background: #10B981;
+            color: white;
+        }
+        
+        .btn-add:hover {
+            background: #059669;
+        }
+        
+        .btn-subtract {
+            background: #EF4444;
+            color: white;
+        }
+        
+        .btn-subtract:hover {
+            background: #DC2626;
+        }
+
+        /* 代幣表格包裝 */
+        .token-table-wrapper {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            overflow-x: auto;
+        }
+
+        .token-table-row {
+            transition: background-color 0.2s ease;
+        }
+
+        .token-table-row:hover {
+            background-color: #F9FAFB;
+        }
+
+        /* 代幣表格欄位寬度 */
+        .rank-column { width: 80px; }
+        .seat-column { width: 80px; }
+        .name-column { width: 150px; }
+        .token-column { width: 120px; }
+        .action-column { width: auto; }
+
+        .rank-cell, .seat-cell, .name-cell, .token-cell, .action-cell {
+            padding: 16px;
+            border-bottom: 1px solid #E5E7EB;
+        }
+
+        .token-amount {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #F59E0B;
+        }
+
+        .action-cell {
+            text-align: center;
+        }
+
+        /* 統計卡片網格 */
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: var(--shadow-md);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stat-icon {
+            font-size: 48px;
+            line-height: 1;
+        }
+
+        .stat-info {
+            flex: 1;
+        }
+
+        .stat-label {
+            color: var(--text-medium);
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .stat-card-gold { border-left: 4px solid #F59E0B; }
+        .stat-card-green { border-left: 4px solid #10B981; }
+        .stat-card-blue { border-left: 4px solid #3B82F6; }
+
+        /* ========== 匯入學生區塊 ========== */
+        .import-section {
+            display: none;
+            background: var(--bg-card);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            margin-top: var(--spacing-lg);
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .import-section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .import-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-subtitle {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin: 0;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-medium);
+            transition: color 0.3s ease;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-btn:hover {
+            color: var(--text-dark);
+        }
+
+        .paste-area {
+            width: 100%;
+            min-height: 200px;
+            padding: var(--spacing-sm);
+            border: 2px dashed var(--border-color);
+            border-radius: var(--radius-md);
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            margin-bottom: var(--spacing-md);
+            font-weight: 500;
+        }
+
+        .paste-area:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            background: rgba(44, 95, 124, 0.02);
+        }
+
+        .help-text {
+            color: var(--text-medium);
+            font-size: 14px;
+            margin-bottom: var(--spacing-md);
+            padding: var(--spacing-sm);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+            border-left: 4px solid var(--primary-light);
+            line-height: 1.6;
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: var(--spacing-md);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+        }
+
+        .preview-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: var(--spacing-sm);
+            text-align: left;
+            font-weight: 600;
+            border: none;
+        }
+
+        .preview-table td {
+            padding: var(--spacing-sm);
+            border: 1px solid var(--border-color);
+            color: var(--text-dark);
+        }
+
+        .preview-table tr:nth-child(even) {
+            background: var(--bg-secondary);
+        }
+
+        .preview-table tr:hover {
+            background: rgba(44, 95, 124, 0.05);
+        }
+
+        .btn-success {
+            background: #27AE60;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #229954;
+        }
+
+        /* ========== 學生名單表格 ========== */
+        .student-list-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+        }
+
+        .student-list-table thead {
+            background: var(--primary-color);
+            color: white;
+            font-weight: 600;
+        }
+
+        .student-list-table th {
+            padding: var(--spacing-sm);
+            text-align: left;
+            border: none;
+            font-weight: 600;
+        }
+
+        .student-list-table td {
+            padding: var(--spacing-sm);
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-dark);
+        }
+
+        .student-list-table tr:hover {
+            background-color: var(--bg-secondary);
+        }
+
+        .student-list-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* 學生編輯按鈕 */
+        .btn-edit-student {
+            background: var(--primary-light);
+            color: white;
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-edit-student:hover {
+            background: var(--primary-color);
+        }
+
+        .btn-delete-student {
+            background: #EF4444;
+            color: white;
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-delete-student:hover {
+            background: #DC2626;
+        }
+
+        /* 管理區塊 */
+        .management-section {
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .mb-4 {
+            margin-bottom: 16px;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 24px;
+            margin-top: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2C3E50;
+            margin-bottom: 8px;
+        }
+
+        .card-badge {
+            background: #E8A87C;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .card-badge.class {
+            background: #2C5F7C;
+        }
+
+        .card-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 13px;
+            color: #95A5A6;
+            margin-bottom: 16px;
+        }
+
+        .card-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-meta-icon {
+            font-size: 14px;
+        }
+
+        /* .card-actions 和按鈕樣式已移至 management-page.css 統一管理 */
+
+        /* ========================================
+           任務審核儀表板樣式（監控風格）
+           ======================================== */
+
+        /* 控制面板 */
+        .review-control-panel {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border: 2px solid #0f4c75;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            flex-wrap: wrap;
+        }
+
+        .review-control-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .control-label {
+            color: #e8e8e8;
+            font-weight: 600;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .control-select {
+            flex: 1;
+            padding: 10px 16px;
+            border: 2px solid #0f4c75;
+            border-radius: 8px;
+            background: #16213e;
+            color: #e8e8e8;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .control-select:hover {
+            border-color: #3498db;
+            background: #1a2332;
+        }
+
+        .control-select:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+        }
+
+        .btn-refresh {
+            padding: 10px 20px;
+            background: #0f4c75;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            color: #e8e8e8;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .btn-refresh:hover {
+            background: #3498db;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+        }
+
+        .refresh-icon {
+            font-size: 16px;
+            display: inline-block;
+            transition: transform 0.6s ease;
+        }
+
+        .btn-refresh:hover .refresh-icon {
+            transform: rotate(360deg);
+        }
+
+        /* 課堂狀態顯示 */
+        .session-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            padding: 10px 16px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            min-width: 120px;
+            flex-shrink: 0;
+        }
+
+        .session-indicator {
+            font-size: 13px;
+            font-weight: 700;
+            color: #e8e8e8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .session-indicator.active {
+            color: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        .session-time {
+            font-size: 14px;
+            color: #10b981;
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        /* 課堂控制按鈕 */
+        .session-controls {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .btn-start-class,
+        .btn-pause-class,
+        .btn-resume-class,
+        .btn-end-class {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .btn-start-class {
+            background: #10b981;
+            color: white;
+            border: 2px solid #059669;
+        }
+
+        .btn-start-class:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-pause-class {
+            background: #f59e0b;
+            color: white;
+            border: 2px solid #d97706;
+        }
+
+        .btn-pause-class:hover {
+            background: #d97706;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+        }
+
+        .btn-resume-class {
+            background: #3b82f6;
+            color: white;
+            border: 2px solid #2563eb;
+        }
+
+        .btn-resume-class:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-end-class {
+            background: #ef4444;
+            color: white;
+            border: 2px solid #dc2626;
+        }
+
+        .btn-end-class:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+
+        /* 快速篩選標籤 */
+        .review-quick-filters {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .filter-tag {
+            padding: 12px 24px;
+            border: 2px solid #0f4c75;
+            border-radius: 24px;
+            background: #16213e;
+            color: #e8e8e8;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .filter-tag:hover {
+            border-color: #3498db;
+            background: #1a2332;
+            transform: translateY(-2px);
+        }
+
+        .filter-tag.active {
+            background: #3498db;
+            border-color: #3498db;
+            color: white;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+        }
+
+        /* 進階篩選 */
+        .review-advanced-filters {
+            background: white;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .filter-group.filter-search {
+            grid-column: span 1;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .filter-select,
+        .filter-input {
+            padding: 10px 12px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .filter-select:focus,
+        .filter-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        /* 監控表格 */
+        .review-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .review-table thead {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+        }
+
+        .review-table th {
+            padding: 16px 12px;
+            text-align: left;
+            color: #e8e8e8;
+            font-weight: 700;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 3px solid #0f4c75;
+        }
+
+        .review-table tbody tr {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .review-table tbody tr:hover {
+            background: #f8f9fa;
+            transform: scale(1.01);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .review-table tbody tr.overtime {
+            animation: blink-red 2s infinite;
+        }
+
+        @keyframes blink-red {
+            0%, 100% { background: white; }
+            50% { background: rgba(239, 68, 68, 0.1); }
+        }
+
+        .review-table td {
+            padding: 16px 12px;
+            color: var(--text-dark);
+            font-size: 14px;
+            vertical-align: middle;
+        }
+
+        /* 燈號樣式 */
+        .status-light {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 12px currentColor;
+            animation: pulse-light 2s infinite;
+        }
+
+        .status-light.gray {
+            background: #9ca3af;
+            color: #9ca3af;
+            opacity: 0.5;
+            animation: none; /* 灰燈不閃爍 */
+        }
+
+        .status-light.yellow {
+            background: #f59e0b;
+            color: #f59e0b;
+        }
+
+        .status-light.green {
+            background: #10b981;
+            color: #10b981;
+        }
+
+        .status-light.red {
+            background: #ef4444;
+            color: #ef4444;
+        }
+
+        .status-light.blue {
+            background: #3b82f6;
+            color: #3b82f6;
+        }
+
+        @keyframes pulse-light {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+
+        /* 時間顯示 */
+        .task-time {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--text-dark);
+        }
+
+        .task-time.overtime {
+            color: #ef4444;
+        }
+
+        /* 操作按鈕 */
+        .review-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        /* 重置按鈕（原審核按鈕已棄用） */
+        .btn-reset {
+            padding: 8px 16px;
+            background: #f59e0b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-reset:hover {
+            background: #d97706;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+        }
+
+        /* 保留舊樣式以確保向後兼容 */
+        .btn-approve {
+            padding: 8px 16px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-approve:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-reject {
+            padding: 8px 16px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-reject:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+        }
+
+        /* 自動刷新指示器 */
+        .auto-refresh-indicator {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border: 2px solid #0f4c75;
+            border-radius: 24px;
+            color: #e8e8e8;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+
+        #refreshCountdown {
+            color: #3498db;
+            font-weight: 700;
+        }
+
+        /* 響應式設計 */
+        @media (max-width: 1200px) {
+            .review-table {
+                font-size: 12px;
+            }
+
+            .review-table th,
+            .review-table td {
+                padding: 12px 8px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .review-control-panel {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .review-quick-filters {
+                flex-wrap: wrap;
+            }
+
+            .review-advanced-filters {
+                grid-template-columns: 1fr;
+            }
+
+            .review-table {
+                display: block;
+                overflow-x: auto;
+            }
+
+            .auto-refresh-indicator {
+                bottom: 16px;
+                right: 16px;
+                font-size: 12px;
+            }
+        }
+
+                /* 共用列表容器 */
+        .list-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            max-height: 500px;
+            overflow-y: auto;     /* 保持捲軸 */
+            padding: 4px 4px 150px 4px; /* ✅ 關鍵：底部預留大空間，防止下拉選單被切掉 */
+        }
+
+        /* --- 檢核項目樣式 --- */
+        .checklist-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            padding: 10px 15px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .checklist-row:hover {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            border-color: #cbd5e1;
+        }
+
+        .checklist-index {
+            background: #f1f5f9;
+            color: #64748b;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        /* --- 題庫樣式 (手風琴卡片) --- */
+        .question-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .question-card:hover {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        /* 卡片頭部 (預覽區) */
+        .question-header {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            background: #FAFAFA;
+            border-bottom: 1px solid transparent;
+            border-radius: 8px; /* 補回圓角，因為移除了 overflow:hidden */
+        }
+
+        /* 當卡片展開時，Header 下方要有線與圓角調整 */
+        .question-body.open + .question-header, 
+        .question-card:has(.question-body.open) .question-header {
+            border-bottom: 1px solid #E1E8ED;
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+
+        .question-title-preview {
+            font-weight: 600;
+            color: #334155;
+            flex: 1;
+            margin-right: 15px;
+        }
+
+        .question-body {
+            padding: 20px;
+            background: #fff;
+            display: none;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+        }
+
+        .question-body.open {
+            display: block;
+        }
+
+        /* 題目表單格線系統 */
+        .question-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .full-width {
+            grid-column: span 2;
+        }
+
+        /* 按鈕微調 */
+        .btn-icon {
+            padding: 6px 10px;
+            font-size: 14px;
+            color: #64748b;
+            background: transparent;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-icon:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+        .btn-icon.danger:hover {
+            background: #fee2e2;
+            color: #ef4444;
+            border-color: #fca5a5;
+        }
+
+        /* ========== 數據分析頁面樣式 ========== */
+        .analytics-tab-item {
+            display: inline-block;
+            padding: 12px 20px;
+            color: #495057;
+            text-decoration: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .analytics-tab-item.active {
+            color: #2C5F7C;
+            border-bottom-color: #2C5F7C;
+        }
+        
+        .analytics-tab-content {
+            display: none;
+        }
+        
+        .analytics-filter-tag {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #f0f0f0;
+            color: #666;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .analytics-filter-tag.active {
+            background: #2C5F7C;
+            color: white;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+    </style>
+
+</head>
+
+<body>
+    <!-- ✅ 加入導航列容器 -->
+    <div id="navbarContainer"></div>
+    
+    <!-- 班級管理頁面 -->
+    <div class="management-page with-navbar">
+        
+        <!-- Tab 導航 -->
+        <div class="page-tabs">
+            <a href="#" class="tab-item active" onclick="event.preventDefault(); switchTab('classes');">
+                <span class="tab-icon">👥</span>班級管理
+            </a>
+            <a href="#" class="tab-item" onclick="event.preventDefault(); switchTab('courses');">
+                <span class="tab-icon">📚</span>課程管理
+            </a>
+            <a href="#" class="tab-item" onclick="event.preventDefault(); switchTab('assignments');">
+                <span class="tab-icon">📋</span>授課安排
+            </a>
+            <a href="#" class="tab-item" onclick="event.preventDefault(); switchTab('tokens');">
+                <span class="tab-icon">💰</span>代幣管理
+            </a>
+            <a href="#" class="tab-item" onclick="event.preventDefault(); switchTab('review');">
+                <span class="tab-icon">📊</span>課堂監控
+            </a>
+            <a href="#" class="tab-item" onclick="event.preventDefault(); switchTab('analytics');">
+                <span class="tab-icon">📈</span>數據分析
+            </a>
+            <a href="#" class="tab-item" onclick="event.preventDefault(); switchTab('grading');">
+                <span class="tab-icon">✏️</span>作業批改
+            </a>
+        </div>
+        
+        <!-- 班級管理區 -->
+        <div id="classesSection" class="management-section active">
+            <!-- 頁面標題 -->
+            <div class="page-header">
+                <h1 class="page-title">
+                    <span class="page-title-icon">👥</span>
+                    班級管理
+                </h1>
+                <button class="btn btn-primary" onclick="openCreateClassModal()">
+                    ➕ 建立新班級
+                </button>
+            </div>
+            
+            <!-- 載入動畫 -->
+            <div class="loading" id="classLoading">
+                <div class="loading-content">
+                    <div class="spinner"></div>
+                    <p class="loading-text">載入中...</p>
+                </div>
+            </div>
+            
+            <!-- 班級卡片網格 -->
+            <div id="classesGrid" class="card-grid">
+                <!-- 動態生成班級卡片 -->
+            </div>
+            
+            <!-- 匯入學生區塊 -->
+            <div id="importSection" class="import-section">
+                <div class="import-header">
+                    <h2 id="importSectionTitle" class="section-subtitle">📥 匯入學生</h2>
+                    <button class="close-btn" onclick="closeImportSection()" title="關閉">✕</button>
+                </div>
+                
+                <!-- 說明文字 -->
+                <div class="help-text">
+                    <strong>📋 操作說明：</strong><br>
+                    1. 從 Excel/Google Sheets 複製包含<strong>座號、姓名、email</strong>的學生資料<br>
+                    2. 貼入下方文字框（自動識別 Tab 或逗號分隔）<br>
+                    3. 點擊「解析資料」預覽內容<br>
+                    4. 確認無誤後點擊「確認匯入」上傳到班級
+                </div>
+                
+                <!-- 貼上區域 -->
+                <label class="form-label">貼上學生資料：</label>
+                <textarea id="pasteArea" class="paste-area" placeholder="座號&#9;姓名&#9;Email
+001&#9;王小明&#9;wang@example.com
+002&#9;李小華&#9;lee@example.com"></textarea>
+                
+                <!-- 解析按鈕 -->
+                <button class="btn btn-primary" onclick="handleParseData()" style="margin-bottom: var(--spacing-md);">
+                    🔍 解析資料
+                </button>
+                
+                <!-- 預覽表格 -->
+                <div id="previewContainer" style="display: none;">
+                    <h3 style="margin: var(--spacing-md) 0; color: var(--text-dark);">
+                        📊 預覽（共 <span id="studentCount">0</span> 位學生）
+                    </h3>
+                    <div style="overflow-x: auto; margin-bottom: var(--spacing-md);">
+                        <table class="preview-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 15%;">座號</th>
+                                    <th style="width: 30%;">姓名</th>
+                                    <th style="width: 40%;">Email</th>
+                                </tr>
+                            </thead>
+                            <tbody id="previewTableBody">
+                                <!-- 預覽資料將動態生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- 操作按鈕 -->
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-secondary" onclick="closeImportSection()">取消</button>
+                        <button class="btn btn-success" onclick="handleConfirmImport()">
+                            ✅ 確認匯入
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 載入動畫 -->
+                <div id="importLoading" class="loading">
+                    <div class="loading-content">
+                        <div class="spinner"></div>
+                        <p class="loading-text">匯入中，請稍候...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 課程管理區 -->
+        <div id="coursesSection" class="management-section" style="display: none;">
+            <!-- 課程列表檢視 -->
+            <div id="courseListView">
+                <!-- 頁面標題 -->
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">📚</span>
+                        課程管理
+                    </h1>
+                    <button class="btn btn-primary" onclick="openCreateCourseModal()">
+                        ➕ 建立新課程
+                    </button>
+                </div>
+                
+                <!-- 載入動畫 -->
+                <div class="loading" id="courseLoading">
+                    <div class="loading-content">
+                        <div class="spinner"></div>
+                        <p class="loading-text">載入中...</p>
+                    </div>
+                </div>
+                
+                <!-- 課程卡片網格 -->
+                <div id="courseGrid" class="card-grid">
+                    <!-- 動態生成課程卡片 -->
+                </div>
+            </div>
+            
+            <!-- 任務管理檢視 -->
+            <div id="taskView" class="task-view" style="display: none;">
+                <!-- 麵包屑 -->
+                <div class="breadcrumb">
+                    <a href="#" onclick="event.preventDefault(); showCourseList(); return false;">課程管理</a>
+                    <span class="breadcrumb-separator">/</span>
+                    <span id="currentCourseName">課程名稱</span>
+                </div>
+                
+                <!-- 返回按鈕 -->
+                <button class="btn btn-secondary mb-4" onclick="showCourseList()">
+                    ← 返回課程列表
+                </button>
+                
+                <div class="course-info-bar">
+                    <div class="course-info-title" id="courseInfoTitle">課程名稱</div>
+                    <div class="course-info-desc" id="courseInfoDesc">課程說明</div>
+                </div>
+                
+                <div class="task-list">
+                    <div class="task-list-header">
+                        <h2 class="task-list-title">📝 任務列表</h2>
+                        <div style="display: flex; gap: 12px;">
+                            <button class="btn btn-secondary" onclick="toggleReorderMode()" id="reorderModeBtn">
+                                📋 重新排序
+                            </button>
+                            <button class="btn-primary" onclick="openAddTaskModal()">
+                                ➕ 新增任務
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="taskLoading">
+                        <div class="loading-content">
+                            <div class="spinner"></div>
+                            <p class="loading-text">載入中...</p>
+                        </div>
+                    </div>
+                    
+                    <div id="taskListContainer">
+                        <!-- 動態生成任務列表 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 授課安排區 -->
+        <div id="assignmentsSection" class="management-section" style="display: none;">
+            <!-- 頁面標題 -->
+            <div class="page-header">
+                <h1 class="page-title">
+                    <span class="page-title-icon">📋</span>
+                    授課安排
+                </h1>
+            </div>
+
+            <!-- 說明文字 -->
+            <div class="info-banner" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: var(--spacing-md); border-radius: var(--radius-md); margin-bottom: var(--spacing-lg); box-shadow: var(--shadow-md);">
+                <h3 style="margin-bottom: var(--spacing-xs); font-size: 18px;">📚 授課安排說明</h3>
+                <p style="opacity: 0.95; line-height: 1.8;">
+                    為每個班級指定一個課程進行學習。每個班級同時只能有一個進行中的課程，學生進入系統後會自動看到班級當前的課程內容。
+                </p>
+            </div>
+
+            <!-- 載入動畫 -->
+            <div class="loading" id="assignmentLoading">
+                <div class="loading-content">
+                    <div class="spinner"></div>
+                    <p class="loading-text">載入授課安排中...</p>
+                </div>
+            </div>
+
+            <!-- 班級授課列表 -->
+            <div id="assignmentsList" style="display: none;">
+                <!-- 動態生成班級授課卡片 -->
+            </div>
+
+            <!-- 空狀態 -->
+            <div id="assignmentsEmptyState" class="empty-state" style="display: none;">
+                <div class="empty-state-icon" style="font-size: 64px; margin-bottom: var(--spacing-md);">📋</div>
+                <h3 style="color: var(--text-dark); margin-bottom: var(--spacing-sm);">尚無班級資料</h3>
+                <p style="color: var(--text-medium);">請先在「班級管理」中建立班級，再回到此處安排授課</p>
+                <button class="btn btn-primary" onclick="switchTab('classes')" style="margin-top: var(--spacing-md);">
+                    前往建立班級
+                </button>
+            </div>
+        </div>
+
+        <!-- 代幣管理區 -->
+        <div id="tokensSection" class="management-section" style="display: none;">
+            <div class="page-header">
+                <h1 class="page-title">
+                    <span class="page-title-icon">💰</span>
+                    代幣管理
+                </h1>
+                <p class="page-subtitle">查看學生的代幣存有量，並手動增加或減少代幣</p>
+            </div>
+            
+            <!-- 班級選擇 -->
+            <div class="class-selector" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <label for="tokenClassSelect" style="display: block; margin-bottom: 10px; font-weight: 600; color: #2C3E50;">
+                    📚 選擇班級
+                </label>
+                <select id="tokenClassSelect" class="form-input" onchange="loadClassTokens(this.value)" style="max-width: 400px;">
+                    <option value="">-- 請選擇班級 --</option>
+                </select>
+            </div>
+            
+            <!-- 載入動畫 -->
+            <div class="loading" id="tokenLoading" style="display: none;">
+                <div class="loading-content">
+                    <div class="spinner"></div>
+                    <p class="loading-text">載入中...</p>
+                </div>
+            </div>
+            
+            <!-- 統計卡片 -->
+            <div class="stats-container" id="tokenStats" style="display: none;">
+                <div class="stat-card stat-card-gold">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-info">
+                        <div class="stat-label">總代幣流通量</div>
+                        <div class="stat-value" id="totalTokens">0</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-card-green">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-info">
+                        <div class="stat-label">班級學生人數</div>
+                        <div class="stat-value" id="totalStudents">0</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-card-blue">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-info">
+                        <div class="stat-label">平均代幣數</div>
+                        <div class="stat-value" id="avgTokens">0</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 代幣排行榜 -->
+            <div id="tokenTableContainer">
+                <!-- 代幣表格將動態生成 -->
+            </div>
+            
+            <!-- 空狀態 -->
+            <div class="empty-state" id="tokenEmptyState" style="display: block;">
+                <div class="empty-state-icon">💰</div>
+                <h3>請先選擇班級</h3>
+                <p>從上方下拉選單選擇班級以查看學生代幣資訊<br>
+                您可以在此查看每位學生的代幣存有量，並手動增加或減少代幣</p>
+            </div>
+        </div>
+
+        <!-- 課堂監控區 -->
+        <div id="reviewSection" class="management-section" style="display: none;">
+            <div class="page-header">
+                <h1 class="page-title">
+                    <span class="page-title-icon">📊</span>
+                    課堂監控儀表板
+                </h1>
+                <p class="page-subtitle">即時監控學生學習進度，並在需要時提供支持</p>
+            </div>
+
+            <!-- 控制面板 -->
+            <div class="review-control-panel">
+                <!-- 班級選擇 -->
+                <div class="review-control-item">
+                    <label for="reviewClassSelect" class="control-label">📚 班級</label>
+                    <select id="reviewClassSelect" class="control-select" onchange="handleClassChange()">
+                        <option value="" disabled>請選擇班級...</option>
+                    </select>
+                </div>
+
+                <!-- 課堂狀態顯示 -->
+                <div class="session-status" id="sessionStatus" style="display: none;">
+                    <span class="session-indicator" id="sessionIndicator">⏸️ 未上課</span>
+                    <span class="session-time" id="sessionTime" style="display: none;"></span>
+                </div>
+
+                <!-- 課堂控制按鈕 -->
+                <div class="session-controls" id="sessionControls" style="display: none;">
+                    <button class="btn-start-class" id="btnStartClass" onclick="handleStartClass()" style="display: none;">
+                        🟢 開始上課
+                    </button>
+                    <button class="btn-pause-class" id="btnPauseClass" onclick="handlePauseClass()" style="display: none;">
+                        ⏸️ 暫停課程
+                    </button>
+                    <button class="btn-resume-class" id="btnResumeClass" onclick="handleResumeClass()" style="display: none;">
+                        ▶️ 繼續上課
+                    </button>
+                    <button class="btn-end-class" id="btnEndClass" onclick="handleEndClass()" style="display: none;">
+                        🔴 結束上課
+                    </button>
+                </div>
+
+                <!-- 手動刷新按鈕 -->
+                <button class="btn-refresh" onclick="loadReviewTasks()">
+                    <span class="refresh-icon">🔄</span>
+                    手動刷新
+                </button>
+            </div>
+
+            <!-- 快速篩選 -->
+            <div class="review-quick-filters">
+                <button class="filter-tag active" data-filter="all" onclick="applyQuickFilter('all')">
+                    📊 全部 (<span id="countAll">0</span>)
+                </button>
+                <button class="filter-tag" data-filter="in_progress" onclick="applyQuickFilter('in_progress')">
+                    ⚡ 執行中 (<span id="countInProgress">0</span>)
+                </button>
+                <button class="filter-tag" data-filter="completed" onclick="applyQuickFilter('completed')">
+                    ✅ 已完成 (<span id="countCompleted">0</span>)
+                </button>
+                <button class="filter-tag" data-filter="overtime" onclick="applyQuickFilter('overtime')">
+                    🔴 超時 (<span id="countOvertime">0</span>)
+                </button>
+            </div>
+
+            <!-- 進階篩選 -->
+            <div class="review-advanced-filters">
+                <div class="filter-group">
+                    <label class="filter-label">🎯 層級</label>
+                    <select id="filterTier" class="filter-select" onchange="applyFilters()">
+                        <option value="">全部層級</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">📝 任務</label>
+                    <select id="filterTask" class="filter-select" onchange="applyFilters()">
+                        <option value="">全部任務</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">📊 排序</label>
+                    <select id="filterSort" class="filter-select" onchange="applyFilters()">
+                        <option value="time-desc">時間降序</option>
+                        <option value="time-asc">時間升序</option>
+                        <option value="seat">座號排序</option>
+                    </select>
+                </div>
+
+                <div class="filter-group filter-search">
+                    <label class="filter-label">🔍 搜尋</label>
+                    <input type="text" id="filterSearch" class="filter-input" placeholder="搜尋學生姓名或座號..." oninput="applyFilters()">
+                </div>
+            </div>
+
+            <!-- 載入動畫 -->
+            <div class="loading" id="reviewLoading" style="display: none;">
+                <div class="loading-content">
+                    <div class="spinner"></div>
+                    <p class="loading-text">載入審核資料...</p>
+                </div>
+            </div>
+
+            <!-- 任務監控表格 -->
+            <div id="reviewTableContainer" style="display: none;">
+                <table class="review-table">
+                    <thead>
+                        <tr>
+                            <th width="60px">燈號</th>
+                            <th width="60px">座號</th>
+                            <th width="120px">學生</th>
+                            <th width="120px">班級</th>
+                            <th width="200px">任務名稱</th>
+                            <th width="100px">層級</th>
+                            <th width="100px">時間</th>
+                            <th width="180px">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reviewTableBody">
+                        <!-- 動態生成任務行 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 空狀態 -->
+            <div class="empty-state" id="reviewEmptyState" style="display: block;">
+                <div class="empty-state-icon">📊</div>
+                <h3>暫無任務進行中</h3>
+                <p>當學生開始任務後，將會顯示在此處<br>您可以即時監控學生學習進度，並在需要時提供支持</p>
+            </div>
+
+            <!-- 自動刷新倒數 -->
+            <div class="auto-refresh-indicator" id="autoRefreshIndicator">
+                自動刷新倒數：<span id="refreshCountdown">30</span> 秒
+            </div>
+        </div>
+
+        <!-- 數據分析區 -->
+        <div id="analyticsSection" class="management-section" style="display: none;">
+            <div style="background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="margin-bottom: 20px;">📈 學生資料分析儀表板</h2>
+
+                <!-- 篩選控制 -->
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #2C3E50;">班級</label>
+                            <select id="analyticsClassFilter" class="form-input" onchange="onAnalyticsClassChange()">
+                                <option value="">所有班級</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #2C3E50;">課程</label>
+                            <select id="analyticsCourseFilter" class="form-input" onchange="onAnalyticsCourseChange()">
+                                <option value="">所有課程</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #2C3E50;">任務</label>
+                            <select id="analyticsTaskFilter" class="form-input" onchange="onAnalyticsTaskChange()">
+                                <option value="">所有任務</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 導航 -->
+                <ul style="display: flex; gap: 0; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; list-style: none; padding: 0;">
+                    <li style="margin: 0;"><a href="#" class="analytics-tab-item active" onclick="event.preventDefault(); switchAnalyticsTab('completion');" style="display: block; padding: 12px 20px; color: #495057; text-decoration: none; border-bottom: 3px solid transparent; cursor: pointer;">🟢 完成度</a></li>
+                    <li style="margin: 0;"><a href="#" class="analytics-tab-item" onclick="event.preventDefault(); switchAnalyticsTab('time');" style="display: block; padding: 12px 20px; color: #495057; text-decoration: none; border-bottom: 3px solid transparent; cursor: pointer;">⏱️ 完成時間</a></li>
+                    <li style="margin: 0;"><a href="#" class="analytics-tab-item" onclick="event.preventDefault(); switchAnalyticsTab('assessment');" style="display: block; padding: 12px 20px; color: #495057; text-decoration: none; border-bottom: 3px solid transparent; cursor: pointer;">📝 評量正確率</a></li>
+                    <li style="margin: 0;"><a href="#" class="analytics-tab-item" onclick="event.preventDefault(); switchAnalyticsTab('score');" style="display: block; padding: 12px 20px; color: #495057; text-decoration: none; border-bottom: 3px solid transparent; cursor: pointer;">✏️ 作業分數</a></li>
+                    <li style="margin: 0;"><a href="#" class="analytics-tab-item" onclick="event.preventDefault(); switchAnalyticsTab('anomaly');" style="display: block; padding: 12px 20px; color: #495057; text-decoration: none; border-bottom: 3px solid transparent; cursor: pointer;">⚠️ 異常警示</a></li>
+                </ul>
+
+                <!-- 完成度 Tab -->
+                <div id="analyticsCompletionTab" class="analytics-tab-content" style="display: block;">
+                    <div id="completionNoCourseMessage" style="text-align: center; padding: 60px 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">🟢</div>
+                        <h3 style="color: #6c757d; margin-bottom: 8px;">請先選擇課程</h3>
+                        <p style="color: #999;">在上方篩選器中選擇課程後，即可查看完成度數據</p>
+                    </div>
+                    <div id="completionChartContainer" style="display: none;">
+                        <div style="position: relative; height: 350px; margin-bottom: 30px; padding: 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                            <canvas id="completionChart"></canvas>
+                        </div>
+                        <div id="completionTable"></div>
+                    </div>
+                </div>
+
+                <!-- 評量答對率 Tab -->
+                <div id="analyticsAssessmentTab" class="analytics-tab-content" style="display: none;">
+                    <div id="assessmentNoTaskMessage" style="text-align: center; padding: 60px 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📝</div>
+                        <h3 style="color: #6c757d; margin-bottom: 8px;">請先選擇任務</h3>
+                        <p style="color: #999;">在上方篩選器中選擇任務後，即可查看評量正確率數據</p>
+                    </div>
+                    <div id="assessmentChartContainer" style="display: none;">
+                        <div style="position: relative; height: 350px; margin-bottom: 30px; padding: 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                            <canvas id="assessmentChart"></canvas>
+                        </div>
+                        <div id="assessmentTable"></div>
+                    </div>
+                </div>
+
+                <!-- 作業分數 Tab -->
+                <div id="analyticsScoreTab" class="analytics-tab-content" style="display: none;">
+                    <div id="scoreNoTaskMessage" style="text-align: center; padding: 60px 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">✏️</div>
+                        <h3 style="color: #6c757d; margin-bottom: 8px;">請先選擇任務</h3>
+                        <p style="color: #999;">在上方篩選器中選擇任務後，即可查看作業分數數據</p>
+                    </div>
+                    <div id="scoreChartContainer" style="display: none;">
+                        <div style="position: relative; height: 350px; margin-bottom: 30px; padding: 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                            <canvas id="scoreChart"></canvas>
+                        </div>
+                        <div id="scoreTable"></div>
+                    </div>
+                </div>
+
+                <!-- 完成時間 Tab -->
+                <div id="analyticsTimeTab" class="analytics-tab-content" style="display: none;">
+                    <div id="timeNoCourseMessage" style="text-align: center; padding: 60px 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">⏱️</div>
+                        <h3 style="color: #6c757d; margin-bottom: 8px;">請先選擇課程</h3>
+                        <p style="color: #999;">在上方篩選器中選擇課程後，即可查看完成時間數據</p>
+                    </div>
+                    <div id="timeChartContainer" style="display: none;">
+                        <div style="position: relative; height: 350px; margin-bottom: 30px; padding: 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                            <canvas id="timeChart"></canvas>
+                        </div>
+                        <div id="timeTable"></div>
+                    </div>
+                </div>
+
+                <!-- 異常警示 Tab -->
+                <div id="analyticsAnomalyTab" class="analytics-tab-content" style="display: none;">
+                    <div id="anomalyNoTaskMessage" style="text-align: center; padding: 60px 20px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                        <h3 style="color: #6c757d; margin-bottom: 8px;">請先選擇任務</h3>
+                        <p style="color: #999;">在上方篩選器中選擇任務後，即可查看異常警示數據</p>
+                    </div>
+                    <div id="anomalyContentContainer" style="display: none;">
+                        <div style="margin-bottom: 20px;">
+                            <button class="analytics-filter-tag active" data-filter="assessment" onclick="applyAnalyticsAnomalyFilter('assessment')">📝 評量異常</button>
+                            <button class="analytics-filter-tag" data-filter="score" onclick="applyAnalyticsAnomalyFilter('score')">✏️ 分數異常</button>
+                            <button class="analytics-filter-tag" data-filter="time" onclick="applyAnalyticsAnomalyFilter('time')">⏱️ 時間異常</button>
+                        </div>
+                        <div id="assessmentAnomalies"></div>
+                        <div id="scoreAnomalies" style="display: none;"></div>
+                        <div id="timeAnomalies" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- Loading 動畫 -->
+                <div id="analyticsLoadingDiv" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); z-index: 9999; display: none; justify-content: center; align-items: center;">
+                    <div style="text-align: center;">
+                        <div style="border: 4px solid white; border-top: 4px solid transparent; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 15px;"></div>
+                        <p style="color: white; font-size: 18px;">載入數據中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 作業批改區 -->
+        <div id="gradingSection" class="management-section" style="display: none;">
+            <div style="background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="margin-bottom: 20px;">✏️ 作業批改</h2>
+
+                <!-- 篩選區 -->
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #2C3E50;">班級</label>
+                            <select id="gradingClassFilter" class="form-input" onchange="loadGradingSubmissions()">
+                                <option value="">所有班級</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #2C3E50;">任務</label>
+                            <select id="gradingTaskFilter" class="form-input" onchange="loadGradingSubmissions()">
+                                <option value="">所有任務</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #2C3E50;">狀態</label>
+                            <select id="gradingStatusFilter" class="form-input" onchange="loadGradingSubmissions()">
+                                <option value="">所有狀態</option>
+                                <option value="未批改">未批改</option>
+                                <option value="已批改">已批改</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 統計資訊 -->
+                <div id="gradingStatsBar" style="display: none; background: #e7f3ff; border-radius: 8px; padding: 15px; margin-bottom: 20px; display: flex; gap: 20px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.5rem; font-weight: 700;" id="gradingTotalCount">0</span>
+                        <span style="font-size: 0.9rem; color: #6c757d;">筆作業</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.5rem; font-weight: 700; color: #ff9800;" id="gradingPendingCount">0</span>
+                        <span style="font-size: 0.9rem; color: #6c757d;">待批改</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.5rem; font-weight: 700; color: #28a745;" id="gradingReviewedCount">0</span>
+                        <span style="font-size: 0.9rem; color: #6c757d;">已批改</span>
+                    </div>
+                </div>
+
+                <!-- 載入中 -->
+                <div id="gradingLoadingDiv" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); z-index: 9999; display: none; justify-content: center; align-items: center;">
+                    <div style="text-align: center;">
+                        <div style="border: 4px solid white; border-top: 4px solid transparent; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 15px;"></div>
+                        <p style="color: white; font-size: 18px;">載入作業中...</p>
+                    </div>
+                </div>
+
+                <!-- 作業列表 -->
+                <div id="gradingSubmissionList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;"></div>
+
+                <!-- 空狀態 -->
+                <div id="gradingEmptyState" style="display: none; text-align: center; padding: 60px 20px; color: #6c757d;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                    <h4>沒有找到作業</h4>
+                    <p>請調整篩選條件或稍後再試</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 建立班級 Modal -->
+    <div id="createClassModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">建立新班級</h2>
+                <button class="modal-close" onclick="closeModal('createClassModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label required">班級名稱</label>
+                    <input type="text" class="form-input" id="newClassName" placeholder="例如：資訊一甲">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('createClassModal')">取消</button>
+                <button class="btn btn-primary" onclick="handleCreateClass()">建立班級</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 建立課程 Modal -->
+    <div id="createCourseModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">建立新課程</h2>
+                <button class="modal-close" onclick="closeModal('createCourseModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label required">課程名稱</label>
+                    <input type="text" class="form-input" id="newCourseName" placeholder="例如：Python 程式設計入門" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">課程說明</label>
+                    <textarea class="form-textarea" id="newCourseDesc" placeholder="簡單描述這門課程的內容與目標..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('createCourseModal')">取消</button>
+                <button class="btn btn-primary" onclick="handleCreateCourse()">建立課程</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 新增任務 Modal -->
+    <div id="addTaskModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">新增任務</h2>
+                <button class="modal-close" onclick="closeModal('addTaskModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label required">任務名稱</label>
+                    <input type="text" class="form-input" id="newTaskName" placeholder="例如：變數與資料型別" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">任務排序</label>
+                    <input type="number" class="form-input" id="newTaskSequence" placeholder="留空則自動排在最後" min="1">
+                    <div class="form-hint">設定任務的順序（1 = 第一個任務），留空則自動排在最後</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label required">時間限制（秒）</label>
+                    <input type="number" class="form-input" id="newTaskTimeLimit" placeholder="請輸入時間限制（秒）" value="" min="1" required>
+                    <div class="form-hint">請輸入大於 0 的秒數，系統將依此判斷自動升/降級</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label required">任務獎勵代幣</label>
+                    <div class="token-input-container">
+                        <span class="token-input-icon">💰</span>
+                        <input type="number" 
+                            class="form-input token-input" 
+                            id="newTaskTokenReward" 
+                            placeholder="100" 
+                            value="100" 
+                            min="0" 
+                            step="10"
+                            required>
+                    </div>
+                    <div class="form-hint">學生完成此任務可獲得的代幣數量</div>
+                </div>
+                
+                <h3 style="margin: 24px 0 16px; color: #2C3E50;">分層教材設定</h3>
+                
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTaskTab('tutorial', this)">🟢 Tutorial</button>
+                    <button class="tab" onclick="switchTaskTab('adventure', this)">🟡 Adventure</button>
+                    <button class="tab" onclick="switchTaskTab('hardcore', this)">🔴 Hardcore</button>
+                </div>
+                
+                <div id="tutorialTab" class="tab-content active">
+                    <div class="form-group">
+                        <label class="form-label">Tutorial 說明</label>
+                        <textarea class="form-textarea" id="tutorialDesc" placeholder="新手友善的引導說明..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tutorial 連結</label>
+                        <input type="url" class="form-input" id="tutorialLink" placeholder="https://...">
+                    </div>
+                </div>
+                
+                <div id="adventureTab" class="tab-content">
+                    <div class="form-group">
+                        <label class="form-label">Adventure 說明</label>
+                        <textarea class="form-textarea" id="adventureDesc" placeholder="進階挑戰說明..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Adventure 連結</label>
+                        <input type="url" class="form-input" id="adventureLink" placeholder="https://...">
+                    </div>
+                </div>
+                
+                <div id="hardcoreTab" class="tab-content">
+                    <div class="form-group">
+                        <label class="form-label">Hardcore 說明</label>
+                        <textarea class="form-textarea" id="hardcoreDesc" placeholder="最高難度挑戰說明..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Hardcore 連結</label>
+                        <input type="url" class="form-input" id="hardcoreLink" placeholder="https://...">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('addTaskModal')">取消</button>
+                <button class="btn btn-primary" onclick="handleAddTask()">新增任務</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 調整代幣 Modal -->
+    
+    <!-- 任務編輯（參考答案 / 檢核項 / 題庫）Modal -->
+    <div id="taskEditorModal" class="modal-overlay">
+        <div class="modal-content" style="max-width:900px;">
+            <div class="modal-header">
+                <h2 class="modal-title">任務編輯</h2>
+                <button class="modal-close" onclick="closeModal('taskEditorModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTaskEditorTab('reference', this)">📄 參考答案</button>
+                    <button class="tab" onclick="switchTaskEditorTab('checklist', this)">✅ 檢核項目</button>
+                    <button class="tab" onclick="switchTaskEditorTab('questions', this)">📝 評量題庫</button>
+                </div>
+
+                <div id="referenceTab" class="tab-content active">
+                    <div class="form-group">
+                        <label class="form-label">參考答案（純文字 / HTML）</label>
+                        <textarea id="editorReferenceAnswer" class="form-textarea" rows="6" placeholder="輸入此任務的參考示範或標準答案..."></textarea>
+                        <div style="margin-top:10px;">
+                            <label class="form-label">參考圖片（每行一個圖片雲端連結）</label>
+                            <textarea id="editorReferenceImages" class="form-textarea" rows="3" placeholder="每行一個圖片連結（例如：https://...）"></textarea>
+                            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+                                <input type="file" id="editorImageFiles" accept="image/*" multiple style="flex:1;" />
+                                <button class="btn btn-secondary" id="uploadReferenceImagesBtn" onclick="handleUploadReferenceImages()">上傳圖片</button>
+                            </div>
+                            <div id="editorImagePreview" style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"></div>
+                            <div class="form-hint">可貼上多個圖片連結，系統會以 | 分隔儲存並在讀取時解析。或使用上傳按鈕直接上傳圖片取得分享連結。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="checklistTab" class="tab-content" style="display:none;">
+                    <div class="form-hint" style="margin-bottom:10px;">設定學員完成此任務必須做到的檢查點。</div>
+                    
+                    <div id="editorChecklistContainer" class="list-container">
+                        </div>
+
+                    <button class="btn btn-dashed" onclick="addChecklistItem()" style="width:100%; border: 2px dashed #cbd5e1; background: #f8fafc; color:#64748b;">
+                        ＋ 新增檢核項目
+                    </button>
+                </div>
+
+                <div id="questionsTab" class="tab-content" style="display:none;">
+                    <div class="form-hint" style="margin-bottom:10px;">點擊題目可展開編輯詳細內容。</div>
+
+                    <div id="editorQuestionsContainer" class="list-container">
+                        </div>
+
+                    <button class="btn btn-dashed" onclick="addNewQuestionCard()" style="width:100%; border: 2px dashed #cbd5e1; background: #f8fafc; color:#64748b;">
+                        ＋ 新增題目
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('taskEditorModal')">關閉</button>
+                <button class="btn btn-primary" onclick="saveAllTaskEditorChanges()">儲存所有變更</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adjustTokenModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">調整學生代幣</h2>
+                <button class="modal-close" onclick="closeModal('adjustTokenModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">學生姓名</label>
+                    <input type="text" class="form-input" id="adjustStudentName" readonly style="background-color: #F3F4F6;">
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">目前代幣</label>
+                        <div class="token-input-container">
+                            <span class="token-input-icon">💰</span>
+                            <input type="text" class="form-input token-input" id="currentTokens" readonly style="background-color: #F3F4F6;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">調整後代幣</label>
+                        <div class="token-input-container">
+                            <span class="token-input-icon">💰</span>
+                            <input type="text" class="form-input token-input" id="newTokens" readonly style="background-color: #F3F4F6;">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label required">調整數量</label>
+                    <input type="number" class="form-input" id="adjustAmount" placeholder="正數=增加，負數=減少" value="0" onchange="updateNewTokensPreview()">
+                    <div class="form-hint">
+                        ✓ 輸入正數增加代幣 (例如：10)<br>
+                        ✓ 輸入負數減少代幣 (例如：-10)
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">調整原因</label>
+                    <textarea class="form-textarea" id="adjustReason" placeholder="例如：課堂表現優秀、完成額外作業、違反課堂規範..."></textarea>
+                    <div class="form-hint">可選項，用於記錄調整的理由</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('adjustTokenModal')">取消</button>
+                <button class="btn btn-primary" onclick="handleAdjustTokens()">確認調整</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 學生名單 Modal -->
+    <div id="studentListModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    📋 班級名單 - <span id="studentListClassName">班級名稱</span>
+                </h2>
+                <button class="modal-close" onclick="closeModal('studentListModal')">✕</button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <!-- 工具欄 -->
+                <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                    <!-- 搜尋框 -->
+                    <div style="flex: 1; min-width: 200px;">
+                        <input type="text" id="studentSearchInput" class="form-input" placeholder="搜尋學生（座號或姓名）..." onkeyup="filterStudentList()">
+                    </div>
+                    
+                    <!-- 篩選按鈕 -->
+                    <select id="studentFilterSelect" class="form-input" style="width: 150px;" onchange="filterStudentList()">
+                        <option value="">全部學生</option>
+                        <option value="has-email">✓ 有 Email</option>
+                        <option value="no-email">✗ 缺 Email</option>
+                    </select>
+                    
+                    <!-- 操作按鈕 -->
+                    <button class="btn btn-secondary" onclick="exportStudentListExcel()">
+                        📥 匯出 Excel
+                    </button>
+                    <button class="btn btn-secondary" onclick="printStudentList()">
+                        🖨️ 列印
+                    </button>
+                </div>
+                
+                <!-- 學生名單表格 -->
+                <div style="overflow-x: auto;">
+                    <table class="student-list-table" id="studentListTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 10%; text-align: center;">座號</th>
+                                <th style="width: 25%;">姓名</th>
+                                <th style="width: 40%;">Email</th>
+                                <th style="width: 15%; text-align: center;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="studentListTableBody">
+                            <!-- 學生資料將動態生成 -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 統計信息 -->
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 20px;">
+                    <div>
+                        <strong>總人數：</strong><span id="totalStudentsCount">0</span> 人
+                    </div>
+                    <div>
+                        <strong>有 Email：</strong><span id="withEmailCount">0</span> 人
+                    </div>
+                    <div>
+                        <strong>缺 Email：</strong><span id="withoutEmailCount">0</span> 人
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('studentListModal')">關閉</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 載入 JS -->
+    <script src="config.js"></script>
+    <script src="navbar.js"></script>
+    <script src="management-utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="teacher.js"></script>
+    <script src="course.js"></script>
+    <script src="assignment.js"></script>
+    <script src="tokens.js"></script>
+    <script src="review.js"></script>
+    <script src="student-modal.js"></script>
+    
+    <!-- 整合頁面的初始化腳本 -->
+    <script>
+        // 標記這是 teacher.html 頁面（整合版）
+        window.isTeacherPage = true;
+        
+        // 重寫 switchTab 函數以支援多個區塊
+        function switchTab(tabName) {
+            // 更新 Tab 樣式
+            const tabs = document.querySelectorAll('.tab-item');
+            tabs.forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // 找到被點擊的 Tab 並加上 active
+            // 使用 event 如果存在，否則根據 tabName 尋找對應的 tab
+            if (typeof event !== 'undefined' && event && event.target) {
+                event.target.closest('.tab-item').classList.add('active');
+            } else {
+                // 根據 tabName 找到對應的 tab
+                tabs.forEach(tab => {
+                    if (tab.getAttribute('onclick').includes(`'${tabName}'`)) {
+                        tab.classList.add('active');
+                    }
+                });
+            }
+            
+            // 隱藏所有管理區塊
+            document.querySelectorAll('.management-section').forEach(section => {
+                section.style.display = 'none';
+                section.classList.remove('active');
+            });
+            
+            // 顯示課程檢視時隱藏任務檢視
+            const courseListView = document.getElementById('courseListView');
+            const taskView = document.getElementById('taskView');
+            if (courseListView && taskView) {
+                courseListView.style.display = 'block';
+                taskView.style.display = 'none';
+            }
+            
+            // 顯示目標區塊
+            const targetSection = document.getElementById(`${tabName}Section`);
+            if (targetSection) {
+                targetSection.style.display = 'block';
+                targetSection.classList.add('active');
+            }
+            
+            // 載入對應資料
+            if (tabName === 'classes') {
+                setTimeout(() => loadClasses(), 100);
+            } else if (tabName === 'courses') {
+                setTimeout(() => loadCourses(), 100);
+            } else if (tabName === 'assignments') {
+                setTimeout(() => {
+                    if (typeof loadAssignments === 'function') {
+                        loadAssignments();
+                    } else {
+                        console.error('loadAssignments 函數未定義，請檢查 assignment.js 是否正確載入');
+                        showToast('授課安排模組載入失敗，請重新整理頁面', 'error');
+                    }
+                }, 100);
+            } else if (tabName === 'tokens') {
+                setTimeout(() => loadTokenClasses(), 100);
+            } else if (tabName === 'review') {
+                setTimeout(() => {
+                    if (typeof loadReview === 'function') {
+                        loadReview();
+                    } else {
+                        console.error('loadReview 函數未定義，請檢查 review.js 是否正確載入');
+                        showToast('任務審核模組載入失敗，請重新整理頁面', 'error');
+                    }
+                }, 100);
+            } else if (tabName === 'analytics') {
+                setTimeout(() => {
+                    if (typeof loadAnalyticsClassList === 'function') {
+                        loadAnalyticsClassList();
+                    }
+                }, 100);
+            } else if (tabName === 'grading') {
+                setTimeout(() => {
+                    if (typeof loadGradingClassList === 'function') {
+                        loadGradingClassList();
+                    }
+                }, 100);
+            }
+        }
+        
+        // 課程管理函數
+        function showCourseList() {
+            const courseListView = document.getElementById('courseListView');
+            const taskView = document.getElementById('taskView');
+            if (courseListView && taskView) {
+                courseListView.style.display = 'block';
+                taskView.style.display = 'none';
+            }
+        }
+
+        // 初始化時處理 URL hash
+        window.addEventListener('load', function() {
+            // 延遲執行以確保所有腳本都已加載
+            setTimeout(() => {
+                if (window.location.hash === '#tokens') {
+                    const tokenTab = document.querySelector('.tab-item[onclick*="tokens"]');
+                    if (tokenTab) {
+                        tokenTab.click();
+                    }
+                } else if (window.location.hash === '#courses') {
+                    const courseTab = document.querySelector('.tab-item[onclick*="courses"]');
+                    if (courseTab) {
+                        courseTab.click();
+                    }
+                }
+            }, 500);
+        });
+
+
+    </script>
+
+    <!-- 代課教師管理 Modal -->
+<div id="coTeacherModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">管理代課教師</h2>
+            <button class="modal-close" onclick="closeModal('coTeacherModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="color: var(--text-medium); margin-bottom: 16px;">
+                班級：<strong id="coTeacherClassName"></strong>
+            </p>
+            <div class="form-group">
+                <label class="form-label">代課教師 Email（多位請用逗號分隔）</label>
+                <input type="text" class="form-input" id="coTeachersInput" 
+                       placeholder="例如：teacher2@gmail.com, teacher3@gmail.com">
+                <div class="form-hint">代課教師可完全操作此班級（上課、審核任務等）</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('coTeacherModal')">取消</button>
+            <button class="btn btn-primary" onclick="handleSaveCoTeachers()">儲存</button>
+        </div>
+    </div>
+</div>
+
+    <!-- 題目詳情 Modal -->
+    <div id="questionModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: none; z-index: 9998;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 10px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; color: #2C3E50;">題目詳情</h2>
+                <button onclick="closeModal('questionModal')" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #6c757d;">✕</button>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <strong>題目：</strong><span id="modalQuestionText"></span>
+            </div>
+            
+            <div style="border-top: 1px solid #dee2e6; padding-top: 20px;">
+                <strong style="display: block; margin-bottom: 12px;">選項統計：</strong>
+                <div id="modalOptions"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批改 Modal -->
+    <div id="reviewModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: none; z-index: 9998;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 10px; padding: 30px; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; color: #2C3E50;">批改作業</h2>
+                <button onclick="closeModal('reviewModal')" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #6c757d;">✕</button>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <div style="margin-bottom: 8px;"><strong>學生：</strong><span id="modalStudentName"></span></div>
+                <div style="margin-bottom: 8px;"><strong>班級：</strong><span id="modalClassName"></span></div>
+                <div style="margin-bottom: 8px;"><strong>任務：</strong><span id="modalTaskName"></span></div>
+                <div><strong>上傳時間：</strong><span id="modalUploadTime"></span></div>
+            </div>
+
+            <!-- 檔案預覽 -->
+            <div id="filePreview" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: center;"></div>
+
+            <!-- 批改表單 -->
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">分數 (0-100)</label>
+                    <input type="number" id="reviewScore" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px; font-family: inherit;" min="0" max="100" required>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">批改意見</label>
+                    <textarea id="reviewComment" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px; font-family: inherit; resize: vertical;" rows="4" placeholder="請輸入批改意見..."></textarea>
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">作業狀態</label>
+                    <select id="submissionStatus" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px; font-family: inherit;">
+                        <option value="已批改">已批改</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+                <button onclick="closeModal('reviewModal')" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">取消</button>
+                <button id="submitReviewBtn" onclick="submitGradingReview()" style="padding: 10px 20px; background: #2C5F7C; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">提交批改</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>
+
