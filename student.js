@@ -18,17 +18,16 @@
     let selectedTier = null;
     let currentTasks = [];
     let currentTasksProgress = {};
-    let previousTasksProgress = {}; // 紀錄前一次進度，用於偵測狀態變化
     let learningRecord = null;
     let selectedTask = null;
-    let autoResumeTaskProgress = null; // 緩存自動接續任務的進度，避免重複查詢
     let sessionCheckInterval = null; // 階段 2：session 檢查計時器
-    let consecutiveInactiveSessionCount = 0; // 連續偵測不到課堂的次數，避免瞬斷就被判定結束
     let taskStatusCheckInterval = null; // 任務狀態檢查計時器（檢查是否被退回）
     let taskTimeLimitCheckInterval = null; // 任務時間限制檢查計時器（檢查是否超時）
     let currentTaskStartTime = null; // 当前任务开始时间
     let hasShownSlowSuggestion = false; // 是否已显示过太慢建议
-    let taskExecutionWindow = null; // ✅ 修復問題6：追蹤任務執行視窗，防止重複開啟
+
+    let shownReviewTasks = new Set();
+    let isCheckingPeerReview = false;
 
     // 性能優化：緩存數據避免重複 API 調用
     let cachedSessionStatus = null; // 緩存課堂狀態
@@ -98,7 +97,8 @@
             userEmail: currentStudent.email
         });
 
-        APP_CONFIG.log('?? 載入班級列表...', { userEmail: currentStudent.email });
+        APP_CONFIG.log('📤 載入班級列表...', { userEmail: currentStudent.email });
+
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
@@ -225,6 +225,9 @@
         // 停止 session 檢查
         stopSessionCheck();
 
+        // 停止互評輪詢
+        stopPeerReviewPolling();
+
         if (allClasses.length === 1) {
             // 只有一個班級，重新載入
             loadStudentClasses();
@@ -238,165 +241,150 @@
     // ==========================================
 
     /**
-     * 載入課程層級和學習記錄 (修復自動跳轉問題)
+     * 載入課程層級和學習記錄（優化版：使用整合 API）
      */
     function loadCourseTiersAndRecord() {
         showLoading('mainLoading');
+
         if (!selectedClass || !selectedClass.classId || !selectedCourse || !selectedCourse.courseId) {
             hideLoading('mainLoading');
             showToast('無法取得班級或課程資訊', 'error');
             return;
         }
-        // UI 設定檔（本地描述用，實際層級以後端為準）
-        const UI_DEFINITIONS = [
-            { id: 'tutorial',  name: '基礎層', icon: '📘', color: '#10B981', description: '適合初學者...' },
-            { id: 'adventure', name: '進階層', icon: '📙', color: '#F59E0B', description: '適合具備基礎能力者...' },
-            { id: 'hardcore',  name: '困難層', icon: '📕', color: '#EF4444', description: '適合進階學習者...' }
-        ];
 
+        // 使用整合 API 一次性獲取所有數據（4次請求 → 1次請求）
         const params = new URLSearchParams({
-            action: 'getCourseTiersAndRecord',
+            action: 'getStudentClassEntryData',
             userEmail: currentStudent.email,
             classId: selectedClass.classId,
             courseId: selectedCourse.courseId
         });
 
-        APP_CONFIG.log('?? 載入課程資料...', { classId: selectedClass.classId });
+        APP_CONFIG.log('🚀 使用整合API載入進入數據...', {
+            classId: selectedClass.classId,
+            courseId: selectedCourse.courseId
+        });
+
         fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
             .then(response => response.json())
             .then(function(data) {
-                
-                if (!data.success) throw new Error(data.message || '載入失敗');
+                APP_CONFIG.log('📥 整合API回應:', data);
 
+                if (!data.success) {
+                    throw new Error(data.message || '載入失敗');
+                }
+
+                // 緩存課堂狀態
                 cachedSessionStatus = data.isActive;
                 sessionCheckTime = Date.now();
 
+                // 檢查是否有進行中的課堂
                 if (!data.isActive) {
                     hideLoading('mainLoading');
                     displayCourseWaitingScreen();
                     return Promise.reject('waiting_for_class');
                 }
 
-                // 1. 建構 UI 層級資料
-                let backendData = (data.tiers && data.tiers.length > 0) ? data.tiers[0] : {};
-                courseTiers = UI_DEFINITIONS.map(def => {
-                    const prefix = def.id; 
-                    let descText = backendData[prefix + 'Desc'] || backendData[prefix + '_desc'] || def.description;
-                    return {
-                        ...backendData,
-                        tierId: def.id,
-                        name: def.name,
-                        tier: def.name, // 強制中文名稱
-                        icon: def.icon,
-                        color: def.color,
-                        description: descText
-                    };
-                });
-
-                // 2. 儲存學習記錄
+                // 保存數據到全局變量
+                courseTiers = data.tiers || [];
                 learningRecord = data.learningRecord;
                 cachedProgressData = data.progress;
 
-                // ============================================================
-                // 🔥 自動跳轉核心除錯區 🔥
-                // ============================================================
-                console.log('🔍 [Debug] 學習記錄:', learningRecord);
-                const defaultTierId = 'tutorial';
-                const defaultTierName = (courseTiers.find(t => t.tierId === defaultTierId)?.name) || '基礎層';
-                let needAutoInitial = false;
+                APP_CONFIG.log('✅ 數據載入完成', {
+                    tiersCount: courseTiers.length,
+                    recordId: learningRecord ? learningRecord.recordId : null,
+                    progressCount: Object.keys(cachedProgressData).length
+                });
 
-                if (learningRecord) {
-                    console.log('?? [Debug] 完整學習記錄物件:', learningRecord);
-
-                    const savedTierRaw = learningRecord.current_tier || learningRecord.currentTier;
-                    console.log('?? [Debug] 後端記錄的難度:', savedTierRaw);
-                    console.log('?? [Debug] 可用的層級:', courseTiers.map(t => `${t.tierId} (${t.name})`));
-
-                    if (savedTierRaw && savedTierRaw !== 'initial' && savedTierRaw !== '') {
-                        const matchedTier = courseTiers.find(t =>
-                            t.tierId === savedTierRaw || t.name === savedTierRaw
-                        );
-
-                        if (matchedTier) {
-                            selectedTier = matchedTier.name; // ? 設定全域變數 (關鍵!)
-                            console.log('? [Success] 成功匹配難度，準備跳轉:', selectedTier);
-                            console.log('? [Success] 匹配的層級資訊:', matchedTier);
-                        } else {
-                            console.warn('?? [Warning] 有記錄但找不到對應層級:', savedTierRaw);
-                            console.warn('?? [Warning] 可能的原因：層級ID不匹配或層級名稱不匹配');
-                            selectedTier = defaultTierName; // 重置為預設
-                            needAutoInitial = true;
-                        }
-                    } else {
-                        console.log('?? [Info] 無有效難度記錄 (initial、空字串或null)，預設基礎層');
-                        console.log('?? [Info] savedTierRaw 值:', savedTierRaw);
-                        selectedTier = defaultTierName;
-                        needAutoInitial = true;
-                    }
-                } else {
-                    console.log('? [Error] 沒有學習記錄，使用預設基礎層');
-                    selectedTier = defaultTierName;
-                    needAutoInitial = true;
-                }
-
-                if (needAutoInitial) {
-                    if (learningRecord) {
-                        learningRecord.current_tier = defaultTierId;
-                        learningRecord.currentTier = defaultTierId;
-                    }
-                    recordTierChange('initial', defaultTierId, 'auto_initial', '', 0);
-                }// ============================================================
-
+                // 檢查是否有未完成的任務，如果有則直接進入該層級
                 return checkAndResumeTier();
             })
             .then(function(resumed) {
-                // resumed 必須是 checkAndResumeTier 回傳的 true
-                if (resumed === true) {
-                    console.log('🚀 [Jump] 跳轉成功，隱藏 Loading');
-                    // 跳轉成功，這裡不需要做什麼，因為 loadTierTasks 已經在渲染畫面了
+                if (resumed) {
+                    // 已經直接進入任務列表，loadTierTasks 會負責 hideLoading
                 } else {
-                    console.log('🛑 [Stop] 無法跳轉，顯示難度選擇畫面');
+                    // 沒有未完成任務，顯示層級選擇
                     hideLoading('mainLoading');
-                    if (typeof displayTierSelection === 'function') {
-                        displayTierSelection();
-                    }
+                    displayTierSelection();
                 }
             })
             .catch(function(error) {
-                if (error === 'waiting_for_class') return;
+                // 如果是等待課堂的狀態，不顯示錯誤訊息
+                if (error === 'waiting_for_class') {
+                    APP_CONFIG.log('⏳ 等待課堂開始...');
+                    return;
+                }
                 hideLoading('mainLoading');
-                APP_CONFIG.error('載入失敗', error);
+                APP_CONFIG.error('載入課程資訊失敗', error);
                 showToast('載入失敗：' + error.message, 'error');
             });
     }
 
     /**
-     * 檢查並恢復上次的層級狀態
-     * @returns {Promise<boolean>} true=已跳轉, false=未跳轉
+     * 檢查並恢復上次的層級（優化版：使用緩存數據）
      */
     function checkAndResumeTier() {
-        console.log('🔍 [Check] 檢查是否需要跳轉, selectedTier:', selectedTier);
-
-        // 如果全域變數 selectedTier 有值 (已經從後端恢復了)
-        if (selectedTier) {
-            // 呼叫載入任務列表 (loadTierTasks 必須回傳 Promise)
-            // 參數1: true (使用緩存), 參數2: true (不顯示 loading，因為我們已經在 loading 中)
-            return loadTierTasks(true, true) 
-                .then(() => {
-                    console.log('✅ [Check] 任務載入完成，回傳 true');
-                    return true; // 告訴上層：我已經處理好畫面了
-                })
-                .catch(err => {
-                    console.error('❌ [Check] 自動跳轉載入失敗:', err);
-                    selectedTier = null; 
-                    return false; // 失敗了，回傳 false 讓上層顯示選單
-                });
+        if (!learningRecord || !learningRecord.recordId) {
+            return Promise.resolve(false);
         }
-        
-        // 如果沒有 selectedTier，直接回傳 false
+
+        // 已經從整合API獲得進度數據，直接使用緩存
+        if (!cachedProgressData || Object.keys(cachedProgressData).length === 0) {
+            APP_CONFIG.log('⚠️ 無緩存進度數據');
+            return Promise.resolve(false);
+        }
+
+        APP_CONFIG.log('📊 使用緩存數據檢查未完成任務...');
+
+        // 找到第一個未完成的任務（in_progress 或 pending_review）
+        const progressEntries = Object.entries(cachedProgressData);
+        for (let i = 0; i < progressEntries.length; i++) {
+            const [taskId, progress] = progressEntries[i];
+            if (progress.status === 'in_progress' || progress.status === 'pending_review') {
+                // 從 taskId 提取 tier
+                let tier = null;
+                if (taskId.includes('_tutorial')) {
+                    tier = 'tutorial';
+                } else if (taskId.includes('_adventure')) {
+                    tier = 'adventure';
+                } else if (taskId.includes('_hardcore')) {
+                    tier = 'hardcore';
+                }
+
+                if (tier) {
+                    APP_CONFIG.log('✅ 發現未完成任務，恢復層級:', tier);
+                    // 找到對應的 tier 資訊
+                    const tierInfo = courseTiers.find(t => t.tier === tier);
+                    if (tierInfo) {
+                        selectedTier = tier;
+                        // 記錄自動恢復難度
+                        recordTierChange('', tier, 'auto_resume', taskId, 0);
+                        // 直接載入該層級的任務（使用緩存數據，跳過 showLoading）
+                        loadTierTasks(true, true); // useCache=true, skipShowLoading=true
+                        return Promise.resolve(true);
+                    }
+                }
+            }
+        }
+
+        // 沒有找到未完成任務，檢查學習記錄中的 current_tier
+        if (learningRecord.currentTier) {
+            const tier = learningRecord.currentTier;
+            APP_CONFIG.log('✅ 從學習記錄恢復層級:', tier);
+
+            // 找到對應的 tier 資訊
+            const tierInfo = courseTiers.find(t => t.tier === tier);
+            if (tierInfo) {
+                selectedTier = tier;
+                // 直接載入該層級的任務（使用緩存數據，跳過 showLoading）
+                loadTierTasks(true, true); // useCache=true, skipShowLoading=true
+                return Promise.resolve(true);
+            }
+        }
+
         return Promise.resolve(false);
     }
-    
+
     /**
      * 檢查並顯示「接續任務」Modal（課堂開始時）
      * 目的：自動檢測是否有 in_progress 的任務，有則直接跳出 Modal
@@ -411,7 +399,8 @@
             recordId: learningRecord.recordId
         });
 
-        APP_CONFIG.log('?? 檢查是否有未完成的任務（課堂開始時）...', { recordId: learningRecord.recordId });
+        APP_CONFIG.log('📤 檢查是否有未完成的任務（課堂開始時）...', { recordId: learningRecord.recordId });
+
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
@@ -472,13 +461,6 @@
             waitingContainer.style.display = 'none';
         }
 
-        // 緩存進度，讓後續 openTaskModal 能正確顯示「繼續」按鈕
-        const normalizedProgress = progress ? { ...progress, status: progress.status || 'in_progress' } : null;
-        autoResumeTaskProgress = normalizedProgress;
-        if (task && normalizedProgress) {
-            currentTasksProgress[task.taskId] = normalizedProgress;
-        }
-
         // 創建或取得接續任務 Modal
         let resumeModal = document.getElementById('resumeTaskModal');
         if (!resumeModal) {
@@ -501,7 +483,7 @@
         }
 
         // 計算累積時間
-        const accumulatedTime = (progress && progress.timeSpent) || 0; // 單位：秒
+        const accumulatedTime = progress.timeSpent || 0; // 單位：秒
         const hours = Math.floor(accumulatedTime / 3600);
         const minutes = Math.floor((accumulatedTime % 3600) / 60);
         const seconds = accumulatedTime % 60;
@@ -560,21 +542,14 @@
     window.autoCompleteResumeTask = function() {
         if (!selectedTask) return;
 
-        // 修復：檢查並確保有 classId
-        if (!selectedClass || !selectedClass.classId) {
-            showToast('無法取得班級資訊，請重新登入', 'error');
-            APP_CONFIG.error('繼續任務失敗：缺少 selectedClass');
-            return;
-        }
-
         const params = new URLSearchParams({
             action: 'startTask',
             userEmail: currentStudent.email,
-            taskId: selectedTask.taskId,
-            classId: selectedClass.classId  // 修復：加入 classId
+            taskId: selectedTask.taskId
         });
 
-        APP_CONFIG.log('?? 自動繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
+        APP_CONFIG.log('📤 自動繼續任務...', { taskId: selectedTask.taskId });
+
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
@@ -587,23 +562,9 @@
                         resumeModal.style.display = 'none';
                     }
                     
-                    // 合併最新進度，確保 openTaskModal 能顯示「繼續完成任務」按鈕
-                    const resumeProgress = {
-                        status: 'in_progress',
-                        ...(currentTasksProgress[selectedTask.taskId] || {}),
-                        ...(autoResumeTaskProgress || {})
-                    };
-
-                    // 後端若回傳新的 taskProgressId，覆寫保存
-                    if (response.taskProgressId) {
-                        resumeProgress.taskProgressId = response.taskProgressId;
-                    }
-
-                    currentTasksProgress[selectedTask.taskId] = resumeProgress;
-                    autoResumeTaskProgress = resumeProgress;
-                    
-                    // 直接進入任務詳情 Modal（沿用 openTaskModal 的按鈕邏輯）
-                    openAutoResumeTaskDetail(selectedTask, resumeProgress);
+                    // 直接進入任務詳情 Modal（而非直接打開連結）
+                    // 這樣學生可以看到完成按鈕
+                    openAutoResumeTaskDetail(selectedTask);
                 } else {
                     showToast(response.message || '繼續失敗', 'error');
                 }
@@ -618,105 +579,73 @@
      * 進入自動恢復的任務詳情 Modal（課堂開始自動觸發時）
      * 顯示完整的任務詳情，包括「完成任務」按鈕
      */
-    function openAutoResumeTaskDetail(task, progressOverride) {
-        if (!task) return;
+    function openAutoResumeTaskDetail(task) {
+        const modal = document.getElementById('taskModal');
+        if (!modal) return;
 
-        const progress = progressOverride ||
-                         autoResumeTaskProgress ||
-                         (currentTasksProgress && currentTasksProgress[task.taskId]) ||
-                         { status: 'in_progress' };
+        // 填入任務資訊（與 openTaskModal 相同邏輯）
+        document.getElementById('modalTaskName').textContent = task.name;
 
-        // 同步緩存，確保其他流程也能拿到最新進度
-        autoResumeTaskProgress = progress;
-        if (currentTasksProgress && task) {
-            currentTasksProgress[task.taskId] = progress;
+        let taskTypeName = '教學';
+        if (task.type === 'practice') taskTypeName = '練習';
+        else if (task.type === 'assessment') taskTypeName = '評量';
+
+        document.getElementById('modalTaskType').textContent = taskTypeName;
+        document.getElementById('modalTaskTier').textContent = task.tier;
+        document.getElementById('modalTaskReward').textContent = `💰 ${task.tokenReward || 0} 代幣`;
+
+        // 顯示內容或連結
+        if (task.type === 'tutorial') {
+            document.getElementById('modalContentSection').style.display = 'block';
+            document.getElementById('modalLinkSection').style.display = 'none';
+            document.getElementById('modalTaskContent').textContent = task.content || '暫無內容';
+        } else {
+            document.getElementById('modalContentSection').style.display = 'none';
+            document.getElementById('modalLinkSection').style.display = 'block';
+            const link = document.getElementById('modalTaskLink');
+            link.href = task.link || '#';
+            link.textContent = task.link ? '開啟任務連結 →' : '暫無連結';
         }
 
-        // 直接復用 openTaskModal，避免與主流程 DOM 結構脫節
-        openTaskModal(task, progress);
-        APP_CONFIG.log('? 已進入自動恢復的任務詳情 Modal');
+        // 顯示按鈕
+        const startBtn = document.getElementById('startTaskBtn');
+        const completeBtn = document.getElementById('completeTaskBtn');
+        const reopenBtn = document.getElementById('reopenMaterialBtn');
+
+        if (reopenBtn) {
+            if (task.link && task.link.trim() !== '') {
+                reopenBtn.style.display = 'inline-block';
+            } else {
+                reopenBtn.style.display = 'none';
+            }
+        }
+
+        // in_progress 狀態：隱藏開始按鈕，顯示完成按鈕
+        startBtn.style.display = 'none';
+        completeBtn.style.display = 'inline-block';
+
+        modal.classList.add('active');
+        APP_CONFIG.log('✅ 已進入自動恢復的任務詳情 Modal');
     }
 
     /**
-     * 載入課程層級 (修正：強制同步中文名稱與 UI 樣式)
+     * 載入課程層級
      */
     function loadCourseTiers() {
-        // ============================================================
-        // 🎨 UI 設定檔：這跟 loadCourseTiersAndRecord 是一模一樣的
-        // 確保兩種流程看到的畫面完全一致
-        // ============================================================
-        const UI_DEFINITIONS = [
-            {
-                id: 'tutorial',
-                name: '基礎層',     // ✅ 強制顯示中文
-                icon: '📘',         // 藍色書本 Emoji
-                color: '#10B981',   // 綠色
-                description: '適合初學者，循序漸進地學習基礎知識'
-            },
-            {
-                id: 'adventure',
-                name: '進階層',     // ✅ 強制顯示中文
-                icon: '📙',         // 橘色書本 Emoji
-                color: '#F59E0B',   // 橘色
-                description: '適合具備基礎能力者，挑戰更深入的內容'
-            },
-            {
-                id: 'hardcore',
-                name: '困難層',     // 強制顯示中文
-                icon: '📕',         // 紅色書本
-                color: '#EF4444',   // 紅色
-                description: '適合進階學習者，挑戰高難度任務'
-            }
-        ];
-        // ============================================================
-
         const params = new URLSearchParams({
             action: 'getCourseTiers',
             courseId: selectedCourse.courseId
         });
 
-        APP_CONFIG.log('?? 載入課程層級...', { courseId: selectedCourse.courseId });
+        APP_CONFIG.log('📤 載入課程層級...', { courseId: selectedCourse.courseId });
+
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
                 APP_CONFIG.log('📥 課程層級回應:', response);
 
                 if (response.success) {
-                    let rawTiers = response.tiers || [];
-
-                    // 🛠️ 強制建構：使用 UI_DEFINITIONS 來覆寫後端的英文資料
-                    courseTiers = UI_DEFINITIONS.map(def => {
-                        
-                        // 嘗試從後端資料中找到對應的那一筆 (透過 id 或 tier 名稱比對)
-                        // 後端傳來的可能是 tier: 'tutorial'
-                        const backendTier = rawTiers.find(t => 
-                            (t.tier || '').toLowerCase() === def.id || 
-                            (t.id || '').toLowerCase() === def.id
-                        ) || {};
-
-                        // 智慧抓取描述文字 (優先用後端的，沒有就用前端設定的)
-                        let descText = 
-                            backendTier.description || 
-                            backendTier.desc || 
-                            def.description;
-
-                        return {
-                            ...backendTier,   // 保留後端可能有的其他資訊
-                            
-                            tierId: def.id,   
-                            
-                            // 🔥 關鍵修正：強制把 'tier' 欄位改成中文名稱
-                            tier: def.name,   // 這會讓卡片顯示「基礎層」
-                            name: def.name,   
-                            
-                            icon: def.icon,   // 確保圖示一致
-                            color: def.color, // 確保顏色一致
-                            description: descText 
-                        };
-                    });
-
-                    console.log('✅ 課程層級載入完成 (已轉中文):', courseTiers);
-
+                    courseTiers = response.tiers || [];
                 } else {
                     showToast('載入層級失敗：' + (response.message || ''), 'error');
                     courseTiers = [];
@@ -732,10 +661,10 @@
         const params = new URLSearchParams({
             action: 'getStudentDashboard',
             userEmail: currentStudent.email,
-            classId: selectedClass.classId  // ? 新增：指定班級 ID
+            classId: selectedClass.classId  // ✓ 新增：指定班級 ID
         });
 
-        APP_CONFIG.log('?? 載入學習記錄...', {
+        APP_CONFIG.log('📤 載入學習記錄...', {
             userEmail: currentStudent.email,
             classId: selectedClass.classId
         });
@@ -765,7 +694,8 @@
             courseId: selectedCourse.courseId
         });
 
-        APP_CONFIG.log('?? 開始學習課程...', { classId: selectedClass.classId, courseId: selectedCourse.courseId });
+        APP_CONFIG.log('📤 開始學習課程...', { classId: selectedClass.classId, courseId: selectedCourse.courseId });
+
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
@@ -875,7 +805,8 @@
                 userEmail: currentStudent.email
             });
 
-            APP_CONFIG.log('?? 自動檢查課堂狀態（課程階段）...');
+            APP_CONFIG.log('🔄 自動檢查課堂狀態（課程階段）...');
+
             fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
                 .then(response => response.json())
                 .then(function(sessionResponse) {
@@ -1025,31 +956,27 @@
     }
 
     /**
-     * 選擇難度層級
+     * 選擇層級
      */
     function selectTier(tierInfo) {
-        if (!tierInfo) return;
+        APP_CONFIG.log('✅ 選擇層級:', tierInfo);
 
-        const tierName = tierInfo.name || tierInfo.tier; // 例如 "基礎層"
-        const tierId = tierInfo.tierId || tierInfo.id;   // 例如 "tutorial"
+        const oldTier = selectedTier;  // 保存舊的難度
+        selectedTier = tierInfo.tier;
 
-        console.log('🎯 [選擇難度] 層級資訊:', { tierName, tierId, fullInfo: tierInfo });
+        // 重置完成訊息標記（切換難度時重置）
+        hasShownCompletionModal = false;
 
-        // 呼叫後端記錄 (Record Change)
-        // 注意：這裡我們傳 tierId 給後端存 (例如 tutorial)，但前端顯示用 tierName
-        recordTierChange(
-            null, // fromTier 設為 null，交給後端去查
-            tierId, // toTier: 存入資料庫的值 (建議存 ID: tutorial)
-            'manual',
-            null,
-            0
-        );
+        // 記錄難度變更（首次選擇或手動切換）
+        if (oldTier && oldTier !== selectedTier) {
+            // 手動切換難度
+            recordTierChange(oldTier, selectedTier, 'manual', '', 0);
+        } else if (!oldTier) {
+            // 首次選擇難度
+            recordTierChange('', selectedTier, 'manual', '', 0);
+        }
 
-        // 更新前端狀態
-        selectedTier = tierName;
-        console.log('✅ [選擇難度] 已設定 selectedTier:', selectedTier);
-
-        // 進入任務列表
+        // 載入該層級的任務
         loadTierTasks();
     }
 
@@ -1064,7 +991,7 @@
         // 停止檢查
         stopSessionCheck();
         stopTaskStatusCheck();
-        stopTimeTracking && stopTimeTracking();
+        stopPeerReviewPolling();
 
         displayTierSelection();
     };
@@ -1074,64 +1001,59 @@
     // ==========================================
 
     /**
- * 載入選定層級的任務（階段 2：檢查 session 狀態）
- * @param {boolean} useCache - 是否使用緩存數據
- * @param {boolean} skipShowLoading - 是否跳過 showLoading
- * @returns {Promise} - 回傳 Promise 以便 checkAndResumeTier 等待完成
- */
+     * 載入選定層級的任務（階段 2：檢查 session 狀態）
+     * @param {boolean} useCache - 是否使用緩存數據（避免重複 API 調用）
+     * @param {boolean} skipShowLoading - 是否跳過 showLoading（當已經在顯示 loading 時）
+     */
     function loadTierTasks(useCache = false, skipShowLoading = false) {
-        
+        // ✓ 修正：只在需要時顯示 loading，避免重複調用
         if (!skipShowLoading) {
             showLoading('mainLoading');
         }
 
-        // 檢查基本資料
+        // 階段 2：先檢查班級是否有進行中的課堂 session
         if (!selectedClass || !selectedClass.classId) {
             hideLoading('mainLoading');
             showToast('無法取得班級資訊', 'error');
-            return Promise.reject('no_class_info');
+            return;
         }
 
-        // --- 1. 檢查緩存 (Cache Check) ---
+        // 性能優化：如果有緩存的 session 狀態且時間在 5 秒內，直接使用
         const now = Date.now();
         const cacheValid = useCache &&
-                        cachedSessionStatus !== null &&
-                        sessionCheckTime &&
-                        (now - sessionCheckTime) < 5000;
+                          cachedSessionStatus !== null &&
+                          sessionCheckTime &&
+                          (now - sessionCheckTime) < 5000;
 
         if (cacheValid) {
-            APP_CONFIG.log('⚡ 使用緩存的課堂狀態');
+            APP_CONFIG.log('⚡ 使用緩存的課堂狀態，跳過重複檢查');
 
             if (!cachedSessionStatus) {
                 hideLoading('mainLoading');
-                // 請確認你的等待畫面函式名稱是 displayCourseWaitingScreen 還是 displayWaitingScreen
-                if (typeof displayCourseWaitingScreen === 'function') {
-                    displayCourseWaitingScreen();
-                } else {
-                    console.error('找不到等待畫面函式');
-                }
-                return Promise.reject('waiting_for_class');
+                displayWaitingScreen();
+                return;
             }
 
-            // ✅ 重點修正：這裡必須加上 return
-            return loadTasksData()
+            // 直接載入任務
+            loadTasksData()
                 .catch(function(error) {
                     hideLoading('mainLoading');
                     APP_CONFIG.error('載入任務失敗', error);
                     showToast('載入任務失敗：' + error.message, 'error');
-                    throw error; // 繼續拋出錯誤，讓上層知道失敗了
                 });
+            return;
         }
 
+        // 沒有緩存或緩存過期，重新檢查
         const checkParams = new URLSearchParams({
             action: 'getCurrentSession',
             classId: selectedClass.classId,
             userEmail: currentStudent.email
         });
 
-        APP_CONFIG.log('?? 檢查課堂狀態...', { classId: selectedClass.classId });
-        // ✅ 重點修正：這裡必須加上 return
-        return fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
+        APP_CONFIG.log('📤 檢查課堂狀態...', { classId: selectedClass.classId });
+
+        fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
             .then(response => response.json())
             .then(function(sessionResponse) {
                 APP_CONFIG.log('📥 課堂狀態回應:', sessionResponse);
@@ -1147,9 +1069,8 @@
                 // 檢查是否有進行中的課堂
                 if (!sessionResponse.isActive) {
                     hideLoading('mainLoading');
-                    if (typeof displayCourseWaitingScreen === 'function') {
-                        displayCourseWaitingScreen();
-                    }
+                    displayWaitingScreen();
+                    // 返回 rejected promise 中斷鏈條
                     return Promise.reject('waiting_for_class');
                 }
 
@@ -1160,20 +1081,16 @@
                 // 如果是等待課堂的狀態，不顯示錯誤訊息
                 if (error === 'waiting_for_class') {
                     APP_CONFIG.log('⏳ 等待課堂開始...');
-                    // 這裡我們把錯誤 "吃掉" (不 throw)，回傳一個空的 Promise
-                    // 這樣 checkAndResumeTier 那邊會收到 undefined/false，就不會報錯
-                    return Promise.resolve(false); 
+                    return;
                 }
-                
                 hideLoading('mainLoading');
                 APP_CONFIG.error('檢查課堂狀態失敗', error);
                 showToast('檢查課堂狀態失敗：' + error.message, 'error');
-                throw error;
             });
     }
 
     /**
-     * 載入並篩選任務列表
+     * 載入任務資料（內部函數）
      */
     function loadTasksData() {
         const params = new URLSearchParams({
@@ -1181,8 +1098,8 @@
             courseId: selectedCourse.courseId
         });
 
-        APP_CONFIG.log('?? 載入任務列表...', { courseId: selectedCourse.courseId });
-        // ✅ 這裡有 return，這是正確的
+        APP_CONFIG.log('📤 載入任務列表...', { courseId: selectedCourse.courseId });
+
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
@@ -1191,56 +1108,43 @@
                 if (response.success) {
                     const allTasks = response.tasks || [];
 
-                    // ============================================================
-                    // 🔥 強化篩選邏輯：建立中英文對照，防止篩選失敗
-                    // ============================================================
-                    const TIER_MAP = {
-                        '基礎層': 'tutorial',
-                        '進階層': 'adventure',
-                        '精通層': 'hardcore',
-                        '困難層': 'hardcore',
-                        // 反向對照也加進去，防呆
-                        'tutorial': '基礎層',
-                        'adventure': '進階層',
-                        'hardcore': '困難層'
-                    };
-
-                    // 取得對應的英文 ID (例如 selectedTier='基礎層' -> targetId='tutorial')
-                    const targetId = TIER_MAP[selectedTier] || selectedTier; 
-                    // ============================================================
-
+                    // 篩選出選定層級的任務
                     currentTasks = allTasks.filter(task => {
-                        // 1. 基本防呆
+                        // ✅ 防禦性檢查：過濾掉 null、undefined 或無效的任務
                         if (!task || typeof task !== 'object' || !task.taskId) {
+                            APP_CONFIG.error('發現無效任務（載入時）', { task });
                             return false;
                         }
 
-                        // 2. 新結構篩選 (支援中英文比對)
-                        if (task.tier && task.tier !== 'mixed') {
-                            // 比對：任務的 tier 等於「選定名稱」或「對應 ID」
-                            return task.tier === selectedTier || task.tier === targetId;
+                        // 新結構：直接比對 tier
+                        if (task.tier !== 'mixed') {
+                            return task.tier === selectedTier;
                         }
 
-                        // 3. 舊結構篩選 (Mixed 模式)
-                        // 這裡維持原本邏輯，因為它已經寫好中文判斷了
+                        // 舊結構（tier === 'mixed'）：根據選擇的難度檢查對應欄位是否有內容
                         if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
                             return !!(task.tutorialDesc || task.tutorialLink);
                         } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
                             return !!(task.adventureDesc || task.adventureLink);
-                        } else if (selectedTier === 'hardcore' || selectedTier === '精通層' || selectedTier === '困難層') {
+                        } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
                             return !!(task.hardcoreDesc || task.hardcoreLink);
                         }
 
                         return false;
                     });
 
-                    // 按順序排序
+                    // 按 sequence 排序
                     currentTasks.sort((a, b) => a.sequence - b.sequence);
 
-                    // 再次過濾無效任務
-                    currentTasks = currentTasks.filter(t => t && t.taskId);
+                    // ✅ 驗證：檢查排序後是否有無效任務
+                    const invalidTaskCount = currentTasks.filter(t => !t || !t.taskId).length;
+                    if (invalidTaskCount > 0) {
+                        APP_CONFIG.error(`⚠️ 發現 ${invalidTaskCount} 個無效任務`, currentTasks);
+                        // 再次過濾確保清除無效任務
+                        currentTasks = currentTasks.filter(t => t && t.taskId);
+                    }
 
-                    APP_CONFIG.log('✅ 篩選後的任務:', { count: currentTasks.length, selectedTier });
+                    APP_CONFIG.log('✅ 篩選後的任務:', { count: currentTasks.length, selectedTier, invalidTaskCount });
 
                     // 載入任務進度
                     return loadTaskProgress(learningRecord.recordId);
@@ -1251,7 +1155,10 @@
             .then(function(progressResult) {
                 hideLoading('mainLoading');
 
-                // 確保畫面顯示
+                // 啟動互評輪詢檢查
+                startPeerReviewPolling();
+
+                // 確保 displayQuestBoard 被調用
                 try {
                     displayQuestBoard();
                 } catch (error) {
@@ -1263,20 +1170,18 @@
                 hideLoading('mainLoading');
                 APP_CONFIG.error('載入任務失敗', error);
                 showToast('載入任務失敗：' + error.message, 'error');
-                // 這裡不需要 throw，因為這裡是最後一步了
             });
     }
 
     /**
      * 載入任務進度
      */
-    function loadTaskProgress(recordId, forceRefresh = false) {
-        // 性能優化：如果有緩存的進度數據且不是強制刷新，直接使用
-        if (cachedProgressData && !forceRefresh) {
+    function loadTaskProgress(recordId) {
+        // 性能優化：如果有緩存的進度數據，直接使用
+        if (cachedProgressData) {
             APP_CONFIG.log('⚡ 使用緩存的任務進度數據，跳過重複調用');
 
             currentTasksProgress = cachedProgressData;
-            previousTasksProgress = { ...currentTasksProgress };
 
             // 為每個任務添加預設狀態
             currentTasks.forEach(task => {
@@ -1295,25 +1200,20 @@
             return Promise.resolve(true);
         }
 
-        // ✅ 修復問題7：如果是強制刷新，清除緩存
-        if (forceRefresh) {
-            cachedProgressData = null;
-            APP_CONFIG.log('🔄 強制刷新任務進度，清除緩存');
-        }
-
+        // 沒有緩存，正常調用 API
         const params = new URLSearchParams({
             action: 'getTaskProgress',
             recordId: recordId
         });
 
-        APP_CONFIG.log('?? 載入任務進度...', { recordId });
+        APP_CONFIG.log('📤 載入任務進度...', { recordId });
+
         return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
                 APP_CONFIG.log('📥 任務進度回應:', response);
 
                 if (response.success) {
-                    previousTasksProgress = { ...currentTasksProgress };
                     currentTasksProgress = response.progress || {};
 
                     // 為每個任務添加預設狀態
@@ -1333,17 +1233,6 @@
                         currentTasksProgress[task.taskId] = { status: 'not_started' };
                     });
                 }
-
-                // 任務完成後觸發自動難度調整（只在狀態變為 completed 時觸發一次）
-                currentTasks.forEach(task => {
-                    const newProgress = currentTasksProgress[task.taskId];
-                    const prevStatus = previousTasksProgress && previousTasksProgress[task.taskId]
-                        ? previousTasksProgress[task.taskId].status
-                        : null;
-                    if (newProgress && newProgress.status === 'completed' && prevStatus !== 'completed') {
-                        autoAdjustDifficulty(task, newProgress);
-                    }
-                });
 
                 // 返回以繼續 Promise 鏈
                 return true;
@@ -1415,21 +1304,20 @@
             clearInterval(sessionCheckInterval);
         }
 
-        // 重置偵測不到課堂的計數，避免短暫斷線就觸發結束流程
-        consecutiveInactiveSessionCount = 0;
-
         sessionCheckInterval = setInterval(function() {
             if (!selectedClass || !selectedClass.classId) {
                 stopSessionCheck();
                 return;
             }
+
             const checkParams = new URLSearchParams({
                 action: 'getCurrentSession',
                 classId: selectedClass.classId,
                 userEmail: currentStudent.email
             });
 
-            APP_CONFIG.log('?? 自動檢查課堂狀態...');
+            APP_CONFIG.log('🔄 自動檢查課堂狀態...');
+
             fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
                 .then(response => response.json())
                 .then(function(sessionResponse) {
@@ -1709,36 +1597,24 @@
                 stopSessionCheck();
                 return;
             }
+
             const checkParams = new URLSearchParams({
                 action: 'getCurrentSession',
                 classId: selectedClass.classId,
                 userEmail: currentStudent.email
             });
 
-            APP_CONFIG.log('?? 檢查課堂狀態（進行中）...');
+            APP_CONFIG.log('🔄 檢查課堂狀態（進行中）...');
+
             fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
                 .then(response => response.json())
                 .then(function(sessionResponse) {
-                    if (sessionResponse.success && sessionResponse.isActive) {
-                        // 課堂正常，重置計數
-                        consecutiveInactiveSessionCount = 0;
-                        return;
-                    }
-
-                    // 成功但課堂不在進行中：連續計數 +1（避免瞬斷誤判）
-                    consecutiveInactiveSessionCount += 1;
-                    APP_CONFIG.log('⚠️ 未偵測到課堂，連續次數:', consecutiveInactiveSessionCount, sessionResponse);
-
-                    // 連續 3 次（約 30 秒）都偵測不到，才進入結束/等待流程
-                    if (consecutiveInactiveSessionCount >= 3) {
+                    if (sessionResponse.success && !sessionResponse.isActive) {
+                        // 老師結束課堂了！
+                        APP_CONFIG.log('⛔ 課堂已結束');
                         stopSessionCheck();
-                        const msg = sessionResponse.notMember
-                            ? '系統偵測您不在此班級，請重新選班或聯繫老師'
-                            : '暫時偵測不到課堂，請稍後重試或請老師重新開始課堂';
-                        showToast(msg, 'warning');
-
-                        // 回到等待畫面繼續自動檢查，不直接登出
-                        displayCourseWaitingScreen();
+                        showToast('⛔ 老師已結束課堂', 'warning');
+                        displayClassEndedScreen();
                     }
                 })
                 .catch(function(error) {
@@ -1932,15 +1808,9 @@
         } else if (progress.status === 'completed') {
             statusBadge = '✅ 已完成';
             statusClass = 'status-completed';
-        } else if (progress.status === 'self_checking') {
-            statusBadge = '⏱️ 檢核中';
-            statusClass = 'self-checking';
-        } else if (progress.status === 'uploading') {
-            statusBadge = '📤 上傳中';
-            statusClass = 'uploading';
-        } else if (progress.status === 'assessment') {
-            statusBadge = '📝 評量中';
-            statusClass = 'assessment';
+        } else if (progress.status === 'pending_review') {
+            statusBadge = '⏱️ 待審核';
+            statusClass = 'status-pending';
         } else if (progress.status === 'in_progress') {
             statusBadge = '⏳ 進行中';
             statusClass = 'status-in-progress';
@@ -1994,402 +1864,107 @@
     }
 
     // ==========================================
-    // 難度相關工具與自動調整
-    // ==========================================
-    function normalizeTierId(tier) {
-        const map = {
-            '基礎層': 'tutorial',
-            '進階層': 'adventure',
-            '精通層': 'hardcore',
-            '困難層': 'hardcore',
-            '挑戰層': 'adventure',
-            '困難層': 'hardcore'
-        };
-        return map[tier] || tier || 'tutorial';
-    }
-
-    function displayTierName(tierId) {
-        const map = {
-            tutorial: '基礎層',
-            adventure: '進階層',
-            hardcore: '困難層'
-        };
-        return map[tierId] || tierId;
-    }
-
-    /**
-     * 自動難度調整（任務完成後觸發一次）
-     * - 升級：executionTime < timeLimit * 0.5
-     * - 降級：executionTime > timeLimit * 1.5
-     * - 無 timeLimit：跳過
-     */
-    function autoAdjustDifficulty(task, progress) {
-        if (!task || !progress) return;
-
-        const recordTierValue = learningRecord ? (learningRecord.currentTier || learningRecord.current_tier) : null;
-        const currentTierId = normalizeTierId(selectedTier || recordTierValue || 'tutorial');
-        const timeLimit = Number(task.timeLimit) || 0;
-        if (timeLimit <= 0) {
-            APP_CONFIG.log('⏭️ 跳過自動調整（timeLimit 不可用）', { taskId: task.taskId });
-            return;
-        }
-
-        let executionTime = 0;
-        if (progress.executionTime !== undefined && progress.executionTime !== null && !isNaN(Number(progress.executionTime))) {
-            executionTime = Number(progress.executionTime);
-        } else if (progress.timeSpent !== undefined && progress.timeSpent !== null && !isNaN(Number(progress.timeSpent))) {
-            executionTime = Number(progress.timeSpent);
-        } else if (progress.startTime && progress.completeTime) {
-            const start = new Date(progress.startTime).getTime();
-            const end = new Date(progress.completeTime).getTime();
-            if (!isNaN(start) && !isNaN(end) && end > start) {
-                executionTime = Math.floor((end - start) / 1000);
-            }
-        }
-
-        if (executionTime <= 0) {
-            APP_CONFIG.log('⏭️ 跳過自動調整（executionTime 不可用）', { taskId: task.taskId });
-            return;
-        }
-
-        const isFast = executionTime < timeLimit * 0.5;
-        const isSlow = executionTime > timeLimit * 1.5;
-        if (!isFast && !isSlow) return;
-
-        let newTierId = currentTierId;
-        if (isFast) {
-            if (currentTierId === 'tutorial') newTierId = 'adventure';
-            else if (currentTierId === 'adventure') newTierId = 'hardcore';
-        } else if (isSlow) {
-            if (currentTierId === 'hardcore') newTierId = 'adventure';
-            else if (currentTierId === 'adventure') newTierId = 'tutorial';
-        }
-
-        if (newTierId === currentTierId) return;
-
-        const oldTierName = displayTierName(currentTierId);
-        const newTierName = displayTierName(newTierId);
-
-        // 更新前端狀態
-        selectedTier = newTierName;
-        if (learningRecord) {
-            learningRecord.current_tier = newTierId;
-            learningRecord.currentTier = newTierId;
-        }
-
-        recordTierChange(currentTierId, newTierId, isFast ? 'auto_fast' : 'auto_slow', task.taskId, executionTime);
-        showToast(`已自動切換難度：${oldTierName} → ${newTierName}`, 'info');
-        APP_CONFIG.log('🎯 自動難度調整', { taskId: task.taskId, executionTime, timeLimit, from: currentTierId, to: newTierId });
-
-        // 重新載入該難度的任務列表（不顯示 loading，使用緩存）
-        loadTierTasks(true, true);
-    }
-
-    // ==========================================
     // 任務 Modal
     // ==========================================
 
-/**
- * 開啟任務詳情 Modal (修正版：支援 Assessment 斷點續傳)
- */
-window.openTaskModal = function(task, progress) {
-   // 🔥 Debug: 印出傳入的 progress 物件
-    console.log('🔍 [OpenModal] Task:', task.taskId, 'Progress:', progress);
-   
-    selectedTask = task; 
-    const modal = document.getElementById('taskModal');
-    if (!modal) return;
+    /**
+     * 開啟任務詳情 Modal
+     */
+    window.openTaskModal = function(task, progress) {
+        selectedTask = task;
 
-    // --- UI 渲染 (保持不變) ---
-    const setText = (id, text) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = text;
-    };
+        const modal = document.getElementById('taskModal');
+        if (!modal) return;
 
-    setText('modalTaskName', task.name || task.taskName);
+        // 填入任務資訊
+        document.getElementById('modalTaskName').textContent = task.name || task.taskName;
 
-    let taskTypeName = '教學';
-    if (task.type === 'practice') taskTypeName = '練習';
-    else if (task.type === 'assessment') taskTypeName = '評量';
+        let taskTypeName = '教學';
+        if (task.type === 'practice') taskTypeName = '練習';
+        else if (task.type === 'assessment') taskTypeName = '評量';
 
-    let displayTier = task.tier;
-    if (task.tier === 'mixed') {
-        displayTier = selectedTier || '混合';
-    }
+        document.getElementById('modalTaskType').textContent = taskTypeName;
+        document.getElementById('modalTaskTier').textContent = task.tier === 'mixed' ? selectedTier : task.tier;
+        document.getElementById('modalTaskReward').textContent = `💰 ${task.tokenReward || 0} 代幣`;
 
-    setText('modalTaskType', taskTypeName);
-    setText('modalTaskTier', displayTier);
-    setText('modalTaskReward', `💰 ${task.tokenReward || 0} 代幣`);
+        // ✓ 修正：根據任務結構決定顯示內容
+        let taskContent = '';
+        let taskLink = '';
 
-    // ✅ 修復問題8：顯示 accuracy（如果任務已完成且有 accuracy 資料）
-    const accuracySection = document.getElementById('modalAccuracySection');
-    const accuracyText = document.getElementById('modalTaskAccuracy');
-    if (progress && progress.status === 'completed' && progress.accuracy !== null && progress.accuracy !== undefined) {
-        // 將小數轉換為百分比顯示
-        const accuracyPercent = (progress.accuracy * 100).toFixed(0);
-        setText('modalTaskAccuracy', `${accuracyPercent}%`);
-        if (accuracySection) accuracySection.style.display = 'block';
-    } else {
-        if (accuracySection) accuracySection.style.display = 'none';
-    }
-
-    // 內容說明
-    let taskContent = '';
-    let taskLink = '';
-    if (task.tier === 'mixed') {
-        if (selectedTier === '基礎層' || selectedTier === 'tutorial') {
-            taskContent = task.tutorialDesc;
-            taskLink = task.tutorialLink;
-        } else if (selectedTier === '進階層' || selectedTier === 'adventure') {
-            taskContent = task.adventureDesc;
-            taskLink = task.adventureLink;
-        } else if (selectedTier === '精通層' || selectedTier === '困難層' || selectedTier === 'hardcore') {
-            taskContent = task.hardcoreDesc;
-            taskLink = task.hardcoreLink;
+        if (task.tier === 'mixed') {
+            // 舊結構：根據 selectedTier 選擇對應的描述和連結
+            if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
+                taskContent = task.tutorialDesc || '';
+                taskLink = task.tutorialLink || '';
+            } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
+                taskContent = task.adventureDesc || '';
+                taskLink = task.adventureLink || '';
+            } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
+                taskContent = task.hardcoreDesc || '';
+                taskLink = task.hardcoreLink || '';
+            }
+        } else {
+            // 新結構：直接使用 content 和 link
+            taskContent = task.content || '';
+            taskLink = task.link || '';
         }
-    } else {
-        taskContent = task.content;
-        taskLink = task.link;
-    }
 
-    const contentSection = document.getElementById('modalContentSection');
-    const contentText = document.getElementById('modalTaskContent');
-    if (contentSection && contentText) {
-        contentSection.style.display = 'block';
-        contentText.textContent = taskContent || '暫無詳細說明';
-    }
+        // 顯示內容或連結
+        if (taskContent && !taskLink) {
+            // 只有內容，沒有連結
+            document.getElementById('modalContentSection').style.display = 'block';
+            document.getElementById('modalLinkSection').style.display = 'none';
+            document.getElementById('modalTaskContent').textContent = taskContent || '暫無內容';
+        } else if (taskLink) {
+            // 有連結
+            document.getElementById('modalContentSection').style.display = taskContent ? 'block' : 'none';
+            document.getElementById('modalLinkSection').style.display = 'block';
+            if (taskContent) {
+                document.getElementById('modalTaskContent').textContent = taskContent;
+            }
+            const link = document.getElementById('modalTaskLink');
+            link.href = taskLink;
+            link.textContent = '開啟任務連結 →';
+        } else {
+            // 都沒有
+            document.getElementById('modalContentSection').style.display = 'block';
+            document.getElementById('modalLinkSection').style.display = 'none';
+            document.getElementById('modalTaskContent').textContent = '暫無內容';
+        }
 
-    // --- 按鈕狀態控制 ---
-    const startBtn = document.getElementById('startTaskBtn');
-    const completeBtn = document.getElementById('completeTaskBtn');
-    const reopenBtn = document.getElementById('reopenMaterialBtn');
-    
-    if(startBtn) startBtn.style.display = 'none';
-    if(completeBtn) completeBtn.style.display = 'none';
-    if(reopenBtn) reopenBtn.style.display = 'none';
+        // 顯示按鈕
+        const startBtn = document.getElementById('startTaskBtn');
+        const completeBtn = document.getElementById('completeTaskBtn');
+        const reopenBtn = document.getElementById('reopenMaterialBtn');
 
-    const hasMaterialLink = taskLink && taskLink.trim() !== '';
-    const currentStatus = progress ? progress.status : 'not_started';
+        // 控制「重新打開教材」按鈕：
+        // 有連結（教材）：顯示按钮
+        // 無連結：不顯示
+        if (reopenBtn) {
+            if (taskLink && taskLink.trim() !== '') {
+                reopenBtn.style.display = 'inline-block';
+            } else {
+                reopenBtn.style.display = 'none';
+            }
+        }
 
-    // ==========================================
-    // 🔥 按鈕邏輯核心 🔥
-    // ==========================================
-
-    if (currentStatus === 'completed') {
-        // [狀態 4: 已完成] - 不顯示任何操作按鈕
-        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
-        // ✅ 修復：已完成的任務不顯示任何提交按鈕
-        // completeBtn 保持隱藏 (已在上方設為 none)
-
-    } else if (currentStatus === 'assessment') {
-        // [狀態 3: 評量中] - 重新開啟 task-execution.html（會自動恢復到評量階段）
-        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
-
-        if (completeBtn) {
+        if (progress.status === 'completed') {
+            startBtn.style.display = 'none';
+            completeBtn.style.display = 'none';
+        } else if (progress.status === 'pending_review') {
+            // 待審核狀態：顯示提示訊息，不顯示按鈕
+            startBtn.style.display = 'none';
+            completeBtn.style.display = 'none';
+        } else if (progress.status === 'in_progress') {
+            startBtn.style.display = 'none';
             completeBtn.style.display = 'inline-block';
-            completeBtn.textContent = '✍️ 繼續評量';
-            completeBtn.className = 'btn btn-warning';
-            completeBtn.disabled = false;
-            completeBtn.onclick = function() {
-                // ✅ 檢查 taskProgressId 是否存在
-                if (!progress.taskProgressId) {
-                    showToast('❌ 無法取得任務進度 ID，請重新整理頁面', 'error');
-                    console.error('缺少 taskProgressId:', progress);
-                    return;
-                }
-
-                closeTaskModal();
-
-                const taskProgressId = progress.taskProgressId;
-                console.log('✍️ 重新開啟任務執行視窗（評量階段）');
-                openTaskExecutionWindow(taskProgressId, task.taskId, currentStudent.email);
-
-                showToast('✅ 已重新開啟任務視窗，請繼續評量', 'success');
-            };
-        }
-
-    } else if (currentStatus === 'self_checking') {
-        // [狀態 2: 檢核中] - 重新開啟 task-execution.html（會自動恢復到檢核階段）
-        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
-
-        if (completeBtn) {
-            completeBtn.style.display = 'inline-block';
-            completeBtn.textContent = '📋 繼續自主檢查';
-            completeBtn.className = 'btn btn-warning';
-            completeBtn.disabled = false;
-            completeBtn.onclick = function() {
-                // ✅ 檢查 taskProgressId 是否存在
-                if (!progress.taskProgressId) {
-                    showToast('❌ 無法取得任務進度 ID，請重新整理頁面', 'error');
-                    console.error('缺少 taskProgressId:', progress);
-                    return;
-                }
-
-                closeTaskModal();
-
-                const taskProgressId = progress.taskProgressId;
-                console.log('📋 重新開啟任務執行視窗（檢核階段）');
-                openTaskExecutionWindow(taskProgressId, task.taskId, currentStudent.email);
-
-                showToast('✅ 已重新開啟任務視窗，請繼續檢核', 'success');
-            };
-        }
-
-    } else if (currentStatus === 'uploading') {
-        // [狀態 2.5: 上傳中] - 重新開啟 task-execution.html（會自動恢復到上傳階段）
-        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
-
-        if (completeBtn) {
-            completeBtn.style.display = 'inline-block';
-            completeBtn.textContent = '📤 繼續上傳作業';
-            completeBtn.className = 'btn btn-warning';
-            completeBtn.disabled = false;
-            completeBtn.onclick = function() {
-                // ✅ 檢查 taskProgressId 是否存在
-                if (!progress.taskProgressId) {
-                    showToast('❌ 無法取得任務進度 ID，請重新整理頁面', 'error');
-                    console.error('缺少 taskProgressId:', progress);
-                    return;
-                }
-
-                closeTaskModal();
-
-                const taskProgressId = progress.taskProgressId;
-                console.log('📤 重新開啟任務執行視窗（上傳階段）');
-                openTaskExecutionWindow(taskProgressId, task.taskId, currentStudent.email);
-
-                showToast('✅ 已重新開啟任務視窗，請繼續上傳', 'success');
-            };
-        }
-
-    } else if (false) {
-        // 以下程式碼已廢棄，保留以防需要參考
-        if (completeBtn) {
-            completeBtn.style.display = 'inline-block';
-            completeBtn.textContent = '✍️ 繼續評量';
-            completeBtn.className = 'btn btn-warning'; // 黃色
-            completeBtn.disabled = false;
-
-            // 🔥 修正：點擊後，先去後端抓題目，再開視窗
-            completeBtn.onclick = function() {
-                completeBtn.disabled = true;
-                completeBtn.textContent = '載入題目中...';
-
-                // 準備參數
-                const params = new URLSearchParams({
-                    action: 'getTaskQuestion', // 呼叫剛寫好的 API
-                    taskId: task.taskId,
-                    userEmail: currentStudent.email
-                });
-
-                fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-                    .then(r => r.json())
-                    .then(data => {
-                        completeBtn.disabled = false;
-                        completeBtn.textContent = '✍️ 繼續評量';
-
-                        if (data.success && data.question) {
-                            // 初始化 currentCheckData (因為重新整理後可能空了)
-                            if (!window.currentCheckData) window.currentCheckData = {};
-                            
-                            // 填入重要資訊
-                            currentCheckData.progressId = progress.taskProgressId;
-                            currentCheckData.taskId = task.taskId;
-                            currentCheckData.question = data.question;
-                            currentCheckData.scenario = data.scenarioType || 'A';
-
-                            // 修復：移除舊的評量 Modal 邏輯，評量現在在 task-execution.html 中進行
-                            // 關閉詳情，打開評量
-                            closeTaskModal();
-
-                            showToast('✅ 請在任務執行視窗中完成評量', 'info');
-
-                            // 手動顯示 Modal (因為 loadAssessment 依賴它)（已移除）
-                            // const selfCheckModal = document.getElementById('selfCheckModal');
-                            // if(selfCheckModal) {
-                            //     selfCheckModal.style.display = 'flex';
-                            //     selfCheckModal.classList.add('active'); // 確保有 active class
-                            // }
-
-                            // 載入題目（已移除：使用 task-execution.html）
-                            // loadAssessment(data.scenarioType, data.question);
-                        } else {
-                            showToast('無法載入題目，請稍後重試', 'error');
-                        }
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        completeBtn.disabled = false;
-                        completeBtn.textContent = '✍️ 繼續評量';
-                        showToast('連線錯誤', 'error');
-                    });
-            };
-        }
-
-    } else if (false && currentStatus === 'self_checking') {
-        // ❌ 已廢棄：此邏輯已移至上方統一處理
-        // [狀態 2: 自主檢查中]
-        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
-        if (completeBtn) {
-            completeBtn.style.display = 'inline-block';
-            completeBtn.textContent = '📋 繼續自主檢查';
-            completeBtn.className = 'btn btn-warning';
-            completeBtn.disabled = false;
-            completeBtn.onclick = function() {
-                closeTaskModal();
-                const pid = (progress && progress.taskProgressId) ? progress.taskProgressId : task.taskId;
-
-                // 修復：移除舊的檢核面板調用，因為現在所有檢核和評量都在 task-execution.html 中進行
-                // 初始化 currentCheckData
-                // if (!window.currentCheckData) window.currentCheckData = {};
-                // currentCheckData.progressId = pid;
-                // currentCheckData.taskId = task.taskId;
-
-                // showSelfCheckPanel(pid, task.taskId);  // 已移除：使用 task-execution.html 代替
-
-                showToast('✅ 任務已提交！請在任務執行視窗中繼續', 'success');
-            };
-        }
-
-    } else if (currentStatus === 'in_progress') {
-        // [狀態 1: 進行中] - 顯示「繼續完成任務」按鈕，重新開啟 task-execution.html
-        if (hasMaterialLink) reopenBtn.style.display = 'inline-block';
-        if (completeBtn) {
-            completeBtn.style.display = 'inline-block';
-            completeBtn.textContent = '🔄 繼續完成任務';
-            completeBtn.className = 'btn btn-warning'; // 使用警告色（橘色）強調這是繼續操作
-            completeBtn.disabled = false;
-            completeBtn.onclick = function() {
-                // ✅ 檢查 taskProgressId 是否存在
-                if (!progress.taskProgressId) {
-                    showToast('❌ 無法取得任務進度 ID，請重新整理頁面', 'error');
-                    console.error('缺少 taskProgressId:', progress);
-                    return;
-                }
-
-                // 重新開啟任務執行視窗（會自動從 LocalStorage 恢復進度）
-                closeTaskModal();
-
-                const taskProgressId = progress.taskProgressId;
-                console.log('🔄 重新開啟任務執行視窗');
-                openTaskExecutionWindow(taskProgressId, task.taskId, currentStudent.email);
-
-                showToast('✅ 已重新開啟任務視窗，請繼續完成', 'success');
-            };
-        }
-
-    } else {
-        // [狀態 0: 未開始]
-        if (startBtn) {
+        } else {
             startBtn.style.display = 'inline-block';
-            startBtn.disabled = false;
-            startBtn.textContent = '開始任務';
-            startBtn.onclick = handleStartTask;
+            completeBtn.style.display = 'none';
         }
-    }
 
-    modal.classList.add('active');
-};
+        modal.classList.add('active');
+    };
 
     /**
      * 顯示「接續任務」Modal
@@ -2470,22 +2045,15 @@ window.openTaskModal = function(task, progress) {
     window.continueTask = function() {
         if (!selectedTask) return;
 
-        // 修復：檢查並確保有 classId
-        if (!selectedClass || !selectedClass.classId) {
-            showToast('無法取得班級資訊，請重新登入', 'error');
-            APP_CONFIG.error('繼續任務失敗：缺少 selectedClass');
-            return;
-        }
-
         const params = new URLSearchParams({
             action: 'startTask',
             userEmail: currentStudent.email,
-            taskId: selectedTask.taskId,
-            classId: selectedClass.classId  // 修復：加入 classId
+            taskId: selectedTask.taskId
         });
 
-        APP_CONFIG.log('?? 繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
-        return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+        APP_CONFIG.log('📤 繼續任務...', { taskId: selectedTask.taskId });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
                 APP_CONFIG.log('📥 繼續任務回應:', response);
@@ -2527,90 +2095,6 @@ window.openTaskModal = function(task, progress) {
     };
 
     /**
-     * ✅ 修復問題7：暴露 loadTaskProgress 到全局作用域
-     * 讓子視窗可以調用此函數刷新任務進度
-     */
-    window.loadTaskProgress = loadTaskProgress;
-
-    /**
-     * ✅ 修復問題7：暴露 displayQuestList 到全局作用域
-     * 讓子視窗可以調用此函數更新任務列表顯示
-     */
-    window.displayQuestList = displayQuestList;
-
-    /**
-     * ✅ 修復問題7：暴露 selectedClass 到全局作用域
-     * 讓子視窗可以獲取 recordId 來刷新任務進度
-     * 注意：這是一個 getter，會返回當前的 selectedClass 值
-     */
-    Object.defineProperty(window, 'selectedClass', {
-        get: function() {
-            return selectedClass;
-        },
-        configurable: true
-    });
-
-    /**
-     * ✅ 修復問題7：暴露 learningRecord 到全局作用域
-     * 讓子視窗可以獲取 recordId 來刷新任務進度
-     * 注意：這是一個 getter，會返回當前的 learningRecord 值
-     */
-    Object.defineProperty(window, 'learningRecord', {
-        get: function() {
-            return learningRecord;
-        },
-        configurable: true
-    });
-
-    /**
-     * ✅ 修復問題6：開啟任務執行視窗（防止重複開啟）
-     * @param {string} taskProgressId - 任務進度 ID
-     * @param {string} taskId - 任務 ID
-     * @param {string} userEmail - 用戶 email
-     */
-    function openTaskExecutionWindow(taskProgressId, taskId, userEmail) {
-        // 檢查是否已經有開啟的視窗
-        if (taskExecutionWindow && !taskExecutionWindow.closed) {
-            // 視窗已存在，將焦點切換到該視窗
-            taskExecutionWindow.focus();
-            showToast('✅ 任務視窗已開啟，已切換至該視窗', 'info');
-            return taskExecutionWindow;
-        }
-
-        // 建立視窗 URL
-        const taskExecutionUrl = new URL('task-execution.html', window.location.href);
-        taskExecutionUrl.searchParams.set('taskProgressId', taskProgressId);
-        taskExecutionUrl.searchParams.set('taskId', taskId);
-        taskExecutionUrl.searchParams.set('userEmail', userEmail);
-        taskExecutionUrl.searchParams.set('apiUrl', APP_CONFIG.API_URL);
-
-        // 開啟新視窗
-        console.log('🔄 開啟任務執行視窗:', taskExecutionUrl.toString());
-
-        // 放大視窗以便閱讀教材
-        const windowWidth = Math.min(window.screen.availWidth ? window.screen.availWidth - 20 : 1600, 1800);
-        const windowHeight = Math.min(window.screen.availHeight ? window.screen.availHeight - 20 : 1000, 1100);
-        taskExecutionWindow = window.open(
-            taskExecutionUrl.toString(),
-            '_blank',
-            'width=' + windowWidth + ',height=' + windowHeight + ',left=0,top=0,resizable=yes,scrollbars=yes'
-        );
-
-        // 監聽視窗關閉事件，清除引用
-        if (taskExecutionWindow) {
-            const checkClosed = setInterval(function() {
-                if (taskExecutionWindow.closed) {
-                    clearInterval(checkClosed);
-                    taskExecutionWindow = null;
-                    console.log('📪 任務視窗已關閉');
-                }
-            }, 1000);
-        }
-
-        return taskExecutionWindow;
-    }
-
-    /**
      * 重新打開任務教材
      */
     window.reopenTaskMaterial = function() {
@@ -2628,7 +2112,7 @@ window.openTaskModal = function(task, progress) {
                 taskLink = selectedTask.tutorialLink || '';
             } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
                 taskLink = selectedTask.adventureLink || '';
-            } else if (selectedTier === 'hardcore' || selectedTier === '精通層' || selectedTier === '困難層') {
+            } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
                 taskLink = selectedTask.hardcoreLink || '';
             }
         } else {
@@ -2650,10 +2134,6 @@ window.openTaskModal = function(task, progress) {
      * 記錄難度變更到後端
      */
     function recordTierChange(fromTier, toTier, reason, taskId, execTime) {
-        console.log('📝 [記錄難度變更] 開始記錄:', { fromTier, toTier, reason, taskId, execTime });
-        console.log('📝 [記錄難度變更] learningRecord:', learningRecord);
-        console.log('📝 [記錄難度變更] selectedCourse:', selectedCourse);
-
         if (!learningRecord || !selectedCourse) {
             APP_CONFIG.log('⚠️ 無法記錄難度變更：缺少必要資訊');
             return;
@@ -2669,18 +2149,17 @@ window.openTaskModal = function(task, progress) {
             changeReason: reason,  // manual/too_fast/too_slow/system_suggest
             triggeredByTask: taskId || '',
             executionTime: execTime || 0
-                APP_CONFIG.log('📤 記錄難度變更:', { fromTier, toTier, reason });
-        console.log('📤 [API呼叫] URL:', `${APP_CONFIG.API_URL}?${params.toString()}`);
+        });
+
+        APP_CONFIG.log('📤 記錄難度變更:', { fromTier, toTier, reason });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
             .then(function(response) {
                 if (response.success) {
                     APP_CONFIG.log('✅ 難度變更已記錄:', response);
-                    console.log('✅ [API回應] 成功:', response);
                 } else {
                     APP_CONFIG.error('❌ 記錄難度變更失敗:', response.message);
-                    console.error('❌ [API回應] 失敗:', response);
                 }
             })
             .catch(function(error) {
@@ -2690,17 +2169,78 @@ window.openTaskModal = function(task, progress) {
 
     /**
      * 檢查並建議調整難度
-     * @param {Object} task - 任务    /**
-     * 檢查並建議調整難度（現改為自動執行，不彈窗）
-     * @param {Object} task - 任務物件
-     * @param {string} mode - fast/slow（保留參數）
+     * @param {Object} task - 任务对象
+     * @param {string} mode - 'fast' 或 'slow'
      */
     function checkAndSuggestDifficultyChange(task, mode) {
         if (!learningRecord || !learningRecord.recordId) return;
-        const progress = currentTasksProgress ? currentTasksProgress[task.taskId] : null;
-        autoAdjustDifficulty(task, progress || {});
+
+        // 太快模式：在提交时检查
+        if (mode === 'fast') {
+            const params = new URLSearchParams({
+                action: 'getTaskProgress',
+                recordId: learningRecord.recordId
+            });
+
+            fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+                .then(response => response.json())
+                .then(function(response) {
+                    if (!response.success || !response.progress) return;
+
+                    const progress = response.progress[task.taskId];
+                    if (!progress || !progress.executionTime) return;
+
+                    const executionTime = progress.executionTime; // 秒
+                    const timeLimit = task.timeLimit || 600;
+
+                    if (timeLimit <= 0) return;
+
+                    // 太快：< 30% 时间
+                    const tooFast = executionTime < timeLimit * 0.3;
+
+                    if (tooFast && selectedTier !== 'hardcore') {
+                        let suggestion = null;
+                        let newTier = null;
+
+                        if (selectedTier === 'tutorial') {
+                            suggestion = '🎉 您完成得很快！是否要嘗試更有挑戰性的難度？';
+                            newTier = 'adventure';
+                        } else if (selectedTier === 'adventure') {
+                            suggestion = '🎉 您完成得很快！是否要挑戰最高難度？';
+                            newTier = 'hardcore';
+                        }
+
+                        if (suggestion && newTier) {
+                            setTimeout(() => {
+                                if (confirm(suggestion)) {
+                                    const tierMap = {
+                                        'tutorial': '基礎層',
+                                        'adventure': '挑戰層',
+                                        'hardcore': '困難層'
+                                    };
+                                    showToast(`已切換到 ${tierMap[newTier]}`, 'success');
+
+                                    // 記錄難度變更（太快）
+                                    const oldTier = selectedTier;
+                                    selectedTier = newTier;
+                                    recordTierChange(oldTier, newTier, 'too_fast', task.taskId, executionTime);
+
+                                    loadTierTasks();
+                                }
+                            }, 2000);
+                        }
+                    }
+                })
+                .catch(function(error) {
+                    APP_CONFIG.error('檢查難度建議失敗', error);
+                });
+        }
     }
-function startTaskTimeLimitCheck(task) {
+
+    /**
+     * 启动任务时间限制检查（太慢的学生）
+     */
+    function startTaskTimeLimitCheck(task) {
         // 清除旧的计时器
         stopTaskTimeLimitCheck();
 
@@ -2775,270 +2315,331 @@ function startTaskTimeLimitCheck(task) {
     // ==========================================
     // 處理任務操作
     // ==========================================
-      /**
-       * 開始任務（已優化：移除多餘的課堂狀態檢查）
-       * 理由：背景每5秒自動檢查課堂狀態，且後端 startTask 會再次驗證
-       */
-      window.handleStartTask = function() {
-          if (!selectedTask) return;
-
-          const startBtn = document.getElementById('startTaskBtn');
-          const reopenBtn = document.getElementById('reopenMaterialBtn');
-          const completeBtn = document.getElementById('completeTaskBtn');
-
-          // UI 鎖定
-          if (startBtn) {
-              startBtn.disabled = true;
-              startBtn.textContent = '開始中...';
-          }
-
-          // 檢查班級資訊
-          if (!selectedClass || !selectedClass.classId) {
-              if (startBtn) {
-                  startBtn.disabled = false;
-                  startBtn.textContent = '開始任務';
-              }
-              showToast('無法取得班級資訊', 'error');
-              return;
-          }
-
-          // 直接開始任務（已移除重複的課堂狀態檢查）
-          const params = new URLSearchParams({
-              action: 'startTask',
-              userEmail: currentStudent.email,
-              taskId: selectedTask.taskId,
-              classId: selectedClass.classId
-                  APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
-
-          fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-              .then(response => response.json())
-              .then(function(response) {
-                  APP_CONFIG.log('📥 開始任務回應:', response);
-
-                  if (response.success) {
-                      showToast('✅ 任務已開始！', 'success');
-
-                      // 更新前端狀態
-                      const taskProgressId = response.taskProgressId;
-                      if (currentTasksProgress) {
-                          currentTasksProgress[selectedTask.taskId] = {
-                              status: 'in_progress',
-                              taskProgressId: taskProgressId  // ✅ 保存 taskProgressId
-                          };
-                      }
-
-                      // UI 按鈕切換
-                      if (startBtn) startBtn.style.display = 'none';
-                      if (reopenBtn) reopenBtn.style.display = 'inline-block';
-
-                      // ✅ 修復：將 completeBtn 改為「繼續完成任務」
-                      if (completeBtn) {
-                          completeBtn.style.display = 'inline-block';
-                          completeBtn.textContent = '🔄 繼續完成任務';
-                          completeBtn.className = 'btn btn-warning';
-                          completeBtn.onclick = function() {
-                              // ✅ 修復問題5：在 closeTaskModal 之前先取得 taskId（避免 selectedTask 被設為 null）
-                              const capturedTaskId = selectedTask.taskId;
-                              const capturedUserEmail = currentStudent.email;
-
-                              closeTaskModal();
-
-                              console.log('🔄 重新開啟任務執行視窗');
-                              openTaskExecutionWindow(taskProgressId, capturedTaskId, capturedUserEmail);
-
-                              showToast('✅ 已重新開啟任務視窗，請繼續完成', 'success');
-                          };
-                      }
-
-                      // 打開任務執行視窗
-                      openTaskExecutionWindow(taskProgressId, selectedTask.taskId, currentStudent.email);
-
-                      if (typeof displayQuestList === 'function') {
-                          displayQuestList();
-                      }
-
-                  } else {
-                      if (startBtn) {
-                          startBtn.disabled = false;
-                          startBtn.textContent = '開始任務';
-                      }
-                      showToast(response.message || '開始失敗', 'error');
-                  }
-              })
-              .catch(function(error) {
-                  if (startBtn) {
-                      startBtn.disabled = false;
-                      startBtn.textContent = '開始任務';
-                  }
-                  console.error(error);
-                  showToast('操作失敗：' + error.message, 'error');
-              });
-      };
 
     /**
-    * 提交任務：智慧判斷下一步 + 同步前端狀態
-    */
-   window.handleCompleteTask = function() {
-       if (!selectedTask) return;
-   
-       const taskToSubmit = selectedTask;
-   
-       if (!confirm('確定要提交此任務嗎？')) {
-           return;
-       }
-   
-       const completeBtn = document.getElementById('completeTaskBtn');
-       
-       if (completeBtn) {
-           completeBtn.disabled = true;
-           completeBtn.textContent = '處理中...';
-       }
-   
-       // [已過時] submitTask 已被 submitTaskExecution 取代
-       // 新的任務執行流程在 task-execution.html 中完成
-       /*
-       const params = new URLSearchParams({
-           action: 'submitTask',
-           userEmail: currentStudent.email,
-           taskId: taskToSubmit.taskId,
-           classId: selectedClass.classId
-       });
-       */
+     * 開始任務（階段 2：檢查課堂 session）
+     */
+    window.handleStartTask = function() {
+        if (!selectedTask) return;
 
-       // 如果此按鈕被觸發，顯示提示訊息
-       showToast('此功能已過時，請使用任務執行視窗完成任務', 'warning');
-       if (completeBtn) {
-           completeBtn.disabled = false;
-           completeBtn.textContent = '提交完成';
-       }
-       return;
-   
-       APP_CONFIG.log('📤 提交任務...', { taskId: taskToSubmit.taskId });
-   
-       fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
-           .then(response => response.json())
-           .then(function(response) {
+        const btn = document.getElementById('startTaskBtn');
+        btn.disabled = true;
+        btn.textContent = '檢查中...';
 
-              console.log('📥 [Response]', response);
+        // 階段 2：先檢查班級是否有進行中的課堂 session
+        if (!selectedClass || !selectedClass.classId) {
+            btn.disabled = false;
+            btn.textContent = '開始任務';
+            showToast('無法取得班級資訊', 'error');
+            return;
+        }
 
-               // 🔥🔥🔥 顯示後端傳回來的診斷報告 🔥🔥🔥
-               if (response.debugLogs && response.debugLogs.length > 0) {
-                   console.group("🕵️‍♂️ 後端資料庫診斷報告 (Backend Logs)");
-                   console.log("%c 這是後端在比對資料庫時看到的實際內容：", "color: #ff00de; font-weight: bold;");
-                   
-                   response.debugLogs.forEach(log => {
-                       if (log.includes('Row')) {
-                           console.log(`%c ${log}`, "color: #2b95ff;"); // 藍色顯示比對細節
-                       } else if (log.includes('✅')) {
-                           console.log(`%c ${log}`, "color: green; font-weight: bold;");
-                       } else if (log.includes('❌')) {
-                           console.log(`%c ${log}`, "color: red; font-weight: bold;");
-                       } else {
-                           console.log(log);
-                       }
-                   });
-                   console.groupEnd();
-               }
-               
-               if (completeBtn) {
-                   completeBtn.disabled = false;
-                   completeBtn.textContent = '提交完成';
-               }
-   
-               APP_CONFIG.log('📥 提交回應:', response);
-   
-               if (response.success) {
-                   // 停止時間限制檢查
-                   if (typeof stopTaskTimeLimitCheck === 'function') stopTaskTimeLimitCheck();
-                   
-                   // 關閉任務詳情 Modal
-                   closeTaskModal();
-   
-                   // 更新 CheckData 的基礎資訊
-                   if (response.taskProgressId) {
-                       // 初始化物件
-                       if (!window.currentCheckData) window.currentCheckData = {};
-                       currentCheckData.progressId = response.taskProgressId;
-                       currentCheckData.taskId = taskToSubmit.taskId;
-                   }
-   
-                   // ==========================================
-                   // 🔥🔥🔥 關鍵修正：立刻同步前端狀態 🔥🔥🔥
-                   // ==========================================
-                   if (!window.currentTasksProgress) window.currentTasksProgress = {};
-                   if (!window.currentTasksProgress[taskToSubmit.taskId]) {
-                       window.currentTasksProgress[taskToSubmit.taskId] = {};
-                   }
-   
-                   // 根據後端回傳的 nextStep，直接修改本地變數
-                   const targetTaskProgress = window.currentTasksProgress[taskToSubmit.taskId];
-                   
-                   // 順便存入 ProgressID，這非常重要
-                   if (response.taskProgressId) {
-                       targetTaskProgress.taskProgressId = response.taskProgressId;
-                   }
-   
-                   if (response.nextStep === 'checklist') {
-                       targetTaskProgress.status = 'self_checking';
-                   } else if (response.nextStep === 'assessment') {
-                       targetTaskProgress.status = 'assessment';
-                   } else if (response.nextStep === 'completed') {
-                       targetTaskProgress.status = 'completed';
-                   }
-                   // ==========================================
-   
-                   // 修復：移除舊的檢核/評量 Modal 邏輯，因為現在都在 task-execution.html 中進行
-                   // 核心路由邏輯
-                   switch (response.nextStep) {
-                       case 'checklist':
-                           showToast('✅ 任務已提交！檢核和評量請在任務執行視窗中完成', 'success');
-                           // showSelfCheckPanel(response.taskProgressId, taskToSubmit.taskId);  // 已移除
-                           break;
+        const checkParams = new URLSearchParams({
+            action: 'getCurrentSession',
+            classId: selectedClass.classId,
+            userEmail: currentStudent.email
+        });
 
-                       case 'assessment':
-                           showToast('✅ 任務已提交！評量請在任務執行視窗中完成', 'success');
+        APP_CONFIG.log('📤 檢查課堂狀態...', { classId: selectedClass.classId });
 
-                           // 手動顯示 Modal（已移除：使用 task-execution.html）
-                           // const modal = document.getElementById('selfCheckModal');
-                           // if(modal) {
-                           //     modal.style.display = 'flex';
-                           //     modal.classList.add('active');
-                           // }
+        fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
+            .then(response => response.json())
+            .then(function(sessionResponse) {
+                APP_CONFIG.log('📥 課堂狀態回應:', sessionResponse);
 
-                           // 直接載入題目（已移除：使用 task-execution.html）
-                           // if (window.loadAssessment) {
-                           //      loadAssessment(response.scenarioType, response.question);
-                           // }
-                           break;
-   
-                       case 'completed':
-                           const rewardMsg = response.tokenReward ? `獲得 ${response.tokenReward} 代幣` : '';
-                           showToast(`🎉 任務完成！${rewardMsg}`, 'success');
-                           
-                           // 強制刷新列表 (雙重保險)
-                           setTimeout(() => {
-                               if (typeof loadTierTasks === 'function') loadTierTasks(true);
-                               if (typeof displayQuestList === 'function') displayQuestList();
-                           }, 500);
-                           break;
-                   }
-   
-                   // 嘗試刷新列表顯示 (讓卡片狀態變色)
-                   if (typeof displayQuestList === 'function') displayQuestList();
-   
-               } else {
-                   showToast(response.message || '提交失敗', 'error');
-               }
-           })
-           .catch(function(error) {
-               if (completeBtn) {
-                   completeBtn.disabled = false;
-                   completeBtn.textContent = '提交完成';
-               }
-               APP_CONFIG.error('提交任務失敗', error);
-               showToast('提交失敗，請重試：' + error.message, 'error');
-           });
-   };
+                if (!sessionResponse.success) {
+                    btn.disabled = false;
+                    btn.textContent = '開始任務';
+                    showToast('無法檢查課堂狀態', 'error');
+                    return;
+                }
+
+                // 檢查是否有進行中的課堂
+                if (!sessionResponse.isActive) {
+                    btn.disabled = false;
+                    btn.textContent = '開始任務';
+                    showToast('⏰ 老師尚未開始上課，請稍候', 'warning');
+                    return;
+                }
+
+                // 有進行中的課堂，繼續開始任務
+                btn.textContent = '開始中...';
+
+                const params = new URLSearchParams({
+                    action: 'startTask',
+                    userEmail: currentStudent.email,
+                    taskId: selectedTask.taskId
+                });
+
+                APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId });
+
+                return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`);
+            })
+            .then(function(response) {
+                if (!response) return; // 如果 session 檢查失敗，已經處理過了
+
+                return response.json();
+            })
+            .then(function(response) {
+                if (!response) return; // 如果 session 檢查失敗，已經處理過了
+
+                btn.disabled = false;
+                btn.textContent = '開始任務';
+
+                APP_CONFIG.log('📥 開始任務回應:', response);
+
+                if (response.success) {
+                    showToast('✅ 任務已開始！', 'success');
+
+                    // 更新進度狀態
+                    currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
+
+                    // ✓ 修正：根據任務結構取得正確的連結
+                    let taskLink = '';
+                    if (selectedTask.tier === 'mixed') {
+                        // 舊結構：根據 selectedTier 選擇對應的連結
+                        if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
+                            taskLink = selectedTask.tutorialLink || '';
+                        } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
+                            taskLink = selectedTask.adventureLink || '';
+                        } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
+                            taskLink = selectedTask.hardcoreLink || '';
+                        }
+                    } else {
+                        // 新結構：直接使用 link
+                        taskLink = selectedTask.link || '';
+                    }
+
+                    // 🔗 自動打開教材連結（如果有的話）
+                    if (taskLink && taskLink.trim() !== '') {
+                        APP_CONFIG.log('📖 打開教材連結:', taskLink);
+                        window.open(taskLink, '_blank');
+                    } else {
+                        APP_CONFIG.log('ℹ️ 此任務沒有外部連結');
+                    }
+
+                    // 啟動時間限制檢查（太慢的學生會收到提示）
+                    startTaskTimeLimitCheck(selectedTask);
+
+                    // 關閉 Modal
+                    closeTaskModal();
+
+                    // 重新顯示任務列表
+                    displayQuestList();
+                } else {
+                    showToast(response.message || '開始失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                btn.disabled = false;
+                btn.textContent = '開始任務';
+
+                APP_CONFIG.error('操作失敗', error);
+                showToast('操作失敗：' + error.message, 'error');
+            });
+    };
+
+    /**
+     * 提交任務（等待教師審核）
+     */
+    window.handleCompleteTask = function() {
+        if (!selectedTask) return;
+
+        // ✅ 保存任務資訊到局部變數，避免被 closeTaskModal() 清空
+        let isHandlingTimeout = false;
+        const taskToSubmit = selectedTask;
+
+        if (!confirm('確定要提交此任務嗎？\n提交後將由教師審核，通過後才會獲得 ' + (taskToSubmit.tokenReward || 0) + ' 個代幣！')) {
+            return;
+        }
+
+        const btn = document.getElementById('completeTaskBtn');
+        btn.disabled = true;
+        btn.textContent = '提交中...';
+
+        const params = new URLSearchParams({
+            action: 'submitTask',
+            userEmail: currentStudent.email,
+            taskId: taskToSubmit.taskId
+        });
+
+        APP_CONFIG.log('📤 提交任務...', { taskId: taskToSubmit.taskId });
+
+        // 使用重試機制（解決 CORS 間歇性錯誤）
+        fetchWithRetry(`${APP_CONFIG.API_URL}?${params.toString()}`, 3)
+            .then(response => response.json())
+            .then(function(response) {
+                btn.disabled = false;
+                btn.textContent = '提交完成';
+
+                APP_CONFIG.log('📥 提交任務回應:', response);
+
+                if (response.success) {
+                    // 停止时间限制检查
+                    stopTaskTimeLimitCheck();
+
+                    // 關閉任務 Modal
+                    closeTaskModal();
+
+                    // ===== 互評流程整合 =====
+                    if (response.peerReviewMode) {
+                        // 進入互評模式
+                        APP_CONFIG.log('🔄 進入互評模式', response);
+                        showToast(response.message || '✅ 任務已提交，正在尋找同學協助審核...', 'success');
+
+                        // 更新進度狀態為等待互評
+                        currentTasksProgress[taskToSubmit.taskId] = { status: 'waiting_peer_review' };
+
+                        // 顯示等待審核 Modal
+                        const waitingModal = document.getElementById('waitingReviewModal');
+                        const messageElement = document.getElementById('waitingReviewMessage');
+
+                        if (waitingModal && messageElement) {
+                            messageElement.textContent = response.reviewerName ?
+                                `正在等待 ${response.reviewerName} 接受審核...` :
+                                '正在尋找同學協助審核...';
+                            waitingModal.style.display = 'flex';
+                            APP_CONFIG.log('✅ 顯示等待審核 Modal');
+                        } else {
+                            APP_CONFIG.error('找不到等待審核 Modal 元素');
+                        }
+
+                        // 開始輪詢檢查審核狀態
+                        let checkCount = 0;
+                        const maxChecks = 60; // 最多檢查 60 次（3 分鐘）
+
+                        // 重置狀態標記，允許處理新的審核流程
+                        lastProcessedReviewStatus = null;
+
+                        // 清除舊的計時器（如果存在）
+                        if (waitingReviewCheckInterval) {
+                            clearInterval(waitingReviewCheckInterval);
+                        }
+                        if (waitingReviewTimeout) {
+                            clearTimeout(waitingReviewTimeout);
+                        }
+
+                        waitingReviewCheckInterval = setInterval(function() {
+                            checkCount++;
+                            APP_CONFIG.log(`🔍 檢查審核狀態 (${checkCount}/${maxChecks})`);
+                            checkMyTaskReviewStatus(response.taskProgressId);
+
+                            if (checkCount >= maxChecks) {
+                                clearInterval(waitingReviewCheckInterval);
+                                waitingReviewCheckInterval = null;
+                                APP_CONFIG.log('⏰ 停止輪詢檢查審核狀態（已達最大次數）');
+                            }
+                        }, 3000);
+
+                        // 30秒後如果還沒被接受，則超時並呼叫後端處理
+                        // 在檔案開頭的變數區加入
+                        // 然後修改 handleCompleteTask 函數中的 30 秒超時部分
+                        waitingReviewTimeout = setTimeout(function() {
+                            // ✅ 檢查是否已在處理中
+                            if (isHandlingTimeout) {
+                                APP_CONFIG.log('⚠️ 超時處理已在執行中，跳過');
+                                return;
+                            }
+                            
+                            // 檢查是否已被接受（如果已接受就不處理超時）
+                            if (lastProcessedReviewStatus === 'accepted' || lastProcessedReviewStatus === 'completed') {
+                                APP_CONFIG.log('✅ 審核已被接受或完成，忽略30秒超時');
+                                waitingReviewTimeout = null;
+                                return;
+                            }
+
+                            // ✅ 設定處理中標記
+                            isHandlingTimeout = true;
+                            APP_CONFIG.log('⏰ 30秒超時，呼叫後端處理');
+
+                            // 呼叫後端API處理超時（reassign或改教師審核）
+                            const timeoutParams = new URLSearchParams({
+                                action: 'handleAcceptTimeout',
+                                taskProgressId: response.taskProgressId
+                            });
+
+                            fetch(`${APP_CONFIG.API_URL}?${timeoutParams.toString()}`)
+                                .then(response => response.json())
+                                .then(function(data) {
+                                    // ✅ 處理完成後解鎖
+                                    isHandlingTimeout = false;
+                                    
+                                    if (data.success) {
+                                        if (data.reassigned) {
+                                            // 改派給其他人，繼續等待
+                                            showToast(`30秒內無人接受，已改為 ${data.newReviewerName} 審核`, 'info');
+                                            // 不關閉視窗，繼續輪詢
+                                        } else {
+                                            // 改為教師審核，關閉視窗
+                                            if (waitingReviewCheckInterval) {
+                                                clearInterval(waitingReviewCheckInterval);
+                                                waitingReviewCheckInterval = null;
+                                            }
+                                            const waitingModal = document.getElementById('waitingReviewModal');
+                                            if (waitingModal && waitingModal.style.display === 'flex') {
+                                                waitingModal.style.display = 'none';
+                                            }
+                                            showToast('所有同學都無法審核，已改為教師審核', 'info');
+                                            
+                                            // ✅ 重新載入任務列表
+                                            if (selectedTier) {
+                                                setTimeout(() => {
+                                                    loadTierTasks(true);
+                                                }, 1000);
+                                            }
+                                        }
+                                    }
+                                })
+                                .catch(function(error) {
+                                    // ✅ 發生錯誤也要解鎖
+                                    isHandlingTimeout = false;
+                                    APP_CONFIG.error('處理接受超時失敗', error);
+                                });
+
+                            waitingReviewTimeout = null;
+                        }, 30000);
+                    } else {
+                        // 教師審核模式
+                        showToast(response.message || '✅ 任務已提交，等待教師審核中...', 'success');
+
+                        // 更新進度狀態為待審核
+                        currentTasksProgress[taskToSubmit.taskId] = { status: 'pending_review' };
+                    }
+
+                    // 重新顯示任務列表
+                    try {
+                        displayQuestList();
+                    } catch (error) {
+                        APP_CONFIG.error('顯示任務列表失敗', error);
+
+                        // 關閉等待審核 Modal 以便用戶看到錯誤訊息
+                        const waitingModal = document.getElementById('waitingReviewModal');
+                        if (waitingModal && waitingModal.style.display === 'flex') {
+                            waitingModal.style.display = 'none';
+                            APP_CONFIG.log('❌ 因錯誤關閉等待審核 Modal');
+                        }
+
+                        showToast('顯示任務列表失敗：' + error.message, 'error');
+                    }
+
+                    // 太快的学生：在提交时建议提高难度
+                    try {
+                        checkAndSuggestDifficultyChange(taskToSubmit, 'fast');
+                    } catch (error) {
+                        APP_CONFIG.error('檢查難度建議失敗', error);
+                    }
+                } else {
+                    showToast(response.message || '提交失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                btn.disabled = false;
+                btn.textContent = '提交完成';
+
+                APP_CONFIG.error('提交任務失敗', error);
+                showToast('提交失敗，請重試：' + error.message, 'error');
+            });
+    };
 
     // ==========================================
     // 工具函數
@@ -3111,676 +2712,600 @@ function startTaskTimeLimitCheck(task) {
     // 當離開頁面時停止所有計時器（階段 2）
     window.addEventListener('beforeunload', function() {
         stopSessionCheck();
+        stopPeerReviewPolling();
     });
 
-    /* ==============================================
-    自主檢查與評量模組 (Redesigned)
-    ============================================== */
+    // ==========================================
+    // 互評系統
+    // ==========================================
 
-    // 全域變數，暫存當前任務狀態
-    let currentCheckData = {
-        taskId: null,
-        progressId: null,
-        checklists: [],
-        hasErrors: false, // 記錄是否有錯誤項目 (決定獎勵邏輯)
-        question: null
-    };
+    // 互評系統變數
+    let currentReviewData = null;
+    let peerReviewCheckInterval = null;
+    let reviewNotificationTimer = null;
+    let reviewTimer = null;
+    let waitingReviewCheckInterval = null;  // 30秒輪詢檢查的計時器
+    let waitingReviewTimeout = null;  // 30秒超時的計時器
+    let lastProcessedReviewStatus = null;  // 記錄已處理過的審核狀態，防止重複處理
 
-   /**
-     * 顯示自主檢查面板
+    /**
+     * 開始輪詢檢查是否有待審核的任務
      */
-    window.showSelfCheckPanel = function(taskProgressId, taskId) {
-        APP_CONFIG.log('🎯 打開自主檢查面板', { taskProgressId, taskId });
+    function startPeerReviewPolling() {
+        // 每5秒檢查一次
+        if (peerReviewCheckInterval) {
+            clearInterval(peerReviewCheckInterval);
+        }
+
+        peerReviewCheckInterval = setInterval(checkPendingPeerReview, 5000);
+        checkPendingPeerReview(); // 立即檢查一次
+    }
+
+    /**
+     * 停止輪詢檢查
+     */
+    function stopPeerReviewPolling() {
+        if (peerReviewCheckInterval) {
+            clearInterval(peerReviewCheckInterval);
+            peerReviewCheckInterval = null;
+        }
+    }
+
+    /**
+     * 檢查是否有待審核的任務
+     */
+    function checkPendingPeerReview() {
+        // ✅ 新增：防止重複調用
+        if (isCheckingPeerReview) {
+            APP_CONFIG.log('⚠️ checkPendingPeerReview 正在執行中，跳過');
+            return;
+        }
         
-        const modal = document.getElementById('selfCheckModal');
-        if (!modal) return;
+        if (!currentStudent || !currentStudent.email) return;
 
-        // 重置介面狀態
-        document.getElementById('checkStageContainer').style.display = 'block';
-        document.getElementById('assessmentStageContainer').style.display = 'none';
-        document.getElementById('finishCheckBtn').style.display = 'inline-block';
-        document.getElementById('submitAssessmentBtn').style.display = 'none';
-        document.getElementById('selfCheckTitle').textContent = '📋 自主檢查';
+        // ✅ 新增：設置鎖
+        isCheckingPeerReview = true;
 
-        // 儲存 ID
-        currentCheckData.taskId = taskId;
-        currentCheckData.progressId = taskProgressId;
-        currentCheckData.hasErrors = false;
-
-        // 呼叫後端取得資料
         const params = new URLSearchParams({
-            action: 'getTaskChecklistsAndAnswer',
-            taskId: taskId
+            action: 'getPendingReview',
+            userEmail: currentStudent.email
         });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    renderCheckStage(data);
-                    modal.style.display = 'flex';
-                } else {
-                    showToast('無法獲取資料', 'error');
+            .then(response => response.json())
+            .then(function(data) {
+                if (data.success && data.hasPendingReview) {
+                    const review = data.review;
+
+                    if (review.status === 'assigned') {
+                        const taskProgressId = review.taskProgressId;
+                        
+                        if (shownReviewTasks.has(taskProgressId)) {
+                            APP_CONFIG.log('⚠️ 此任務已顯示過審核請求，跳過');
+                            return;
+                        }
+                        
+                        shownReviewTasks.add(taskProgressId);
+                        showPeerReviewNotification(review);
+                    } else if (review.status === 'accepted') {
+                        showPeerReviewInterface(review);
+                    }
                 }
             })
-            .catch(err => {
-                console.error(err);
-                showToast('連線錯誤', 'error');
+            .catch(function(error) {
+                APP_CONFIG.error('檢查待審核任務失敗', error);
+            })
+            .finally(function() {
+                // ✅ 新增：釋放鎖
+                isCheckingPeerReview = false;
+            });
+    }
+
+    /**
+     * 顯示互評通知
+     */
+    function showPeerReviewNotification(review) {
+        currentReviewData = review;
+
+        const modal = document.getElementById('peerReviewNotificationModal');
+        const nameElement = document.getElementById('peerRevieweeNameNotif');
+        const timerElement = document.getElementById('peerReviewTimer');
+
+        nameElement.textContent = review.revieweeName;
+        modal.style.display = 'flex';
+
+        let remaining = review.timeRemaining || 30;
+        timerElement.textContent = remaining;
+
+        if (reviewNotificationTimer) {
+            clearInterval(reviewNotificationTimer);
+        }
+
+        reviewNotificationTimer = setInterval(function() {
+            remaining--;
+            timerElement.textContent = remaining;
+
+            if (remaining <= 0) {
+                clearInterval(reviewNotificationTimer);
+                reviewNotificationTimer = null;
+                modal.style.display = 'none';
+
+                shownReviewTasks.delete(currentReviewData.taskProgressId);
+
+                const timeoutParams = new URLSearchParams({
+                    action: 'handleAcceptTimeout',
+                    reviewId: currentReviewData.reviewId
+                });
+
+                fetch(`${APP_CONFIG.API_URL}?${timeoutParams.toString()}`)
+                    .then(response => response.json())
+                    .then(function(data) {
+                        if (data.success && !data.alreadyProcessed) {
+                            if (data.reassigned) {
+                                APP_CONFIG.log(`✅ 超時已處理，改為 ${data.newReviewerName} 審核`);
+                            } else {
+                                APP_CONFIG.log('✅ 超時已處理，改為教師審核');
+                            }
+                        }
+                    })
+                    .catch(function(error) {
+                        APP_CONFIG.error('處理接受超時失敗', error);
+                    });
+
+                currentReviewData = null;
+                showToast('審核請求已超時', 'warning');
+            }
+        }, 1000);
+    }
+
+    /**
+     * 接受審核通知
+     */
+    window.acceptPeerReviewNotification = function() {
+        if (!currentReviewData) return;
+        
+        //按鈕鎖定，防止重複點擊
+        const acceptButton = document.getElementById('acceptReviewButton');
+        const declineButton = document.getElementById('declineReviewButton');
+        
+        if (acceptButton) {
+            acceptButton.disabled = true;
+            acceptButton.textContent = processingText; 
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定接受按鈕，請檢查 HTML 中 ID 是否為 acceptReviewButton！');
+        }
+
+        
+        if (declineButton) {
+            declineButton.disabled = true;
+            declineButton.textContent = processingText;
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定拒絕按鈕，請檢查 HTML 中 ID 是否為 declineReviewButton！');
+        }
+
+        shownReviewTasks.delete(currentReviewData.taskProgressId);
+
+        // 清除通知倒數計時器
+        if (reviewNotificationTimer) {
+            clearInterval(reviewNotificationTimer);
+            reviewNotificationTimer = null;
+        }
+
+        // 清除30秒等待審核的計時器（這是關鍵修復）
+        if (waitingReviewCheckInterval) {
+            clearInterval(waitingReviewCheckInterval);
+            waitingReviewCheckInterval = null;
+            APP_CONFIG.log('✅ 已清除等待審核輪詢計時器');
+        }
+        if (waitingReviewTimeout) {
+            clearTimeout(waitingReviewTimeout);
+            waitingReviewTimeout = null;
+            APP_CONFIG.log('✅ 已清除等待審核超時計時器');
+        }
+
+        // 清除舊的審核計時器（防止誤報超時）
+        if (reviewTimer) {
+            clearInterval(reviewTimer);
+            reviewTimer = null;
+            APP_CONFIG.log('✅ 已清除舊的審核計時器');
+        }
+
+        const params = new URLSearchParams({
+            action: 'acceptPeerReview',
+            reviewId: currentReviewData.reviewId,
+            reviewerEmail: currentStudent.email
+        });
+
+        showLoading('mainLoading');
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(data) {
+                hideLoading('mainLoading');
+
+                if (data.success) {
+                    document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                    showPeerReviewInterface(data);
+                    showToast('已接受審核請求', 'success');
+                } else if (data.timeout) {
+                    document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                    showToast(data.message, 'warning');
+                    currentReviewData = null;
+                } else {
+                    showToast(data.message || '接受失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                hideLoading('mainLoading');
+                APP_CONFIG.error('接受審核失敗', error);
+                showToast('接受失敗：' + error.message, 'error');
             });
     };
 
+    /**
+     * 拒絕審核
+     */
+    window.declinePeerReview = function() {
+        if (!currentReviewData) return;
+        
+        //按鈕鎖定，防止重複點擊
+        const acceptButton = document.getElementById('acceptReviewButton');
+        const declineButton = document.getElementById('declineReviewButton');
+        
+        if (acceptButton) {
+            acceptButton.disabled = true;
+            acceptButton.textContent = processingText; 
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定接受按鈕，請檢查 HTML 中 ID 是否為 acceptReviewButton！');
+        }
 
-   /**
-    * 渲染第一階段：參考資料與檢核列表 (修正版：預設不勾選)
-    */
-   function renderCheckStage(data) {
-       // 1. 渲染參考文字
-       const refDiv = document.getElementById('referenceDisplay');
-       const textContent = escapeHtml(data.referenceAnswer || data.answerText || '無文字說明');
-       
-       let refHtml = `<div style="margin-bottom:20px;">${textContent}</div>`;
-       
-       // 2. 圖片處理
-       let rawImages = data.referenceImages || data.answerImages;
-       let imageList = [];
-   
-       if (Array.isArray(rawImages)) {
-           imageList = rawImages;
-       } else if (typeof rawImages === 'string' && rawImages.trim() !== '') {
-           if (rawImages.includes('|')) imageList = rawImages.split('|');
-           else imageList = [rawImages];
-       }
-   
-       if (imageList.length > 0) {
-           refHtml += `<div class="ref-images-wrapper">`;
-           imageList.forEach(imgUrl => {
-               let cleanUrl = imgUrl.trim();
-               if (cleanUrl) {
-                   refHtml += `
-                       <div class="ref-image-container" onclick="openLightbox('${cleanUrl}')">
-                           <img src="${cleanUrl}" class="ref-thumbnail" alt="點擊放大" 
-                                onerror="this.parentElement.style.display='none'" />
-                           <div style="text-align:center; color:#aaa; font-size:12px; padding:5px; background:#222;">
-                               🔍 點擊圖片放大
-                           </div>
-                       </div>`;
-               }
-           });
-           refHtml += `</div>`;
-       }
-   
-       refDiv.innerHTML = refHtml;
-   
-       // 3. 渲染檢核列表 (🔥 重點修改區)
-       const listDiv = document.getElementById('checklistDynamicContainer');
-       listDiv.innerHTML = ''; 
-       currentCheckData.checklists = data.checklists || [];
-   
-       // 初始化結果容器 (如果還沒有的話)
-       if (!currentCheckData.results) {
-           currentCheckData.results = {};
-       }
-   
-       if (currentCheckData.checklists.length === 0) {
-           listDiv.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">無需檢核，請直接下一步</div>';
-           return;
-       }
-   
-       currentCheckData.checklists.forEach((item, index) => {
-           // 🔥 檢查目前的狀態 (pass, fail, 或 undefined)
-           const currentStatus = currentCheckData.results[index];
-           
-           // 動態決定誰要有顏色 (預設兩個都是空的)
-           const passClass = currentStatus === 'pass' ? 'active' : '';
-           const failClass = currentStatus === 'fail' ? 'active' : '';
-           
-           // 只有在 fail 時才顯示輸入框
-           const showImprovement = currentStatus === 'fail' ? 'block' : 'none';
-   
-           const itemHtml = `
-               <div class="check-item-card" id="checkItem_${index}">
-                   <div class="check-item-header">
-                       <div class="check-desc">
-                           <span style="color:var(--game-accent); font-weight:bold; margin-right:5px;">${index + 1}.</span>
-                           ${escapeHtml(item.itemTitle || item.description)}
-                       </div>
-                       <div class="status-toggle">
-                           <button class="status-btn pass ${passClass}" onclick="toggleCheckStatus(${index}, 'pass')">✅ 符合</button>
-                           <button class="status-btn fail ${failClass}" onclick="toggleCheckStatus(${index}, 'fail')">⚠️ 未符合</button>
-                       </div>
-                   </div>
-                   <div class="improvement-box" id="improvementBox_${index}" style="display: ${showImprovement};">
-                       <label style="font-size:12px; color:#ef4444; margin-bottom:4px; display:block;">錯誤原因 / 修正說明：</label>
-                       <textarea class="improvement-input" id="improveInput_${index}" 
-                           placeholder="請記錄哪裡與參考答案不符，以及您做了什麼修正..." rows="2"></textarea>
-                   </div>
-               </div>
-           `;
-           listDiv.insertAdjacentHTML('beforeend', itemHtml);
-       });
-   }
-   
-   // --- 圖片放大功能 ---
-   
-   window.openLightbox = function(url) {
-       const lightbox = document.getElementById('imageLightbox');
-       const img = document.getElementById('lightboxImage');
-       if (lightbox && img) {
-           img.src = url;
-           lightbox.classList.add('active'); // 顯示燈箱
-       }
-   };
-   
-   window.closeLightbox = function() {
-       const lightbox = document.getElementById('imageLightbox');
-       if (lightbox) {
-           lightbox.classList.remove('active'); // 隱藏燈箱
-           setTimeout(() => {
-               const img = document.getElementById('lightboxImage');
-               if(img) img.src = ''; 
-           }, 300);
-       }
-   };
+        
+        if (declineButton) {
+            declineButton.disabled = true;
+            declineButton.textContent = processingText;
+        } else {
+            APP_CONFIG.log('⚠️ 警告：無法鎖定拒絕按鈕，請檢查 HTML 中 ID 是否為 declineReviewButton！');
+        }
+        shownReviewTasks.delete(currentReviewData.taskProgressId);
 
-    /** 切換檢核項目狀態 (包含資料更新與文字框顯示/隱藏)
-    * @param {number} index - 項目索引
-    * @param {string} status - 'pass' 或 'fail'
-    */
-   window.toggleCheckStatus = function(index, status) {
-       const itemCard = document.getElementById(`checkItem_${index}`);
-       const passBtn = itemCard.querySelector('.status-btn.pass');
-       const failBtn = itemCard.querySelector('.status-btn.fail');
-       const improvementBox = document.getElementById(`improvementBox_${index}`);
-   
-       if (!itemCard || !passBtn || !failBtn || !improvementBox) {
-           console.error('Checklist element not found for index:', index);
-           return;
-       }
-   
-       // 1. 更新 UI 樣式
-       if (status === 'pass') {
-           passBtn.classList.add('active');
-           failBtn.classList.remove('active');
-           
-           // 隱藏文字框 (選符合時，不需要填寫修正說明)
-           improvementBox.style.display = 'none';
-           
-       } else if (status === 'fail') {
-           failBtn.classList.add('active');
-           passBtn.classList.remove('active');
-           
-           // 顯示文字框 (選未符合時，需要填寫修正說明)
-           improvementBox.style.display = 'block';
-       }
-   
-       // 2. 更新資料結構 (🔥 這是提交時用來驗證的關鍵！)
-       if (!currentCheckData.results) {
-           currentCheckData.results = {};
-       }
-       currentCheckData.results[index] = status;
-   };
+        // 清除通知倒數計時器
+        if (reviewNotificationTimer) {
+            clearInterval(reviewNotificationTimer);
+            reviewNotificationTimer = null;
+        }
+
+        const params = new URLSearchParams({
+            action: 'declinePeerReview',
+            reviewId: currentReviewData.reviewId,
+            reviewerEmail: currentStudent.email
+        });
+
+        showLoading('mainLoading');
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(data) {
+                hideLoading('mainLoading');
+
+                document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                currentReviewData = null;
+
+                if (data.success) {
+                    if (data.reassigned) {
+                        showToast(`已拒絕，改為 ${data.newReviewerName} 審核`, 'info');
+                    } else {
+                        showToast(data.message || '已拒絕，改為教師審核', 'info');
+                    }
+                } else {
+                    showToast(data.message || '拒絕失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                hideLoading('mainLoading');
+                APP_CONFIG.error('拒絕審核失敗', error);
+                document.getElementById('peerReviewNotificationModal').style.display = 'none';
+                
+                // ✅ 清除當前任務的記錄
+                if (currentTaskProgressInReview) {
+                    delete lastShownReviewForTask[currentTaskProgressInReview];
+                    currentTaskProgressInReview = null;
+                }
+                currentReviewData = null;
+                
+                showToast('拒絕失敗：' + error.message, 'error');
+            });
+    };
 
     /**
-    * 提交自主檢查：驗證 + 路由 + 同步前端狀態
-    */
-   window.submitSelfCheck = function() {
-       // 安全檢查
-       if (!currentCheckData || !currentCheckData.checklists) {
-           console.error('無檢查資料');
-           return;
-       }
-   
-       const total = currentCheckData.checklists.length;
-       const submitBtn = document.getElementById('finishCheckBtn');
-       
-       // 準備資料
-       const checklistData = [];
-       let hasFail = false;
-       let errorExplanation = "";
-   
-       // 驗證迴圈
-       for (let i = 0; i < total; i++) {
-           const status = currentCheckData.results ? currentCheckData.results[i] : null;
-           
-           if (!status) {
-               showToast(`⚠️ 第 ${i + 1} 項尚未確認！請選擇符合或未符合。`, 'warning');
-               const el = document.getElementById(`checkItem_${i}`);
-               if (el) {
-                   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                   el.style.border = '2px solid #F59E0B';
-                   setTimeout(() => el.style.border = '1px solid var(--game-border)', 1000);
-               }
-               return;
-           }
-   
-           const isChecked = (status === 'pass');
-           const item = currentCheckData.checklists[i];
-           let reason = "";
-   
-           if (!isChecked) {
-               hasFail = true;
-               const input = document.getElementById(`improveInput_${i}`);
-               reason = input ? input.value.trim() : "";
-               
-               if (!reason) {
-                   showToast(`第 ${i + 1} 項標記為「未符合」，請填寫修正說明`, 'warning');
-                   if(input) input.focus();
-                   return;
-               }
-               if (errorExplanation) errorExplanation += " | ";
-               errorExplanation += `[${item.itemTitle}]: ${reason}`;
-           }
-   
-           checklistData.push({
-               checklistId: item.checklistId,
-               isChecked: isChecked
-           });
-       }
-   
-       if (submitBtn) {
-           submitBtn.disabled = true;
-           submitBtn.textContent = '處理中...';
-       }
-   
-       const scenarioType = hasFail ? 'B' : 'A';
-       
-       const params = new URLSearchParams({
-           action: 'submitSelfCheck', 
-           taskProgressId: currentCheckData.progressId,
-           userEmail: currentStudent.email,
-           checklistData: JSON.stringify(checklistData),
-           scenarioType: scenarioType,
-           errorExplanation: errorExplanation
-       });
-   
-       console.log('🚀 [Frontend] 提交自主檢查:', Object.fromEntries(params));
-   
-       fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-           .then(response => response.json())
-           .then(data => {
-               console.log('📥 [Frontend] 檢查回傳:', data);
-   
-               if (data.success) {
-                   currentCheckData.scenario = data.scenarioType;
-   
-                   // ==========================================
-                   // 🔥🔥🔥 關鍵修正：立刻同步前端狀態 🔥🔥🔥
-                   // ==========================================
-                   const taskId = currentCheckData.taskId;
-                   if (taskId && window.currentTasksProgress && window.currentTasksProgress[taskId]) {
-                       if (data.nextStep === 'assessment') {
-                           window.currentTasksProgress[taskId].status = 'assessment';
-                       } else if (data.nextStep === 'completed') {
-                           window.currentTasksProgress[taskId].status = 'completed';
-                       }
-                   }
-                   // ==========================================
-   
-                   // 路由判斷
-                   if (data.nextStep === 'assessment') {
-                       console.log('➡️ 進入評量階段');
-                       
-                       if (!data.question) {
-                           showToast('系統錯誤：找不到題目資料', 'error');
-                           return;
-                       }
-                       
-                       currentCheckData.question = data.question; 
-                       if (window.loadAssessment) {
-                           loadAssessment(data.scenarioType, data.question);
-                       }
-   
-                   } else if (data.nextStep === 'completed') {
-                       console.log('🎉 任務完成');
-                       
-                       showToast(data.message || '🎉 檢查完成，任務結束！', 'success');
-                       closeSelfCheckModal();
-                       
-                       // 強制刷新列表
-                       setTimeout(() => {
-                           if (typeof loadTierTasks === 'function') loadTierTasks(true);
-                           if (typeof displayQuestList === 'function') displayQuestList();
-                       }, 500);
-                   }
-   
-               } else {
-                   showToast(data.message || '提交失敗', 'error');
-                   if (submitBtn) {
-                       submitBtn.disabled = false;
-                       submitBtn.textContent = '完成檢查，進入評量 →';
-                   }
-               }
-           })
-           .catch(error => {
-               console.error('❌ [Frontend] 連線錯誤:', error);
-               showToast('連線錯誤，請重試', 'error');
-               if (submitBtn) {
-                   submitBtn.disabled = false;
-                   submitBtn.textContent = '完成檢查，進入評量 →';
-               }
-           });
-   };
-   
-/**
- * 載入並顯示評量題目 (UI 強力切換修復版)
- */
-window.loadAssessment = function(scenario, questionData) {
-    console.log('🔄 [Frontend] 準備切換至評量畫面...', { scenario, questionData });
+     * 顯示審核界面
+     */
+    function showPeerReviewInterface(reviewData) {
+        currentReviewData = reviewData;
 
-    // 1. 確保資料已儲存
-    if (!window.currentCheckData) window.currentCheckData = {};
-    currentCheckData.scenario = scenario;
-    currentCheckData.question = questionData;
+        const modal = document.getElementById('peerReviewModal');
+        document.getElementById('revieweeName').textContent = reviewData.revieweeName;
+        document.getElementById('revieweeEmail').textContent = reviewData.revieweeEmail;
+        document.getElementById('reviewTaskName').textContent = reviewData.taskName || reviewData.taskId;
 
-    // 2. 抓取 DOM 元素 (並檢查是否存在)
-    const checkStage = document.getElementById('checkStageContainer');
-    const assessmentStage = document.getElementById('assessmentStageContainer');
-    const finishBtn = document.getElementById('finishCheckBtn');
-    const submitBtn = document.getElementById('submitAssessmentBtn');
-    const titleEl = document.getElementById('selfCheckTitle');
-    const hintText = document.getElementById('assessmentHintText');
-    const qTextEl = document.getElementById('assessmentQuestionText');
-    const optionsEl = document.getElementById('assessmentOptionsContainer');
+        modal.style.display = 'flex';
 
-    // Debug: 檢查元素是否抓到了
-    if (!checkStage) console.error('❌ 找不到 #checkStageContainer');
-    if (!assessmentStage) console.error('❌ 找不到 #assessmentStageContainer');
+        // 開始審核倒數計時（3分鐘）
+        let remaining = reviewData.timeRemaining || 180;
 
-    // ==========================================
-    // 🔥 3. 暴力切換顯示狀態 (使用 setAttribute 強制覆蓋)
-    // ==========================================
-    
-    // 強制隱藏檢查表
-    if (checkStage) {
-        checkStage.style.display = 'none'; // 先試一般方法
-        checkStage.setAttribute('style', 'display: none !important'); // 再試暴力方法
-    }
-    
-    if (finishBtn) finishBtn.style.display = 'none';
-
-    // 強制顯示評量表
-    if (assessmentStage) {
-        assessmentStage.style.display = 'block';
-        assessmentStage.setAttribute('style', 'display: block !important');
-    }
-    
-    if (submitBtn) {
-        submitBtn.style.display = 'inline-block';
-        submitBtn.disabled = false;
-        submitBtn.textContent = '提交答案';
-    }
-
-    // 更新標題
-    if (titleEl) titleEl.textContent = '🧠 隨堂評量';
-
-    // 4. 設定提示文字
-    if (hintText) {
-        if (scenario === 'B') {
-            hintText.innerHTML = `<div class="alert alert-warning" style="margin-bottom:15px;">💪 剛才雖然有小錯誤，但修正後就是學習！請回答下列問題。</div>`;
-        } else {
-            hintText.innerHTML = `<div class="alert alert-success" style="margin-bottom:15px;">🎉 任務執行完美！請回答最後一個問題來領取獎勵。</div>`;
+        if (reviewTimer) {
+            clearInterval(reviewTimer);
         }
+
+        reviewTimer = setInterval(function() {
+            remaining--;
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            document.getElementById('reviewTimeRemaining').textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            if (remaining <= 0) {
+                clearInterval(reviewTimer);
+                modal.style.display = 'none';
+                currentReviewData = null;
+                showToast('審核時間已到，已改為教師審核', 'warning');
+            }
+        }, 1000);
     }
 
-    // 5. 渲染題目與選項
-    if (questionData) {
-        if (qTextEl) qTextEl.textContent = questionData.questionText;
-        
-        if (optionsEl) {
-            optionsEl.innerHTML = ''; // 清空舊選項
-            const options = questionData.options || [];
-            
-            options.forEach((opt, idx) => {
-                const btn = document.createElement('div');
-                // 為了避免 CSS class 遺失，直接寫入 inline style 確保樣式
-                btn.className = 'assessment-option-btn';
-                btn.textContent = opt;
-                btn.style.cssText = "padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; cursor: pointer; background: #fff; color: #333; transition: all 0.2s;";
-                
-                btn.onclick = function() {
-                    // 清除其他選取
-                    Array.from(optionsEl.children).forEach(b => {
-                        b.style.background = '#fff';
-                        b.style.borderColor = '#ccc';
-                        b.style.color = '#333';
-                    });
-                    
-                    // 選取當前
-                    this.style.background = 'rgba(245, 158, 11, 0.1)';
-                    this.style.borderColor = '#F59E0B';
-                    this.style.color = '#F59E0B';
-                    this.style.fontWeight = 'bold';
-                    
-                    // 記錄答案
-                    currentCheckData.selectedOptionIndex = idx;
-                };
-                optionsEl.appendChild(btn);
+    /**
+     * 顯示退回理由輸入框
+     */
+    window.showRejectReason = function() {
+        document.getElementById('rejectReasonSection').style.display = 'block';
+        document.getElementById('showRejectBtn').style.display = 'none';
+        document.getElementById('passReviewBtn').style.display = 'none';
+        document.getElementById('cancelRejectBtn').style.display = 'inline-block';
+        document.getElementById('confirmRejectBtn').style.display = 'inline-block';
+    };
+
+    /**
+     * 隱藏退回理由輸入框
+     */
+    window.hideRejectReason = function() {
+        document.getElementById('rejectReasonSection').style.display = 'none';
+        document.getElementById('rejectReasonInput').value = '';
+        document.getElementById('showRejectBtn').style.display = 'inline-block';
+        document.getElementById('passReviewBtn').style.display = 'inline-block';
+        document.getElementById('cancelRejectBtn').style.display = 'none';
+        document.getElementById('confirmRejectBtn').style.display = 'none';
+    };
+
+    /**
+     * 提交審核結果
+     */
+    window.submitPeerReview = function(result) {
+        if (!currentReviewData) return;
+
+        let rejectReason = '';
+        if (result === 'reject') {
+            rejectReason = document.getElementById('rejectReasonInput').value.trim();
+            if (!rejectReason) {
+                showToast('請填寫退回理由', 'warning');
+                return;
+            }
+        }
+
+        if (reviewTimer) {
+            clearInterval(reviewTimer);
+        }
+
+        const params = new URLSearchParams({
+            action: 'completePeerReview',
+            reviewId: currentReviewData.reviewId,
+            reviewerEmail: currentStudent.email,
+            result: result,
+            rejectReason: rejectReason
+        });
+
+        showLoading('mainLoading');
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(data) {
+                hideLoading('mainLoading');
+
+                if (data.success) {
+                    document.getElementById('peerReviewModal').style.display = 'none';
+                    currentReviewData = null;
+                    window.hideRejectReason();
+
+                    const message = result === 'pass' ?
+                        '✅ 已通過審核！你獲得了 50 金幣' :
+                        '✅ 已退回任務';
+                    showToast(message, 'success');
+
+                    // 重新載入任務列表
+                    if (selectedTier) {
+                        loadTierTasks(true);
+                    }
+                } else if (data.timeout) {
+                    document.getElementById('peerReviewModal').style.display = 'none';
+                    currentReviewData = null;
+                    showToast(data.message, 'warning');
+                } else {
+                    showToast(data.message || '提交失敗', 'error');
+                }
+            })
+            .catch(function(error) {
+                hideLoading('mainLoading');
+                APP_CONFIG.error('提交審核失敗', error);
+                showToast('提交失敗：' + error.message, 'error');
             });
-        }
-    } else {
-        console.error('❌ 收到空的題目資料');
-        if (qTextEl) qTextEl.textContent = '題目載入失敗 (無資料)';
-    }
-    
-    // 重置選擇
-    currentCheckData.selectedOptionIndex = null;
-}
+    };
 
-/**
- * 顯示正確答案（答錯時調用）- student.js 版本
- */
-function displayCorrectAnswerInStudentJS(correctAnswer, attemptNumber) {
-    if (!correctAnswer) return;
-
-    const correctAnswerUpper = correctAnswer.toUpperCase();
-    const answerMap = ['A', 'B', 'C', 'D'];
-    const correctIndex = answerMap.indexOf(correctAnswerUpper);
-
-    const optionsEl = document.getElementById('assessmentOptionsContainer');
-    if (!optionsEl) return;
-
-    // 標記所有選項
-    Array.from(optionsEl.children).forEach((optionDiv, idx) => {
-        if (idx === correctIndex) {
-            // 正確答案：綠色高亮
-            optionDiv.style.background = 'rgba(16, 185, 129, 0.15)';
-            optionDiv.style.borderColor = '#10B981';
-            optionDiv.style.borderWidth = '3px';
-            optionDiv.style.color = '#10B981';
-            optionDiv.style.fontWeight = 'bold';
-
-            // 添加正確答案標籤
-            if (!optionDiv.querySelector('.correct-answer-badge')) {
-                const badge = document.createElement('span');
-                badge.className = 'correct-answer-badge';
-                badge.innerHTML = ' ✓ 正確答案';
-                badge.style.cssText = `
-                    display: inline-block; margin-left: 12px; padding: 4px 12px;
-                    background: #10B981; color: white; border-radius: 12px;
-                    font-size: 12px; font-weight: bold;
-                `;
-                optionDiv.appendChild(badge);
-            }
-        } else if (idx === currentCheckData.selectedOptionIndex) {
-            // 錯誤答案：紅色標記
-            optionDiv.style.background = 'rgba(239, 68, 68, 0.1)';
-            optionDiv.style.borderColor = '#EF4444';
-            optionDiv.style.borderWidth = '2px';
-            optionDiv.style.color = '#EF4444';
-            optionDiv.style.fontWeight = 'bold';
-
-            // 添加錯誤答案標籤
-            if (!optionDiv.querySelector('.wrong-answer-badge')) {
-                const badge = document.createElement('span');
-                badge.className = 'wrong-answer-badge';
-                badge.innerHTML = ' ✗ 你的答案';
-                badge.style.cssText = `
-                    display: inline-block; margin-left: 12px; padding: 4px 12px;
-                    background: #EF4444; color: white; border-radius: 12px;
-                    font-size: 12px; font-weight: bold;
-                `;
-                optionDiv.appendChild(badge);
-            }
-        }
-
-        // 禁用所有選項
-        optionDiv.style.cursor = 'not-allowed';
-        optionDiv.style.opacity = '0.9';
-        optionDiv.onclick = null;
+    /**
+     * 檢查自己提交的任務的審核狀態
+     */
+    function checkMyTaskReviewStatus(taskProgressId) {
+    const params = new URLSearchParams({
+        action: 'getReviewStatus',
+        taskProgressId: taskProgressId
     });
 
-    // 在題目下方顯示正確答案提示
-    const qTextEl = document.getElementById('assessmentQuestionText');
-    if (qTextEl && !document.getElementById('correctAnswerHint')) {
-        const hint = document.createElement('div');
-        hint.id = 'correctAnswerHint';
-        hint.style.cssText = `
-            margin-top: 16px; padding: 12px;
-            background: rgba(16, 185, 129, 0.1);
-            border-left: 4px solid #10B981;
-            border-radius: 4px; font-size: 16px;
-            color: var(--game-text-light);
-        `;
-        hint.innerHTML = `<strong>正確答案是：${correctAnswerUpper}</strong>`;
-        qTextEl.appendChild(hint);
-    }
+    fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+        .then(response => response.json())
+        .then(function(data) {
+            APP_CONFIG.log('📥 審核狀態回應:', data); // ✅ 加入除錯日誌
+            
+            if (!data.success) {
+                APP_CONFIG.error('查詢審核狀態失敗:', data.message);
+                return;
+            }
+
+            // ✅ 檢查任務狀態（包含所有可能改為教師審核的狀態）
+            const teacherReviewStatuses = ['pending_review', 'completed'];
+            if (data.taskStatus && teacherReviewStatuses.includes(data.taskStatus)) {
+                APP_CONFIG.log('📝 任務狀態變為教師審核或已完成:', data.taskStatus);
+
+                // 停止所有計時器
+                if (waitingReviewCheckInterval) {
+                    clearInterval(waitingReviewCheckInterval);
+                    waitingReviewCheckInterval = null;
+                    APP_CONFIG.log('✅ 已停止輪詢計時器');
+                }
+                if (waitingReviewTimeout) {
+                    clearTimeout(waitingReviewTimeout);
+                    waitingReviewTimeout = null;
+                    APP_CONFIG.log('✅ 已停止超時計時器');
+                }
+
+                // 關閉等待視窗
+                const waitingModal = document.getElementById('waitingReviewModal');
+                if (waitingModal && waitingModal.style.display === 'flex') {
+                    waitingModal.style.display = 'none';
+                    APP_CONFIG.log('✅ 已關閉等待視窗');
+                }
+
+                // 顯示提示訊息
+                if (data.taskStatus === 'pending_review') {
+                    showToast('所有同學都無法審核，已改為教師審核', 'info');
+                } else if (data.taskStatus === 'completed') {
+                    showToast('✅ 任務已通過審核！', 'success');
+                }
+
+                // 重新載入任務列表
+                if (selectedTier) {
+                    setTimeout(() => {
+                        APP_CONFIG.log('🔄 重新載入任務列表');
+                        loadTierTasks(true);
+                    }, 1000);
+                }
+                
+                return; // ✅ 停止後續處理
+            }
+            
+            // 檢查審核記錄
+            if (data.reviews && data.reviews.length > 0) {
+                const review = data.reviews[0];
+                updateWaitingReviewUI(review);
+            } else {
+                APP_CONFIG.log('ℹ️ 沒有審核記錄');
+            }
+        })
+        .catch(function(error) {
+            APP_CONFIG.error('檢查審核狀態失敗', error);
+        });
 }
 
-/**
- * 提交評量答案 (修正版：補上遺漏的 userEmail)
- */
-window.submitAssessmentAnswer = function() {
-       // 1. 檢查是否已選答案
-       if (currentCheckData.selectedOptionIndex === null || currentCheckData.selectedOptionIndex === undefined) {
-           showToast('請選擇一個答案', 'warning');
-           return;
-       }
-   
-       // 2. 獲取答案內容
-       const answerMap = ['A', 'B', 'C', 'D'];
-       const myAnswer = answerMap[currentCheckData.selectedOptionIndex];
-       
-       // 獲取題目 ID
-       const quizQuestionId = currentCheckData.question ? currentCheckData.question.questionId : null;
-       
-       if (!quizQuestionId) {
-           showToast('系統錯誤：找不到題目 ID', 'error');
-           return;
-       }
-   
-       // 3. 鎖定按鈕
-       const submitBtn = document.getElementById('submitAssessmentBtn');
-       if (submitBtn) {
-           submitBtn.disabled = true;
-           submitBtn.textContent = '提交中...';
-       }
-   
-       // 4. 準備參數 (🔥 這裡補上了 userEmail)
-       const params = new URLSearchParams({
-           action: 'submitAssessment',
-           taskProgressId: currentCheckData.progressId,
-           taskId: currentCheckData.taskId,
-           questionId: quizQuestionId,
-           studentAnswer: myAnswer,
-           scenario: currentCheckData.scenario,
-           
-           // 👇👇👇 關鍵修正：補上這一行！ 👇👇👇
-           userEmail: currentStudent.email 
-       });
-   
-       // 補上 classId (保險起見)
-       if (selectedClass && selectedClass.classId) {
-           params.append('classId', selectedClass.classId);
-       }
-   
-       console.log('📤 [Frontend] 提交評量答案:', Object.fromEntries(params));
-   
-       // 5. 發送請求
-       fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
-           .then(r => r.json())
-           .then(data => {
-               console.log('📥 [Frontend] 評量結果:', data);
-               
-               if (data.success) {
-                   if (data.isCorrect) {
-                       const tokenMsg = data.tokenReward ? `獲得 ${data.tokenReward} 代幣` : '';
-                       if (currentCheckData.scenario === 'B') {
-                           showToast(`🎉 答對了！獲得補救獎勵 ${tokenMsg}`, 'success');
-                       } else {
-                           showToast(`🎉 任務完成！${tokenMsg}`, 'success');
-                       }
+    /**
+     * 更新等待審核的UI
+     */
+    function updateWaitingReviewUI(review) {
+        APP_CONFIG.log('📝 更新等待審核UI', review);
 
-                       // 即時更新代幣顯示
-                       if (typeof refreshUserTokens === 'function') {
-                           refreshUserTokens();
-                       }
+        const messageElement = document.getElementById('waitingReviewMessage');
+        const waitingModal = document.getElementById('waitingReviewModal');
 
-                       closeSelfCheckModal();
+        if (!messageElement) {
+            APP_CONFIG.error('找不到 waitingReviewMessage 元素');
+            return;
+        }
 
-                       // 重新整理列表
-                       setTimeout(() => {
-                           if (typeof loadTierTasks === 'function') loadTierTasks(true);
-                           if (typeof displayQuestList === 'function') displayQuestList();
-                       }, 1000);
-                   } else {
-                       // 答錯：顯示正確答案，不關閉 Modal
-                       displayCorrectAnswerInStudentJS(data.correctAnswer, data.attemptNumber);
+        if (review.status === 'assigned') {
+            // 更新訊息（可能是新的審核者）
+            messageElement.textContent = `正在等待 ${review.reviewerName} 接受審核...`;
+            if (waitingModal) {
+                waitingModal.style.display = 'flex';
+            }
+            APP_CONFIG.log('⏳ 狀態：assigned - 等待接受', review.reviewerName);
 
-                       // 顯示錯誤提示訊息
-                       showToast(`❌ 答錯了！這是第 ${data.attemptNumber} 次嘗試`, 'warning', 5000);
+            // 如果是重新分配，顯示提示（只有在 reviewerName 改變時）
+            if (review.reassigned) {
+                showToast(`正在尋找下一位審核者：${review.reviewerName}`, 'info');
+            }
+        } else if (review.status === 'accepted') {
+            // 檢查是否已處理過此狀態
+            if (lastProcessedReviewStatus === 'accepted') {
+                APP_CONFIG.log('⚠️ 已處理過 accepted 狀態，跳過');
+                return;
+            }
+            lastProcessedReviewStatus = 'accepted';
 
-                       // 隱藏提交按鈕
-                       if (submitBtn) submitBtn.style.display = 'none';
+            // 審核者已接受，停止30秒超時計時器，但繼續輪詢等待結果
+            APP_CONFIG.log('👀 狀態：accepted - 審核者已接受，繼續等待審核結果');
 
-                       // 修改關閉按鈕行為
-                       const closeBtn = document.getElementById('closeSelfCheckBtn');
-                       if (closeBtn) {
-                           closeBtn.textContent = '知道了，重新開始';
-                           closeBtn.onclick = function() {
-                               closeSelfCheckModal();
-                               setTimeout(() => {
-                                   if (typeof loadTierTasks === 'function') loadTierTasks(true);
-                                   if (typeof displayQuestList === 'function') displayQuestList();
-                               }, 500);
-                           };
-                       }
-                   }
-   
-               } else {
-                   showToast(data.message || '提交失敗', 'error');
-                   if (submitBtn) {
-                       submitBtn.disabled = false;
-                       submitBtn.textContent = '提交答案';
-                   }
-               }
-           })
-           .catch(err => {
-               console.error(err);
-               showToast('系統錯誤，請檢查網路', 'error');
-               if (submitBtn) {
-                   submitBtn.disabled = false;
-                   submitBtn.textContent = '提交答案';
-               }
-           });
-   };
+            // 停止30秒超時計時器（不再需要等待接受）
+            if (waitingReviewTimeout) {
+                clearTimeout(waitingReviewTimeout);
+                waitingReviewTimeout = null;
+                APP_CONFIG.log('✅ 已停止超時計時器（審核者已接受）');
+            }
 
-      /**
-    * 關閉自主檢查面板
-    */
-   window.closeSelfCheckModal = function() {
-       const modal = document.getElementById('selfCheckModal');
-       if (modal) {
-           // 隱藏 Modal
-           modal.style.display = 'none';
-           modal.classList.remove('active'); // 若有使用 CSS class 控制顯示也一併移除
-       }
-       
-       // 選用：重置相關變數 (視需求而定)
-       currentCheckData = { taskId: null, progressId: null, checklists: [], hasErrors: false, question: null };
-   };
-})(); // IIFE
+            // 保持視窗開啟，但更新訊息
+            messageElement.textContent = `${review.reviewerName} 將進行審核，請稍候...`;
+            if (waitingModal) {
+                waitingModal.style.display = 'flex';
+            }
 
+            // 提示用戶（僅一次）
+            showToast(`✅ ${review.reviewerName} 已接受審核，正在審核中...`, 'success');
 
+            // 繼續輪詢檢查，等待 completed 狀態（不停止 waitingReviewCheckInterval）
+        } else if (review.status === 'completed') {
+            // 檢查是否已處理過此狀態
+            if (lastProcessedReviewStatus === 'completed') {
+                APP_CONFIG.log('⚠️ 已處理過 completed 狀態，跳過');
+                return;
+            }
+            lastProcessedReviewStatus = 'completed';
 
+            // 審核完成，停止輪詢並關閉視窗
+            APP_CONFIG.log('✅ 狀態：completed - 審核完成', { result: review.result });
 
+            // 停止輪詢計時器
+            if (waitingReviewCheckInterval) {
+                clearInterval(waitingReviewCheckInterval);
+                waitingReviewCheckInterval = null;
+            }
+            if (waitingReviewTimeout) {
+                clearTimeout(waitingReviewTimeout);
+                waitingReviewTimeout = null;
+            }
 
+            // 關閉等待視窗
+            if (waitingModal) {
+                waitingModal.style.display = 'none';
+            }
+
+            // 顯示審核結果
+            if (review.result === 'pass') {
+                showToast('✅ 任務審核通過！你也獲得了 50 金幣', 'success');
+            } else {
+                showToast(`❌ 任務被退回：${review.rejectReason}`, 'warning');
+            }
+
+            // 重新載入任務列表
+            if (selectedTier) {
+                loadTierTasks(true);
+            }
+        } else {
+            APP_CONFIG.log('⚠️ 未知狀態:', review.status);
+        }
+    }
+
+})(); // IIFE 結尾
