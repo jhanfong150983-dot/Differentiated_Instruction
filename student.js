@@ -876,6 +876,7 @@
             });
 
             APP_CONFIG.log('?? 自動檢查課堂狀態（課程階段）...');
+            fetch(`${APP_CONFIG.API_URL}?${checkParams.toString()}`)
                 .then(response => response.json())
                 .then(function(sessionResponse) {
                     APP_CONFIG.log('📥 課堂狀態回應:', sessionResponse);
