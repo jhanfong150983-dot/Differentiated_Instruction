@@ -537,18 +537,26 @@
      * 自動繼續任務（課堂開始自動顯示的 Modal 中的確認按鈕）
      * 與 continueTask() 的差異：
      * - continueTask()：用於使用者點擊任務卡片後的 Modal
-     * - autoCompleteResumeTask()：用於課堂開始自動顯示的 Modal，進入任務詳情而非直接打開連結
+     * - autoCompleteResumeTask()：用於課堂開始自動顯示的 Modal，直接開啟新版任務執行頁面
      */
     window.autoCompleteResumeTask = function() {
         if (!selectedTask) return;
+        if (!selectedClass || !selectedClass.classId || !selectedCourse || !selectedCourse.courseId) {
+            showToast('缺少班級或課程資訊，無法繼續任務', 'error');
+            return;
+        }
+
+        // 預先開一個分頁，避免後續 window.open 被瀏覽器阻擋
+        const taskWindow = window.open('', '_blank');
 
         const params = new URLSearchParams({
             action: 'startTask',
             userEmail: currentStudent.email,
-            taskId: selectedTask.taskId
+            taskId: selectedTask.taskId,
+            classId: selectedClass.classId
         });
 
-        APP_CONFIG.log('📤 自動繼續任務...', { taskId: selectedTask.taskId });
+        APP_CONFIG.log('📤 自動繼續任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
 
         fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
             .then(response => response.json())
@@ -561,17 +569,32 @@
                     if (resumeModal) {
                         resumeModal.style.display = 'none';
                     }
-                    
-                    // 直接進入任務詳情 Modal（而非直接打開連結）
-                    // 這樣學生可以看到完成按鈕
-                    openAutoResumeTaskDetail(selectedTask);
+
+                    const taskProgressId = response.taskProgressId || '';
+                    const taskExecutionUrl = `task-execution.html?taskProgressId=${encodeURIComponent(taskProgressId)}&taskId=${encodeURIComponent(selectedTask.taskId)}&userEmail=${encodeURIComponent(currentStudent.email)}&apiUrl=${encodeURIComponent(APP_CONFIG.API_URL)}&classId=${encodeURIComponent(selectedClass.classId)}&courseId=${encodeURIComponent(selectedCourse.courseId)}`;
+
+                    if (taskWindow) {
+                        taskWindow.location.href = taskExecutionUrl;
+                    } else {
+                        window.open(taskExecutionUrl, '_blank');
+                    }
+
+                    currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
+                    startTaskTimeLimitCheck(selectedTask);
+                    loadCourseTiersAndRecord();
                 } else {
                     showToast(response.message || '繼續失敗', 'error');
+                    if (taskWindow) {
+                        taskWindow.close();
+                    }
                 }
             })
             .catch(function(error) {
                 APP_CONFIG.error('自動繼續任務失敗', error);
                 showToast('繼續失敗：' + error.message, 'error');
+                if (taskWindow) {
+                    taskWindow.close();
+                }
             });
     };
 
@@ -2106,11 +2129,19 @@
      */
     window.continueTask = function() {
         if (!selectedTask) return;
+        if (!selectedClass || !selectedClass.classId || !selectedCourse || !selectedCourse.courseId) {
+            showToast('缺少班級或課程資訊，無法繼續任務', 'error');
+            return;
+        }
+
+        // 預先開一個分頁，避免後續 window.open 被瀏覽器阻擋
+        const taskWindow = window.open('', '_blank');
 
         const params = new URLSearchParams({
             action: 'startTask',
             userEmail: currentStudent.email,
-            taskId: selectedTask.taskId
+            taskId: selectedTask.taskId,
+            classId: selectedClass.classId
         });
 
         APP_CONFIG.log('📤 繼續任務...', { taskId: selectedTask.taskId });
@@ -2122,22 +2153,34 @@
 
                 if (response.success) {
                     closeResumeTaskModal();
-                    
-                    // 直接進入任務（無需再點擊「開始任務」）
-                    // 這裡可以打開任務連結或導向任務頁面
-                    if (selectedTask.link && selectedTask.link.trim() !== '') {
-                        window.open(selectedTask.link, '_blank');
+
+                    const taskProgressId = response.taskProgressId || '';
+                    const taskExecutionUrl = `task-execution.html?taskProgressId=${encodeURIComponent(taskProgressId)}&taskId=${encodeURIComponent(selectedTask.taskId)}&userEmail=${encodeURIComponent(currentStudent.email)}&apiUrl=${encodeURIComponent(APP_CONFIG.API_URL)}&classId=${encodeURIComponent(selectedClass.classId)}&courseId=${encodeURIComponent(selectedCourse.courseId)}`;
+
+                    if (taskWindow) {
+                        taskWindow.location.href = taskExecutionUrl;
+                    } else {
+                        window.open(taskExecutionUrl, '_blank');
                     }
+
+                    currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
+                    startTaskTimeLimitCheck(selectedTask);
 
                     // 重新載入進度
                     loadCourseTiersAndRecord();
                 } else {
                     showToast(response.message || '繼續失敗', 'error');
+                    if (taskWindow) {
+                        taskWindow.close();
+                    }
                 }
             })
             .catch(function(error) {
                 APP_CONFIG.error('繼續任務失敗', error);
                 showToast('繼續任務失敗：' + error.message, 'error');
+                if (taskWindow) {
+                    taskWindow.close();
+                }
             });
     };
 
