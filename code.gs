@@ -8070,11 +8070,22 @@ function getTaskDetail(params) {
     let userId = null;
     if (usersSheet) {
       const usersData = usersSheet.getDataRange().getValues();
+      Logger.log(`🔍 從 USERS 表查詢 userId，目標 email: "${email}"`);
       for (let i = 1; i < usersData.length; i++) {
-        if (usersData[i][2] === email) {  // email 在 index 2
-          userId = usersData[i][0];  // user_id 在 index 0
+        const rowEmail = String(usersData[i][2]).trim();
+        const rowUserId = usersData[i][0];
+
+        Logger.log(`🔍 USERS Row ${i}: rowEmail="${rowEmail}", rowUserId="${rowUserId}", match=${rowEmail === email}`);
+
+        if (rowEmail === email) {  // email 在 index 2
+          userId = rowUserId;  // user_id 在 index 0
+          Logger.log(`✅ 找到 userId: ${userId}`);
           break;
         }
+      }
+
+      if (!userId) {
+        Logger.log(`⚠️ 未在 USERS 表找到 email: ${email}`);
       }
     }
 
