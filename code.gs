@@ -4502,29 +4502,35 @@ function getCourseTiers(courseId) {
     // 為每個層級添加說明和圖示
     const tiersWithInfo = tiers.map(tier => {
       let icon = '📘';
+      let name = '';
       let description = '';
       let color = '#10B981';
 
       if (tier === '基礎層' || tier === 'tutorial') {
         icon = '📘';
+        name = '基礎層';
         description = '適合初學者，循序漸進地學習基礎知識';
         color = '#10B981';
       } else if (tier === '進階層' || tier === 'adventure') {
         icon = '📙';
+        name = '進階層';
         description = '適合具備基礎能力者，挑戰更深入的內容';
         color = '#F59E0B';
       } else if (tier === '困難層' || tier === 'hardcore') {
         icon = '📕';
+        name = '困難層';
         description = '適合進階學習者，挑戰高難度任務';
         color = '#EF4444';
       } else {
         icon = '📗';
+        name = tier;
         description = tier;
         color = '#6B7280';
       }
 
       return {
         tier: tier,
+        name: name,
         icon: icon,
         description: description,
         color: color

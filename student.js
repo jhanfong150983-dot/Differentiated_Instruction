@@ -2388,10 +2388,11 @@
                 const params = new URLSearchParams({
                     action: 'startTask',
                     userEmail: currentStudent.email,
-                    taskId: selectedTask.taskId
+                    taskId: selectedTask.taskId,
+                    classId: selectedClass.classId
                 });
 
-                APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId });
+                APP_CONFIG.log('📤 開始任務...', { taskId: selectedTask.taskId, classId: selectedClass.classId });
 
                 return fetch(`${APP_CONFIG.API_URL}?${params.toString()}`);
             })
