@@ -8028,12 +8028,14 @@ function submitTaskExecution(params) {
  */
 function getTaskDetail(params) {
   try {
-    const { taskId, userEmail } = params;
+    const { taskId, userEmail, classId, courseId } = params;
 
     if (!taskId) throw new Error('缺少任務ID (taskId)');
     if (!userEmail) throw new Error('缺少使用者信箱 (userEmail)');
 
     const email = getCurrentUserEmail(userEmail);
+
+    Logger.log(`🔍 getTaskDetail 參數: taskId=${taskId}, userEmail=${email}, classId=${classId}, courseId=${courseId}`);
 
     const ss = getSpreadsheet();
     const tasksSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASKS);
@@ -8072,21 +8074,41 @@ function getTaskDetail(params) {
     }
 
     // 如果找到 userId，從 LEARNING_RECORDS 查詢 current_tier
-    Logger.log(`🔍 準備查詢 LEARNING_RECORDS: userId=${userId}, learningSheet存在=${!!learningSheet}, taskTier=${taskTier}`);
+    Logger.log(`🔍 準備查詢 LEARNING_RECORDS: userId=${userId}, classId=${classId}, courseId=${courseId}, learningSheet存在=${!!learningSheet}, taskTier=${taskTier}`);
     if (userId && learningSheet && !taskTier) {
       const learningData = learningSheet.getDataRange().getValues();
       Logger.log(`🔍 LEARNING_RECORDS 總行數: ${learningData.length}`);
-      for (let i = 1; i < learningData.length; i++) {
-        const rowUserId = learningData[i][1];
-        if (rowUserId === userId) {  // user_id 在 index 1
-          const currentTierValue = learningData[i][10];
-          taskTier = currentTierValue || 'tutorial';  // current_tier 在 index 10
-          Logger.log(`✅ 從 LEARNING_RECORDS 獲取學生層級: userId=${userId}, row=${i}, currentTierValue="${currentTierValue}", taskTier=${taskTier}`);
-          break;
+
+      // 如果有 classId 和 courseId，使用三重匹配
+      if (classId && courseId) {
+        for (let i = 1; i < learningData.length; i++) {
+          const rowUserId = String(learningData[i][1]).trim();
+          const rowClassId = String(learningData[i][2]).trim();
+          const rowCourseId = String(learningData[i][3]).trim();
+
+          // 三重匹配：userId, classId, courseId
+          if (rowUserId === userId && rowClassId === classId && rowCourseId === courseId) {
+            const currentTierValue = learningData[i][10];
+            taskTier = currentTierValue || 'tutorial';  // current_tier 在 index 10
+            Logger.log(`✅ 從 LEARNING_RECORDS 獲取學生層級（三重匹配）: userId=${userId}, classId=${classId}, courseId=${courseId}, row=${i}, currentTierValue="${currentTierValue}", taskTier=${taskTier}`);
+            break;
+          }
+        }
+      } else {
+        // 降級方案：只匹配 userId
+        for (let i = 1; i < learningData.length; i++) {
+          const rowUserId = learningData[i][1];
+          if (rowUserId === userId) {
+            const currentTierValue = learningData[i][10];
+            taskTier = currentTierValue || 'tutorial';
+            Logger.log(`✅ 從 LEARNING_RECORDS 獲取學生層級（僅userId匹配）: userId=${userId}, row=${i}, currentTierValue="${currentTierValue}", taskTier=${taskTier}`);
+            break;
+          }
         }
       }
+
       if (!taskTier || taskTier === '') {
-        Logger.log(`⚠️ 未在 LEARNING_RECORDS 找到 userId=${userId} 的記錄`);
+        Logger.log(`⚠️ 未在 LEARNING_RECORDS 找到匹配記錄: userId=${userId}, classId=${classId}, courseId=${courseId}`);
       }
     } else {
       Logger.log(`⚠️ 無法查詢 LEARNING_RECORDS: userId=${userId}, learningSheet=${!!learningSheet}, taskTier=${taskTier}`);

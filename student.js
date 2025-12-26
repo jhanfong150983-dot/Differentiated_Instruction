@@ -2459,8 +2459,8 @@
 
                     // 🆕 開啟新版任務執行頁面（task-execution.html）
                     const taskProgressId = response.taskProgressId || '';
-                    const taskExecutionUrl = `task-execution.html?taskProgressId=${encodeURIComponent(taskProgressId)}&taskId=${encodeURIComponent(selectedTask.taskId)}&userEmail=${encodeURIComponent(currentStudent.email)}&apiUrl=${encodeURIComponent(APP_CONFIG.API_URL)}`;
-                    APP_CONFIG.log('📖 開啟任務執行頁面:', { taskExecutionUrl, taskProgressId });
+                    const taskExecutionUrl = `task-execution.html?taskProgressId=${encodeURIComponent(taskProgressId)}&taskId=${encodeURIComponent(selectedTask.taskId)}&userEmail=${encodeURIComponent(currentStudent.email)}&apiUrl=${encodeURIComponent(APP_CONFIG.API_URL)}&classId=${encodeURIComponent(selectedClass.classId)}&courseId=${encodeURIComponent(selectedCourse.courseId)}`;
+                    APP_CONFIG.log('📖 開啟任務執行頁面:', { taskExecutionUrl, taskProgressId, classId: selectedClass.classId, courseId: selectedCourse.courseId });
                     window.open(taskExecutionUrl, '_blank');
 
                     // 啟動時間限制檢查（太慢的學生會收到提示）

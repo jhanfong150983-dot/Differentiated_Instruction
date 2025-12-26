@@ -40,12 +40,18 @@ window.addEventListener('DOMContentLoaded', function() {
     const taskId = urlParams.get('taskId');
     studentEmail = urlParams.get('userEmail');
     API_URL = urlParams.get('apiUrl');
+    const classId = urlParams.get('classId');
+    const courseId = urlParams.get('courseId');
 
     if (!taskProgressId || !taskId || !studentEmail || !API_URL) {
         alert('缺少必要參數，無法載入任務');
         window.close();
         return;
     }
+
+    // 儲存到全域變數供後續使用
+    window.currentClassId = classId;
+    window.currentCourseId = courseId;
 
     // 監聽檔案選擇
     document.getElementById('fileInput').addEventListener('change', handleFileSelect);
@@ -283,6 +289,21 @@ async function loadTaskData(taskId) {
             action: 'getTaskDetail',
             taskId: taskId,
             userEmail: studentEmail
+        });
+
+        // 如果有 classId 和 courseId，也傳遞給後端
+        if (window.currentClassId) {
+            params.append('classId', window.currentClassId);
+        }
+        if (window.currentCourseId) {
+            params.append('courseId', window.currentCourseId);
+        }
+
+        console.log('📤 載入任務資料，參數:', {
+            taskId,
+            studentEmail,
+            classId: window.currentClassId,
+            courseId: window.currentCourseId
         });
 
         const response = await fetch(`${API_URL}?${params.toString()}`);
