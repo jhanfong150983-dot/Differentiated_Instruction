@@ -1293,21 +1293,22 @@
         document.getElementById('courseNameQuest').textContent = selectedCourse.courseName || '課程名稱';
         document.getElementById('courseDescriptionQuest').textContent = selectedCourse.description || '暫無說明';
 
-        // 更新標題
-        const tierInfo = courseTiers.find(t => t.tier === selectedTier);
+        // 更新標題 - 直接使用中文轉換
+        let tierDisplayName = '任務';
+        let tierIcon = '📘';
 
-        if (tierInfo && tierInfo.name) {
-            document.getElementById('tierTitle').textContent = `${tierInfo.icon} ${tierInfo.name} 任務`;
-        } else {
-            // 備用方案：如果找不到 tierInfo，使用中文轉換
-            let tierDisplayName = selectedTier;
-            if (selectedTier === 'tutorial') tierDisplayName = '基礎層';
-            else if (selectedTier === 'adventure') tierDisplayName = '進階層';
-            else if (selectedTier === 'hardcore') tierDisplayName = '困難層';
-
-            const defaultIcon = selectedTier === 'tutorial' ? '📘' : selectedTier === 'adventure' ? '📙' : '📕';
-            document.getElementById('tierTitle').textContent = `${defaultIcon} ${tierDisplayName} 任務`;
+        if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
+            tierDisplayName = '基礎層';
+            tierIcon = '📘';
+        } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
+            tierDisplayName = '進階層';
+            tierIcon = '📙';
+        } else if (selectedTier === 'hardcore' || selectedTier === '困難層') {
+            tierDisplayName = '困難層';
+            tierIcon = '📕';
         }
+
+        document.getElementById('tierTitle').textContent = `${tierIcon} ${tierDisplayName} 任務`;
 
         // 啟動定期檢查 session 狀態（每 5 秒）
         startSessionCheck();
@@ -1717,21 +1718,22 @@
         // 更新進度
         updateProgress('progressBarFillQuest', 'progressTextQuest');
 
-        // 更新標題
-        const tierInfo = courseTiers.find(t => t.tier === selectedTier);
+        // 更新標題 - 直接使用中文轉換
+        let tierDisplayName = '任務';
+        let tierIcon = '📘';
 
-        if (tierInfo && tierInfo.name) {
-            document.getElementById('tierTitle').textContent = `${tierInfo.icon} ${tierInfo.name} 任務`;
-        } else {
-            // 備用方案：如果找不到 tierInfo，使用中文轉換
-            let tierDisplayName = selectedTier;
-            if (selectedTier === 'tutorial') tierDisplayName = '基礎層';
-            else if (selectedTier === 'adventure') tierDisplayName = '進階層';
-            else if (selectedTier === 'hardcore') tierDisplayName = '困難層';
-
-            const defaultIcon = selectedTier === 'tutorial' ? '📘' : selectedTier === 'adventure' ? '📙' : '📕';
-            document.getElementById('tierTitle').textContent = `${defaultIcon} ${tierDisplayName} 任務`;
+        if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
+            tierDisplayName = '基礎層';
+            tierIcon = '📘';
+        } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
+            tierDisplayName = '進階層';
+            tierIcon = '📙';
+        } else if (selectedTier === 'hardcore' || selectedTier === '困難層') {
+            tierDisplayName = '困難層';
+            tierIcon = '📕';
         }
+
+        document.getElementById('tierTitle').textContent = `${tierIcon} ${tierDisplayName} 任務`;
 
         // 顯示任務列表
         displayQuestList();

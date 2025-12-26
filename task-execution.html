@@ -599,11 +599,9 @@
             <!-- 階段1：教材顯示 -->
             <div id="stage-material" class="stage-container active">
                 <div class="material-header">
-                    <h2 class="section-title">?? 學習教材</h2>
+                    <h2 class="section-title">📖 學習教材</h2>
                     <div class="material-actions">
-                        <button class="btn-secondary btn-ghost" type="button" onclick="openMaterialInNewTab()">
-                            在新分頁開啟
-                        </button>
+                        <!-- 只在無法預覽時顯示此按鈕 -->
                     </div>
                 </div>
                 <div class="material-frame-wrapper">
@@ -642,7 +640,7 @@
                             選擇檔案
                         </button>
                         <button class="btn-secondary" onclick="startWebcam()">
-                            ?? 使用相機
+                            📷 使用相機
                         </button>
                     </div>
                     <div id="cameraSelectRow" style="display:none; margin-top:12px; align-items:center; gap:8px;">
