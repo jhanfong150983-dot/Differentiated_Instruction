@@ -8198,6 +8198,13 @@ function getTaskDetail(params) {
       Logger.log('❌ 找不到題庫表 (TASK_QUESTIONS)');
     }
 
+    // 層級顯示名稱（中文）
+    let tierDisplay = '';
+    if (taskTier === 'tutorial') tierDisplay = '基礎層';
+    else if (taskTier === 'adventure') tierDisplay = '進階層';
+    else if (taskTier === 'hardcore') tierDisplay = '困難層';
+    else tierDisplay = taskTier;
+
     const task = {
       taskId: taskId,  // 保留完整的 taskId（包含層級後綴）
       actualTaskId: actualTaskId,
@@ -8206,6 +8213,7 @@ function getTaskDetail(params) {
       timeLimit: taskRow[4] || 0,
       tokenReward: taskRow[11] || 10,
       tier: taskTier,
+      tierDisplay: tierDisplay,  // 新增：層級的中文顯示名稱
       selfCheckList: selfCheckList,
       questions: questions
     };

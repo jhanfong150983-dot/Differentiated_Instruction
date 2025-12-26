@@ -271,9 +271,6 @@
             select.value = currentValue;
         }
 
-        // 同步填充層級篩選選單
-        populateTierFilter();
-
         // 檢查所有班級的課堂狀態
         checkAllClassSessions();
     }
@@ -347,31 +344,6 @@
     }
 
     /**
-     * 填充層級篩選選單（基礎/進階/困難 + 全部）
-     */
-    function populateTierFilter() {
-        const tierSelect = document.getElementById('reviewTierFilter');
-        if (!tierSelect) return;
-
-        const currentValue = tierSelect.value;
-        tierSelect.innerHTML = '<option value=\"\" selected>全部層級</option>';
-
-        const options = [
-            { value: 'tutorial', text: '基礎層' },
-            { value: 'adventure', text: '進階層' },
-            { value: 'hardcore', text: '困難層' }
-        ];
-        options.forEach(opt => {
-            const optionEl = document.createElement('option');
-            optionEl.value = opt.value;
-            optionEl.textContent = opt.text;
-            tierSelect.appendChild(optionEl);
-        });
-
-        if (currentValue) tierSelect.value = currentValue;
-    }
-
-    /**
      * 填充進階篩選選項
      */
     function populateAdvancedFilters() {
@@ -408,7 +380,6 @@
             });
             if (currentValue) taskSelect.value = currentValue;
         }
-        populateTierFilter();
     }
 
     // ==========================================
@@ -437,12 +408,6 @@
 
         // 載入任務（會在完成後隱藏 loading）
         loadReviewTasks();
-
-        // 重置層級篩選
-        const tierSelect = document.getElementById('reviewTierFilter');
-        if (tierSelect) {
-            tierSelect.value = '';
-        }
 
         // ✅ 修復：無論是否上課，都啟動自動刷新（60秒）
         // 這樣老師可以即時看到學生的進度變化
@@ -1066,15 +1031,10 @@
         }
         // 'all' 不過濾
 
-        // 2. 層級篩選（優先用頂部 reviewTierFilter，若沒選則用進階篩選 filterTier）
+        // 2. 層級篩選（使用進階篩選的 filterTier）
         // 修復：篩選學生的層級而非任務的層級
-        const reviewTierSelect = document.getElementById('reviewTierFilter');
-        const topTierValue = reviewTierSelect ? reviewTierSelect.value : '';
-        let tierFilterValue = topTierValue;
-        if (!tierFilterValue) {
-            const filterTier = document.getElementById('filterTier');
-            tierFilterValue = filterTier ? filterTier.value : '';
-        }
+        const filterTier = document.getElementById('filterTier');
+        const tierFilterValue = filterTier ? filterTier.value : '';
         if (tierFilterValue) {
             tasks = tasks.filter(task => {
                 // 優先使用學生的層級，若無則使用任務層級

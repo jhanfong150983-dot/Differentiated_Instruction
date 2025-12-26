@@ -295,10 +295,15 @@ async function loadTaskData(taskId) {
             // 🔍 調試：顯示完整的任務資料
             console.log('📦 完整任務資料：', taskData);
             console.log('📝 任務名稱：', taskData.name);
-            console.log('🎯 層級：', taskData.tier);
+            console.log('🎯 層級（原始）：', taskData.tier);
+            console.log('🎯 層級（顯示）：', taskData.tierDisplay);
 
-            // 修復：確保任務名稱正確顯示，如果 name 是 undefined，使用 taskId
-            const taskTitle = taskData.name || taskData.taskId || '任務';
+            // 修復：確保任務標題正確顯示
+            // 標題格式：任務名稱 - 層級（如果有層級顯示名稱）
+            let taskTitle = taskData.name || taskData.taskId || '任務';
+            if (taskData.tierDisplay) {
+                taskTitle = `${taskTitle} - ${taskData.tierDisplay}`;
+            }
             document.getElementById('taskTitle').textContent = taskTitle;
 
             // 修復：載入教材（檢查 link 是否有效）
