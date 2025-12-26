@@ -1410,6 +1410,20 @@
             box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
         }
 
+        /* 進行中班級的選項樣式 */
+        .control-select option[data-has-session="true"] {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            font-weight: bold;
+            padding: 8px;
+        }
+
+        /* 為了支持不同瀏覽器的樣式 */
+        #reviewClassSelect option {
+            padding: 8px;
+            margin: 2px 0;
+        }
+
         .btn-refresh {
             padding: 10px 20px;
             background: #0f4c75;

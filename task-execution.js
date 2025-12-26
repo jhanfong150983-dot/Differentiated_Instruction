@@ -294,8 +294,12 @@ async function loadTaskData(taskId) {
 
             // 🔍 調試：顯示完整的任務資料
             console.log('📦 完整任務資料：', taskData);
+            console.log('📝 任務名稱：', taskData.name);
+            console.log('🎯 層級：', taskData.tier);
 
-            document.getElementById('taskTitle').textContent = taskData.name;
+            // 修復：確保任務名稱正確顯示，如果 name 是 undefined，使用 taskId
+            const taskTitle = taskData.name || taskData.taskId || '任務';
+            document.getElementById('taskTitle').textContent = taskTitle;
 
             // 修復：載入教材（檢查 link 是否有效）
             const materialFrame = document.getElementById('materialFrame');

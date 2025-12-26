@@ -8033,6 +8033,8 @@ function getTaskDetail(params) {
     const tasksData = tasksSheet.getDataRange().getValues();
     const checklistSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_CHECKLISTS);
     const questionsSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.TASK_QUESTIONS);
+    const learningSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.LEARNING_RECORDS);
+    const usersSheet = ss.getSheetByName(SHEET_CONFIG.SHEETS.USERS);
 
     // 處理帶有層級後綴的 taskId（如 task_xxx_tutorial）
     let actualTaskId = taskId;
@@ -8047,6 +8049,37 @@ function getTaskDetail(params) {
     } else if (taskId.includes('_hardcore')) {
       actualTaskId = taskId.replace('_hardcore', '');
       taskTier = 'hardcore';
+    }
+
+    // 修復：從 LEARNING_RECORDS 查詢學生的 current_tier
+    // 首先獲取 user_id
+    let userId = null;
+    if (usersSheet) {
+      const usersData = usersSheet.getDataRange().getValues();
+      for (let i = 1; i < usersData.length; i++) {
+        if (usersData[i][2] === email) {  // email 在 index 2
+          userId = usersData[i][0];  // user_id 在 index 0
+          break;
+        }
+      }
+    }
+
+    // 如果找到 userId，從 LEARNING_RECORDS 查詢 current_tier
+    if (userId && learningSheet && !taskTier) {
+      const learningData = learningSheet.getDataRange().getValues();
+      for (let i = 1; i < learningData.length; i++) {
+        if (learningData[i][1] === userId) {  // user_id 在 index 1
+          taskTier = learningData[i][10] || 'tutorial';  // current_tier 在 index 10
+          Logger.log(`✅ 從 LEARNING_RECORDS 獲取學生層級: userId=${userId}, tier=${taskTier}`);
+          break;
+        }
+      }
+    }
+
+    // 如果仍未取得層級，使用預設值
+    if (!taskTier) {
+      taskTier = 'tutorial';
+      Logger.log(`⚠️ 無法獲取學生層級，使用預設值: tutorial`);
     }
 
     // 找到任務（使用實際的 taskId）
@@ -8066,19 +8099,35 @@ function getTaskDetail(params) {
     //         tutorial_desc, tutorial_link, adventure_desc, adventure_link,
     //         hardcore_desc, hardcore_link, token_reward, createDate
 
-    // 根據層級取得對應的 link
+    // 修復：根據學生的 current_tier 取得對應層級的描述和連結
     let taskLink = '';
-    let taskName = taskRow[3];  // task_name
+    let taskName = '';
+    let taskDesc = '';
 
     if (taskTier === 'tutorial') {
-      taskLink = taskRow[6];  // tutorial_link
+      taskDesc = taskRow[5] || '';      // tutorial_desc
+      taskLink = taskRow[6] || '';      // tutorial_link
     } else if (taskTier === 'adventure') {
-      taskLink = taskRow[8];  // adventure_link
+      taskDesc = taskRow[7] || '';      // adventure_desc
+      taskLink = taskRow[8] || '';      // adventure_link
     } else if (taskTier === 'hardcore') {
-      taskLink = taskRow[10]; // hardcore_link
+      taskDesc = taskRow[9] || '';      // hardcore_desc
+      taskLink = taskRow[10] || '';     // hardcore_link
     } else {
-      // 如果沒有指定層級，預設使用 tutorial
-      taskLink = taskRow[6];
+      // 預設使用 tutorial
+      taskDesc = taskRow[5] || '';
+      taskLink = taskRow[6] || '';
+    }
+
+    // 優先使用層級特定的描述，如果沒有則使用通用任務名稱
+    taskName = taskDesc || taskRow[3] || '';
+
+    Logger.log(`📝 任務資訊: tier=${taskTier}, desc="${taskDesc}", name="${taskRow[3]}", final="${taskName}"`);
+
+    // 如果任務名稱仍為空，使用 taskId 作為備用
+    if (!taskName || taskName.trim() === '') {
+      taskName = actualTaskId;
+      Logger.log(`⚠️ 任務名稱為空，使用 taskId 作為備用: "${taskName}"`);
     }
 
     // 從檢核表取得檢核項目

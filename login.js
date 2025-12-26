@@ -74,24 +74,27 @@ function showReloadButton() {
 // ==========================================
 // Google 登入功能
 // ==========================================
+// 防止重複登入的標志
+let isLoginInProgress = false;
+
 function initializeGoogleLogin() {
-    
+
     if (APP_CONFIG.GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE.apps.googleusercontent.com') {
         console.warn('⚠️ 尚未設定 Google Client ID');
         showMessage('尚未設定 Google 登入，請先完成設定', 'warning');
         return;
     }
-    
+
     try {
-        console.log('🔧 初始化 Google 登入按鈕...');
-        
+        console.log('�� 初始化 Google 登入按鈕...');
+
         google.accounts.id.initialize({
             client_id: APP_CONFIG.GOOGLE_CLIENT_ID,
             callback: handleGoogleLoginSuccess,
             auto_select: false,
             cancel_on_tap_outside: true
         });
-        
+
         google.accounts.id.renderButton(
             document.getElementById('googleLoginButton'),
             {
@@ -103,9 +106,9 @@ function initializeGoogleLogin() {
                 width: 350
             }
         );
-        
+
         console.log('✅ Google 登入按鈕已成功初始化並渲染');
-        
+
     } catch (error) {
         console.error('❌ Google 登入初始化失敗：', error);
         showMessage('Google 登入初始化失敗：' + error.message, 'error');
@@ -114,19 +117,59 @@ function initializeGoogleLogin() {
 }
 
 function handleGoogleLoginSuccess(response) {
-    console.log('🔐 Google 登入成功！');
-    
+    console.log('🔐 Google 登入回調被觸發');
+
+    // 檢查是否已經在處理登入
+    if (isLoginInProgress) {
+        console.warn('⚠️ 登入正在處理中，忽略重複請求');
+        return;
+    }
+
+    // 立即設置標志，防止重複處理
+    isLoginInProgress = true;
+    console.log('✅ 設置登入處理標志');
+
     try {
-        // 鎖定 Google 按鈕，避免重複點擊
+        // 立即鎖定並隱藏 Google 按鈕，避免重複點擊
         const googleBtn = document.getElementById('googleLoginButton');
         if (googleBtn) {
             googleBtn.style.pointerEvents = 'none';
-            googleBtn.style.opacity = '0.6';
+            googleBtn.style.opacity = '0.5';
+            googleBtn.style.filter = 'grayscale(100%)';
+
+            // 添加加載提示
+            const loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'loginLoadingOverlay';
+            loadingOverlay.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                background: rgba(255, 255, 255, 0.9);
+                border-radius: 8px;
+                z-index: 1000;
+            `;
+            loadingOverlay.innerHTML = `
+                <div style="text-align: center;">
+                    <div class="loading-spinner"></div>
+                    <p style="margin-top: 12px; color: #667eea; font-weight: 600;">正在登入中...</p>
+                </div>
+            `;
+
+            const wrapper = googleBtn.closest('.google-login-wrapper');
+            if (wrapper) {
+                wrapper.style.position = 'relative';
+                wrapper.appendChild(loadingOverlay);
+            }
         }
 
         const userData = parseJWT(response.credential);
         console.log('👤 使用者資料：', userData);
-        
+
         const userInfo = {
             google_id: userData.sub,
             email: userData.email,
@@ -134,13 +177,30 @@ function handleGoogleLoginSuccess(response) {
             picture: userData.picture,
             email_verified: userData.email_verified
         };
-        
+
         showMessage('正在處理登入資料...', 'info');
         saveUserToBackend(userInfo);
-        
+
     } catch (error) {
         console.error('❌ 處理登入資料時發生錯誤：', error);
         showMessage('登入處理失敗，請重試', 'error');
+
+        // 發生錯誤時重置標志，允許重試
+        isLoginInProgress = false;
+
+        // 恢復按鈕狀態
+        const googleBtn = document.getElementById('googleLoginButton');
+        if (googleBtn) {
+            googleBtn.style.pointerEvents = 'auto';
+            googleBtn.style.opacity = '1';
+            googleBtn.style.filter = 'none';
+        }
+
+        // 移除加載提示
+        const loadingOverlay = document.getElementById('loginLoadingOverlay');
+        if (loadingOverlay) {
+            loadingOverlay.remove();
+        }
     }
 }
 
@@ -664,7 +724,7 @@ style.textContent = `
             opacity: 1;
         }
     }
-    
+
     @keyframes slideOutRight {
         from {
             transform: translateX(0);
@@ -674,6 +734,21 @@ style.textContent = `
             transform: translateX(100%);
             opacity: 0;
         }
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
     }
 `;
 document.head.appendChild(style);

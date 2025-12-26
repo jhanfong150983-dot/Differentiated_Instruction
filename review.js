@@ -261,6 +261,8 @@
             const option = document.createElement('option');
             option.value = classData.classId;
             option.textContent = classData.className;
+            // 暫時設為預設樣式，等待課堂狀態檢查完成後更新
+            option.setAttribute('data-class-id', classData.classId);
             select.appendChild(option);
         });
 
@@ -271,6 +273,77 @@
 
         // 同步填充層級篩選選單
         populateTierFilter();
+
+        // 檢查所有班級的課堂狀態
+        checkAllClassSessions();
+    }
+
+    /**
+     * 批量檢查所有班級的課堂狀態
+     */
+    function checkAllClassSessions() {
+        if (!reviewClasses || reviewClasses.length === 0) return;
+
+        APP_CONFIG.log('🔍 開始檢查所有班級的課堂狀態...');
+
+        // 為每個班級發送請求檢查課堂狀態
+        reviewClasses.forEach(function(classData) {
+            checkSingleClassSession(classData.classId);
+        });
+    }
+
+    /**
+     * 檢查單一班級的課堂狀態
+     */
+    function checkSingleClassSession(classId) {
+        const params = new URLSearchParams({
+            action: 'getCurrentSession',
+            classId: classId
+        });
+
+        fetch(`${APP_CONFIG.API_URL}?${params.toString()}`)
+            .then(response => response.json())
+            .then(function(response) {
+                if (response.success && response.session) {
+                    const sessionStatus = (response.session.status)
+                        ? String(response.session.status).toLowerCase()
+                        : '';
+                    const isActive = response.isActive ||
+                        (sessionStatus === 'active' || sessionStatus === 'paused');
+
+                    if (isActive) {
+                        // 有進行中的課堂，更新選單樣式
+                        updateClassOptionStyle(classId, true, sessionStatus === 'paused');
+                    }
+                }
+            })
+            .catch(function(error) {
+                APP_CONFIG.log('檢查班級課堂狀態失敗:', { classId, error: error.message });
+            });
+    }
+
+    /**
+     * 更新班級選項的樣式
+     */
+    function updateClassOptionStyle(classId, hasActiveSession, isPaused) {
+        const select = document.getElementById('reviewClassSelect');
+        if (!select) return;
+
+        // 找到對應的 option
+        const options = select.querySelectorAll('option');
+        options.forEach(function(option) {
+            if (option.getAttribute('data-class-id') === classId) {
+                if (hasActiveSession) {
+                    const statusIcon = isPaused ? '⏸️' : '🟢';
+                    const statusText = isPaused ? ' (暫停中)' : ' (進行中)';
+                    const originalText = option.textContent.replace(/ \(.*?\)$/, ''); // 移除舊的狀態文字
+                    option.textContent = statusIcon + ' ' + originalText + statusText;
+                    option.style.color = isPaused ? '#f59e0b' : '#10b981';
+                    option.style.fontWeight = 'bold';
+                    option.setAttribute('data-has-session', 'true');
+                }
+            }
+        });
     }
 
     /**
@@ -302,8 +375,8 @@
      * 填充進階篩選選項
      */
     function populateAdvancedFilters() {
-        // 取得所有獨特的層級
-        const tiers = [...new Set(allTasks.map(task => task.tier).filter(Boolean))];
+        // 取得所有獨特的層級（優先使用學生的層級）
+        const tiers = [...new Set(allTasks.map(task => task.studentTier || task.tier).filter(Boolean))];
         const tierSelect = document.getElementById('filterTier');
         if (tierSelect) {
             const currentValue = tierSelect.value;
@@ -994,6 +1067,7 @@
         // 'all' 不過濾
 
         // 2. 層級篩選（優先用頂部 reviewTierFilter，若沒選則用進階篩選 filterTier）
+        // 修復：篩選學生的層級而非任務的層級
         const reviewTierSelect = document.getElementById('reviewTierFilter');
         const topTierValue = reviewTierSelect ? reviewTierSelect.value : '';
         let tierFilterValue = topTierValue;
@@ -1002,7 +1076,11 @@
             tierFilterValue = filterTier ? filterTier.value : '';
         }
         if (tierFilterValue) {
-            tasks = tasks.filter(task => task.tier === tierFilterValue);
+            tasks = tasks.filter(task => {
+                // 優先使用學生的層級，若無則使用任務層級
+                const studentTier = task.studentTier || task.tier;
+                return studentTier === tierFilterValue;
+            });
         }
 
         // 3. 任務篩選
@@ -1236,12 +1314,13 @@
             tr.setAttribute('data-status', 'pending_review');
         }
 
-        // 層級顏色標籤
-        const tierName = task.tierDisplay || '-';
+        // 層級顏色標籤（優先使用學生的層級，若無則使用任務層級）
+        const tierName = task.studentTierDisplay || task.tierDisplay || '-';
         const tierColorMap = {
             '基礎層': { bg: 'rgba(16, 185, 129, 0.15)', fg: '#0f9f6e' },
             '進階層': { bg: 'rgba(245, 158, 11, 0.15)', fg: '#f59e0b' },
-            '困難層': { bg: 'rgba(239, 68, 68, 0.15)', fg: '#ef4444' }
+            '困難層': { bg: 'rgba(239, 68, 68, 0.15)', fg: '#ef4444' },
+            '未選擇': { bg: 'rgba(156, 163, 175, 0.1)', fg: '#6b7280' }
         };
         const tierStyle = tierColorMap[tierName] || { bg: 'rgba(59, 130, 246, 0.1)', fg: '#3498db' };
         const tierBadge = `<span style="display:inline-block; padding:4px 10px; border-radius:10px; font-size:12px; font-weight:700; background:${tierStyle.bg}; color:${tierStyle.fg};">${escapeHtml(tierName)}</span>`;
