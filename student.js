@@ -591,7 +591,15 @@
         else if (task.type === 'assessment') taskTypeName = '評量';
 
         document.getElementById('modalTaskType').textContent = taskTypeName;
-        document.getElementById('modalTaskTier').textContent = task.tier;
+
+        // 顯示中文層級名稱
+        let tierDisplayName = '';
+        if (task.tier === 'tutorial' || task.tier === '基礎層') tierDisplayName = '基礎層';
+        else if (task.tier === 'adventure' || task.tier === '進階層') tierDisplayName = '進階層';
+        else if (task.tier === 'hardcore' || task.tier === '困難層') tierDisplayName = '困難層';
+        else tierDisplayName = task.tier;
+
+        document.getElementById('modalTaskTier').textContent = tierDisplayName;
         document.getElementById('modalTaskReward').textContent = `💰 ${task.tokenReward || 0} 代幣`;
 
         // 顯示內容或連結
@@ -1288,7 +1296,7 @@
         // 更新標題
         const tierInfo = courseTiers.find(t => t.tier === selectedTier);
         if (tierInfo) {
-            document.getElementById('tierTitle').textContent = `${tierInfo.icon} ${selectedTier} 任務`;
+            document.getElementById('tierTitle').textContent = `${tierInfo.icon} ${tierInfo.name} 任務`;
         }
 
         // 啟動定期檢查 session 狀態（每 5 秒）
@@ -1702,7 +1710,7 @@
         // 更新標題
         const tierInfo = courseTiers.find(t => t.tier === selectedTier);
         if (tierInfo) {
-            document.getElementById('tierTitle').textContent = `${tierInfo.icon} ${selectedTier} 任務`;
+            document.getElementById('tierTitle').textContent = `${tierInfo.icon} ${tierInfo.name} 任務`;
         }
 
         // 顯示任務列表
@@ -1884,7 +1892,16 @@
         else if (task.type === 'assessment') taskTypeName = '評量';
 
         document.getElementById('modalTaskType').textContent = taskTypeName;
-        document.getElementById('modalTaskTier').textContent = task.tier === 'mixed' ? selectedTier : task.tier;
+
+        // 顯示中文層級名稱
+        let tierDisplayName = '';
+        const currentTier = task.tier === 'mixed' ? selectedTier : task.tier;
+        if (currentTier === 'tutorial' || currentTier === '基礎層') tierDisplayName = '基礎層';
+        else if (currentTier === 'adventure' || currentTier === '進階層') tierDisplayName = '進階層';
+        else if (currentTier === 'hardcore' || currentTier === '困難層') tierDisplayName = '困難層';
+        else tierDisplayName = currentTier;
+
+        document.getElementById('modalTaskTier').textContent = tierDisplayName;
         document.getElementById('modalTaskReward').textContent = `💰 ${task.tokenReward || 0} 代幣`;
 
         // ✓ 修正：根據任務結構決定顯示內容

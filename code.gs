@@ -2291,11 +2291,12 @@ function getCourseDetails(courseId) {
             });
           } else {
             // 舊結構：不要拆分成三個任務，保持為一個任務
+            const taskName = row[3] || row[0] || '未命名任務';  // 如果沒有名稱，使用 taskId 或預設值
             tasks.push({
               taskId: row[0],
               courseId: row[1],
-              taskName: row[3],          // 任務名稱
-              name: row[3],              // 同時提供（兼容性）
+              taskName: taskName,        // 任務名稱
+              name: taskName,            // 同時提供（兼容性）
               sequence: row[2] || 0,
               tier: 'mixed',
               type: 'mixed',
