@@ -8072,15 +8072,24 @@ function getTaskDetail(params) {
     }
 
     // 如果找到 userId，從 LEARNING_RECORDS 查詢 current_tier
+    Logger.log(`🔍 準備查詢 LEARNING_RECORDS: userId=${userId}, learningSheet存在=${!!learningSheet}, taskTier=${taskTier}`);
     if (userId && learningSheet && !taskTier) {
       const learningData = learningSheet.getDataRange().getValues();
+      Logger.log(`🔍 LEARNING_RECORDS 總行數: ${learningData.length}`);
       for (let i = 1; i < learningData.length; i++) {
-        if (learningData[i][1] === userId) {  // user_id 在 index 1
-          taskTier = learningData[i][10] || 'tutorial';  // current_tier 在 index 10
-          Logger.log(`✅ 從 LEARNING_RECORDS 獲取學生層級: userId=${userId}, tier=${taskTier}`);
+        const rowUserId = learningData[i][1];
+        if (rowUserId === userId) {  // user_id 在 index 1
+          const currentTierValue = learningData[i][10];
+          taskTier = currentTierValue || 'tutorial';  // current_tier 在 index 10
+          Logger.log(`✅ 從 LEARNING_RECORDS 獲取學生層級: userId=${userId}, row=${i}, currentTierValue="${currentTierValue}", taskTier=${taskTier}`);
           break;
         }
       }
+      if (!taskTier || taskTier === '') {
+        Logger.log(`⚠️ 未在 LEARNING_RECORDS 找到 userId=${userId} 的記錄`);
+      }
+    } else {
+      Logger.log(`⚠️ 無法查詢 LEARNING_RECORDS: userId=${userId}, learningSheet=${!!learningSheet}, taskTier=${taskTier}`);
     }
 
     // 如果仍未取得層級，使用預設值

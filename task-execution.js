@@ -706,18 +706,6 @@ function switchStage(stage) {
             console.log('⚠️ 沒有評量題目，跳過評量階段');
             // 如果沒有評量題目，可以自動跳到下一階段
         }
-
-        // 隱藏上傳預覽（如果有的話）
-        const uploadPreview = document.getElementById('uploadPreview');
-        if (uploadPreview) {
-            uploadPreview.style.display = 'none';
-        }
-    } else if (stage === 3) {
-        // 階段3：上傳 - 確保預覽區域可見
-        const uploadPreview = document.getElementById('uploadPreview');
-        if (uploadPreview) {
-            uploadPreview.style.display = 'block';
-        }
     }
 
     // 更新進度條
@@ -1585,9 +1573,9 @@ function showCompletionResults(accuracy, tokenReward) {
     });
 
     // 在評量內容最上方插入總結卡片
-    const taskContent = document.getElementById('taskContent');
-    if (!taskContent) {
-        console.error('taskContent 容器不存在，無法顯示完成總結卡片');
+    const assessmentContent = document.getElementById('assessmentContent');
+    if (!assessmentContent) {
+        console.error('assessmentContent 容器不存在，無法顯示完成總結卡片');
         return;
     }
     const summaryDiv = document.createElement('div');
@@ -1629,8 +1617,8 @@ function showCompletionResults(accuracy, tokenReward) {
         </button>
     `;
 
-    // 插入到任務內容最前面
-    taskContent.insertBefore(summaryDiv, taskContent.firstChild);
+    // 插入到評量內容最前面
+    assessmentContent.insertBefore(summaryDiv, assessmentContent.firstChild);
 
     // 隱藏導覽按鈕
     const navigation = document.querySelector('.task-navigation');
