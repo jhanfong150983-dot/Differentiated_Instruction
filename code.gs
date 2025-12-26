@@ -8101,7 +8101,6 @@ function getTaskDetail(params) {
 
     // 修復：根據學生的 current_tier 取得對應層級的描述和連結
     let taskLink = '';
-    let taskName = '';
     let taskDesc = '';
 
     if (taskTier === 'tutorial') {
@@ -8119,10 +8118,10 @@ function getTaskDetail(params) {
       taskLink = taskRow[6] || '';
     }
 
-    // 優先使用層級特定的描述，如果沒有則使用通用任務名稱
-    taskName = taskDesc || taskRow[3] || '';
+    // 任務名稱始終使用通用任務名稱（task_name）
+    let taskName = taskRow[3] || '';
 
-    Logger.log(`📝 任務資訊: tier=${taskTier}, desc="${taskDesc}", name="${taskRow[3]}", final="${taskName}"`);
+    Logger.log(`📝 任務資訊: tier=${taskTier}, desc="${taskDesc}", name="${taskName}"`);
 
     // 如果任務名稱仍為空，使用 taskId 作為備用
     if (!taskName || taskName.trim() === '') {
@@ -8208,7 +8207,8 @@ function getTaskDetail(params) {
     const task = {
       taskId: taskId,  // 保留完整的 taskId（包含層級後綴）
       actualTaskId: actualTaskId,
-      name: taskName,
+      name: taskName,  // 通用任務名稱
+      description: taskDesc,  // 層級特定的描述
       link: taskLink || '',
       timeLimit: taskRow[4] || 0,
       tokenReward: taskRow[11] || 10,

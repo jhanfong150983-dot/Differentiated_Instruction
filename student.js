@@ -1835,7 +1835,7 @@
         `;
 
         if (!isLocked) {
-            card.onclick = () => openTaskModal(task, progress);
+            card.onclick = () => window.openTaskModal(task, progress);
         }
 
         return card;
