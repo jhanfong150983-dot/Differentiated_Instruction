@@ -706,6 +706,18 @@ function switchStage(stage) {
             console.log('⚠️ 沒有評量題目，跳過評量階段');
             // 如果沒有評量題目，可以自動跳到下一階段
         }
+
+        // 隱藏上傳預覽（如果有的話）
+        const uploadPreview = document.getElementById('uploadPreview');
+        if (uploadPreview) {
+            uploadPreview.style.display = 'none';
+        }
+    } else if (stage === 3) {
+        // 階段3：上傳 - 確保預覽區域可見
+        const uploadPreview = document.getElementById('uploadPreview');
+        if (uploadPreview) {
+            uploadPreview.style.display = 'block';
+        }
     }
 
     // 更新進度條
@@ -980,7 +992,7 @@ async function uploadFileToServer(file) {
 
         if (data && data.success && data.fileUrl) {
             uploadedFileUrl = data.fileUrl;
-            showWarning('? 作業上傳成功！', 'success');
+            showWarning('✅上傳成功', 'success');
         } else {
             uploadedFileUrl = null;
             const msg = (data && data.message) ? data.message : (lastError ? lastError.message : '未知錯誤');
@@ -1011,9 +1023,9 @@ function fileToBase64(file) {
 function showUploadPreview(dataUrl) {
     const preview = document.getElementById('uploadPreview');
     preview.innerHTML = `
-        <div style="text-align: center;">
+        <div style="text-align: center; margin-top: 20px;">
             <p style="color: #10b981; font-weight: 600; margin-bottom: 15px;">✅ 已選擇檔案</p>
-            <img src="${dataUrl}" alt="預覽">
+            <img src="${dataUrl}" alt="預覽" style="max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
         </div>
     `;
 }
@@ -1021,6 +1033,13 @@ function showUploadPreview(dataUrl) {
 // ========== Webcam 邏輯 ==========
 async function startWebcam(deviceId = null) {
     try {
+        // 檢查瀏覽器是否支援 getUserMedia
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showWarning('❌ 您的瀏覽器不支援相機功能，請使用檔案上傳');
+            console.error('瀏覽器不支援 getUserMedia');
+            return;
+        }
+
         // 若已有串流，先關閉
         if (webcamStream) {
             webcamStream.getTracks().forEach(track => track.stop());
@@ -1034,7 +1053,12 @@ async function startWebcam(deviceId = null) {
             constraints.video.facingMode = 'user';
         }
 
+        console.log('🎥 正在請求相機權限...', constraints);
+        showWarning('正在請求相機權限，請允許使用相機', 'success');
+
         webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        console.log('✅ 相機權限已獲得');
 
         // 取得相機列表（需權限後才能拿到 label）
         await refreshCameraList();
@@ -1046,9 +1070,26 @@ async function startWebcam(deviceId = null) {
         document.getElementById('uploadArea').style.display = 'none';
         document.getElementById('webcamContainer').classList.add('active');
 
+        showWarning('✅ 相機已啟動', 'success');
+
     } catch (error) {
         console.error('無法啟動相機：', error);
-        showWarning('無法啟動相機，請確認權限設定');
+        console.error('錯誤詳情：', error.name, error.message);
+
+        // 根據錯誤類型提供不同的提示
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            showWarning('❌ 相機權限被拒絕，請在瀏覽器設定中允許使用相機');
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+            showWarning('❌ 找不到可用的相機設備');
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+            showWarning('❌ 相機正在被其他應用程式使用');
+        } else if (error.name === 'OverconstrainedError') {
+            showWarning('❌ 找不到符合要求的相機');
+        } else if (error.name === 'SecurityError') {
+            showWarning('❌ 安全性錯誤：請確保網頁使用 HTTPS 或在 localhost 上運行');
+        } else {
+            showWarning('❌ 無法啟動相機：' + error.message);
+        }
     }
 }
 
@@ -1321,11 +1362,7 @@ async function submitAllData() {
                         console.error('❌ 父視窗沒有必要的函數');
                     }
 
-                    // 即時更新父視窗的代幣顯示
-                    if (typeof window.opener.refreshUserTokens === 'function') {
-                        console.log('🪙 更新父視窗代幣顯示');
-                        window.opener.refreshUserTokens();
-                    }
+                    // 註：代幣會在刷新任務列表時自動更新，不需要單獨刷新
                 } catch (error) {
                     console.error('❌ 無法通知父視窗:', error);
                     console.error('錯誤詳情:', error.stack);
