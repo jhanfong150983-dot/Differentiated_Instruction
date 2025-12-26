@@ -8286,7 +8286,16 @@ function getTaskDetail(params) {
 
     return {
       success: true,
-      task: task
+      task: task,
+      // 調試資訊（會顯示在前端 Console）
+      debug: {
+        receivedEmail: email,
+        receivedClassId: normalizedClassId,
+        receivedCourseId: normalizedCourseId,
+        foundUserId: userId,
+        finalTier: taskTier,
+        tierSource: taskTier === 'tutorial' ? '預設值或從taskId解析' : '從LEARNING_RECORDS查詢'
+      }
     };
 
   } catch (error) {
