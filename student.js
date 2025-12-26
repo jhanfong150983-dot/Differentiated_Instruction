@@ -1295,8 +1295,18 @@
 
         // 更新標題
         const tierInfo = courseTiers.find(t => t.tier === selectedTier);
-        if (tierInfo) {
+
+        if (tierInfo && tierInfo.name) {
             document.getElementById('tierTitle').textContent = `${tierInfo.icon} ${tierInfo.name} 任務`;
+        } else {
+            // 備用方案：如果找不到 tierInfo，使用中文轉換
+            let tierDisplayName = selectedTier;
+            if (selectedTier === 'tutorial') tierDisplayName = '基礎層';
+            else if (selectedTier === 'adventure') tierDisplayName = '進階層';
+            else if (selectedTier === 'hardcore') tierDisplayName = '困難層';
+
+            const defaultIcon = selectedTier === 'tutorial' ? '📘' : selectedTier === 'adventure' ? '📙' : '📕';
+            document.getElementById('tierTitle').textContent = `${defaultIcon} ${tierDisplayName} 任務`;
         }
 
         // 啟動定期檢查 session 狀態（每 5 秒）
@@ -1709,8 +1719,18 @@
 
         // 更新標題
         const tierInfo = courseTiers.find(t => t.tier === selectedTier);
-        if (tierInfo) {
+
+        if (tierInfo && tierInfo.name) {
             document.getElementById('tierTitle').textContent = `${tierInfo.icon} ${tierInfo.name} 任務`;
+        } else {
+            // 備用方案：如果找不到 tierInfo，使用中文轉換
+            let tierDisplayName = selectedTier;
+            if (selectedTier === 'tutorial') tierDisplayName = '基礎層';
+            else if (selectedTier === 'adventure') tierDisplayName = '進階層';
+            else if (selectedTier === 'hardcore') tierDisplayName = '困難層';
+
+            const defaultIcon = selectedTier === 'tutorial' ? '📘' : selectedTier === 'adventure' ? '📙' : '📕';
+            document.getElementById('tierTitle').textContent = `${defaultIcon} ${tierDisplayName} 任務`;
         }
 
         // 顯示任務列表
@@ -2416,8 +2436,9 @@
                     currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
 
                     // 🆕 開啟新版任務執行頁面（task-execution.html）
-                    const taskExecutionUrl = `task-execution.html?taskId=${encodeURIComponent(selectedTask.taskId)}&userEmail=${encodeURIComponent(currentStudent.email)}`;
-                    APP_CONFIG.log('📖 開啟任務執行頁面:', taskExecutionUrl);
+                    const taskProgressId = response.taskProgressId || '';
+                    const taskExecutionUrl = `task-execution.html?taskProgressId=${encodeURIComponent(taskProgressId)}&taskId=${encodeURIComponent(selectedTask.taskId)}&userEmail=${encodeURIComponent(currentStudent.email)}&apiUrl=${encodeURIComponent(APP_CONFIG.API_URL)}`;
+                    APP_CONFIG.log('📖 開啟任務執行頁面:', { taskExecutionUrl, taskProgressId });
                     window.open(taskExecutionUrl, '_blank');
 
                     // 啟動時間限制檢查（太慢的學生會收到提示）
