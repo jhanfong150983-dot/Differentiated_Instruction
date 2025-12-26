@@ -8121,6 +8121,7 @@ function getTaskDetail(params) {
     // 任務名稱始終使用通用任務名稱（task_name）
     let taskName = taskRow[3] || '';
 
+    Logger.log(`🔍 原始任務資料: taskRow[3]="${taskRow[3]}", type=${typeof taskRow[3]}`);
     Logger.log(`📝 任務資訊: tier=${taskTier}, desc="${taskDesc}", name="${taskName}"`);
 
     // 如果任務名稱仍為空，使用 taskId 作為備用
@@ -9327,10 +9328,3 @@ function getClassTaskTimeStats(params) {
     };
   }
 }
-
-
-
-
-
-
-

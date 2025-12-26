@@ -1956,10 +1956,13 @@
             startBtn.style.display = 'none';
             completeBtn.style.display = 'none';
         } else if (progress.status === 'in_progress') {
-            startBtn.style.display = 'none';
-            completeBtn.style.display = 'inline-block';
+            // 🆕 任務進行中：顯示「繼續任務」按鈕
+            startBtn.style.display = 'inline-block';
+            startBtn.textContent = '繼續任務';
+            completeBtn.style.display = 'none';
         } else {
             startBtn.style.display = 'inline-block';
+            startBtn.textContent = '開始任務';
             completeBtn.style.display = 'none';
         }
 
@@ -2394,29 +2397,10 @@
                     // 更新進度狀態
                     currentTasksProgress[selectedTask.taskId] = { status: 'in_progress' };
 
-                    // ✓ 修正：根據任務結構取得正確的連結
-                    let taskLink = '';
-                    if (selectedTask.tier === 'mixed') {
-                        // 舊結構：根據 selectedTier 選擇對應的連結
-                        if (selectedTier === 'tutorial' || selectedTier === '基礎層') {
-                            taskLink = selectedTask.tutorialLink || '';
-                        } else if (selectedTier === 'adventure' || selectedTier === '進階層') {
-                            taskLink = selectedTask.adventureLink || '';
-                        } else if (selectedTier === 'hardcore' || selectedTier === '精通層') {
-                            taskLink = selectedTask.hardcoreLink || '';
-                        }
-                    } else {
-                        // 新結構：直接使用 link
-                        taskLink = selectedTask.link || '';
-                    }
-
-                    // 🔗 自動打開教材連結（如果有的話）
-                    if (taskLink && taskLink.trim() !== '') {
-                        APP_CONFIG.log('📖 打開教材連結:', taskLink);
-                        window.open(taskLink, '_blank');
-                    } else {
-                        APP_CONFIG.log('ℹ️ 此任務沒有外部連結');
-                    }
+                    // 🆕 開啟新版任務執行頁面（task-execution.html）
+                    const taskExecutionUrl = `task-execution.html?taskId=${encodeURIComponent(selectedTask.taskId)}&userEmail=${encodeURIComponent(currentStudent.email)}`;
+                    APP_CONFIG.log('📖 開啟任務執行頁面:', taskExecutionUrl);
+                    window.open(taskExecutionUrl, '_blank');
 
                     // 啟動時間限制檢查（太慢的學生會收到提示）
                     startTaskTimeLimitCheck(selectedTask);
@@ -2441,6 +2425,10 @@
 
     /**
      * 提交任務（等待教師審核）
+     * @deprecated 此函數已廢棄，現在使用 task-execution.html 中的 submitTaskExecution 流程
+     * 保留此函數僅供參考，特別是互評（peer review）相關邏輯
+     *
+     * 新版流程：學生點擊「開始任務」-> 開啟 task-execution.html -> 完成教材/自我檢核/上傳檔案/評量 -> submitTaskExecution
      */
     window.handleCompleteTask = function() {
         if (!selectedTask) return;

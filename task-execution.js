@@ -300,10 +300,19 @@ async function loadTaskData(taskId) {
 
             // 修復：確保任務標題正確顯示
             // 標題格式：任務名稱 - 層級（如果有層級顯示名稱）
+            console.log('📝 任務資料檢查：', {
+                name: taskData.name,
+                taskId: taskData.taskId,
+                tier: taskData.tier,
+                tierDisplay: taskData.tierDisplay,
+                description: taskData.description
+            });
+
             let taskTitle = taskData.name || taskData.taskId || '任務';
             if (taskData.tierDisplay) {
                 taskTitle = `${taskTitle} - ${taskData.tierDisplay}`;
             }
+            console.log('📌 最終標題：', taskTitle);
             document.getElementById('taskTitle').textContent = taskTitle;
 
             // 修復：載入教材（檢查 link 是否有效）
