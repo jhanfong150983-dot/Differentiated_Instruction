@@ -306,8 +306,12 @@ async function loadTaskData(taskId) {
             courseId: window.currentCourseId
         });
 
+        console.log('📤 完整 API URL:', `${API_URL}?${params.toString()}`);
+
         const response = await fetch(`${API_URL}?${params.toString()}`);
         const data = await response.json();
+
+        console.log('📥 後端回應:', data);
 
         if (data.success) {
             taskData = data.task;
@@ -318,6 +322,7 @@ async function loadTaskData(taskId) {
             console.log('📝 任務名稱：', taskData.name);
             console.log('🎯 層級（原始）：', taskData.tier);
             console.log('🎯 層級（顯示）：', taskData.tierDisplay);
+            console.log('⚠️ 如果層級不正確，請檢查 Google Apps Script 執行記錄');
 
             // 修復：確保任務標題正確顯示
             // 標題格式：任務名稱 - 層級（如果有層級顯示名稱）
@@ -726,6 +731,18 @@ function switchStage(stage) {
         } else {
             console.log('⚠️ 沒有評量題目，跳過評量階段');
             // 如果沒有評量題目，可以自動跳到下一階段
+        }
+    }
+
+    // 控制上傳預覽區的顯示/隱藏
+    const uploadPreview = document.getElementById('uploadPreview');
+    if (uploadPreview) {
+        if (stage === 3) {
+            // 階段3：上傳 - 顯示預覽區
+            uploadPreview.style.display = 'block';
+        } else {
+            // 其他階段 - 隱藏預覽區
+            uploadPreview.style.display = 'none';
         }
     }
 

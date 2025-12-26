@@ -648,9 +648,6 @@
                         <select id="videoDeviceSelect" style="flex:1; min-width:200px; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; color:#374151;"></select>
                         <button class="btn-secondary btn-ghost" type="button" onclick="switchCamera()">切換</button>
                     </div>
-                    </div>
-                        </button>
-                    </div>
                 </div>
 
                 <div class="webcam-container" id="webcamContainer">
@@ -660,8 +657,6 @@
                         <button class="btn-secondary" onclick="closeWebcam()">取消</button>
                     </div>
                 </div>
-
-                <div class="upload-preview" id="uploadPreview"></div>
             </div>
 
             <!-- 階段4：評量 -->
@@ -672,6 +667,9 @@
                     <!-- 評量題目會動態生成 -->
                 </div>
             </div>
+
+            <!-- 上傳預覽區（在 main-content 內，不在任何 stage-container 內） -->
+            <div class="upload-preview" id="uploadPreview"></div>
         </div>
 
         <!-- 底部按鈕區 -->
