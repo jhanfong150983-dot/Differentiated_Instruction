@@ -389,6 +389,33 @@ function openTaskContentEditor(taskId, taskName) {
     openModal('taskEditorModal');
 }
 
+/**
+ * 切換任務內容編輯的內部標籤（參考答案 / 檢核項 / 題庫）
+ * 只作用於 taskEditorModal，以免影響其他使用 .tab 的區塊
+ */
+function switchTaskEditorTab(tabName, clickedButton) {
+    const modal = document.getElementById('taskEditorModal');
+    if (!modal) {
+        console.warn('taskEditorModal not found when switching tabs');
+        return;
+    }
+
+    // 切換按鈕的 active 樣式
+    modal.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
+    if (clickedButton) {
+        clickedButton.classList.add('active');
+    }
+
+    // 切換對應內容顯示
+    ['reference', 'checklist', 'questions'].forEach(name => {
+        const content = document.getElementById(`${name}Tab`);
+        if (!content) return;
+        const isActive = name === tabName;
+        content.classList.toggle('active', isActive);
+        content.style.display = isActive ? 'block' : 'none';
+    });
+}
+
 // ==========================================
 // 新增任務
 // ==========================================
