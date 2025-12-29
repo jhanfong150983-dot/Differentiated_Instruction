@@ -109,7 +109,8 @@
         .main-content {
             flex: 1;
             display: flex;
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
             padding: 0 20px 20px;
             background: #f8fafc;
         }
@@ -336,16 +337,20 @@
         .upload-preview {
             margin-top: 30px;
             max-width: 600px;
+            max-height: 460px;
+            overflow-y: auto;
             padding-bottom: 30px; /* ✅ 底部留白，方便滾動 */
             flex-shrink: 0; /* ✅ 防止被壓縮 */
         }
 
         .upload-preview img {
             max-width: 100%;
-            max-height: 400px; /* ✅ 限制圖片最大高度 */
+            max-height: 700px; /* ✅ 單張圖片高度限制，配合外層滾動 */
             object-fit: contain; /* ✅ 保持比例 */
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: block;
+            margin: 0 auto 16px;
         }
 
         .webcam-container {

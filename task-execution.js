@@ -561,6 +561,7 @@ async function loadTaskData(taskId) {
                         }, 500);
                     };
                 }
+                renderMaterialActions(materialOriginalLink || finalLink);
             } else {
                 // 如果沒有教材連結，顯示提示訊息
                 materialFrame.srcdoc = `
@@ -594,7 +595,8 @@ async function loadTaskData(taskId) {
                         </body>
                     </html>
                 `;
-                console.warn('⚠️ 任務沒有教材連結');
+                console.warn('?? 任務沒有教材連結');
+                renderMaterialActions(null);
             }
 
             // 修復：只儲存檢核項目和評量題目，不立即渲染
@@ -1668,6 +1670,57 @@ function showCompletionResults(accuracy, tokenReward) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     console.log('✅ 完成結果顯示完成');
+}
+
+// 渲染教材操作按鈕（含 Canva 支援）
+function renderMaterialActions(link) {
+    const actions = document.querySelector('.material-actions');
+    if (!actions) return;
+
+    actions.innerHTML = '';
+
+    if (!link) {
+        actions.innerHTML = '<span style="color:#6b7280; font-size:14px;">此任務未提供教材連結</span>';
+        return;
+    }
+
+    const openBtn = document.createElement('button');
+    openBtn.textContent = '🔗 新分頁開啟教材';
+    openBtn.style.cssText = `
+        padding: 10px 16px;
+        background: #1d4ed8;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        box-shadow: 0 6px 14px rgba(29,78,216,0.25);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    `;
+    openBtn.onclick = () => window.open(link, '_blank');
+    openBtn.onmouseover = () => openBtn.style.transform = 'translateY(-1px)';
+    openBtn.onmouseout = () => openBtn.style.transform = 'translateY(0)';
+    actions.appendChild(openBtn);
+
+    if (link.includes('canva.com')) {
+        const canvaBtn = document.createElement('button');
+        canvaBtn.textContent = '🎨 開啟 Canva 簡報';
+        canvaBtn.style.cssText = `
+            padding: 10px 16px;
+            background: #8b5cf6;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 6px 14px rgba(139,92,246,0.25);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        `;
+        canvaBtn.onclick = () => window.open(link, '_blank');
+        canvaBtn.onmouseover = () => canvaBtn.style.transform = 'translateY(-1px)';
+        canvaBtn.onmouseout = () => canvaBtn.style.transform = 'translateY(0)';
+        actions.appendChild(canvaBtn);
+    }
 }
 
 // HTML 轉義函數（防止 XSS）
