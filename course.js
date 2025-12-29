@@ -638,7 +638,7 @@ async function saveAllTaskEditorChanges() {
 
         await fetch(APP_CONFIG.API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({
                 action: 'saveTaskReferenceAnswer',
                 taskId: editorTaskId,
@@ -657,7 +657,7 @@ async function saveAllTaskEditorChanges() {
 
         await fetch(APP_CONFIG.API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({
                 action: 'saveTaskChecklist',
                 taskId: editorTaskId,
@@ -678,7 +678,7 @@ async function saveAllTaskEditorChanges() {
 
         await fetch(APP_CONFIG.API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({
                 action: 'saveTaskQuestions',
                 taskId: editorTaskId,
