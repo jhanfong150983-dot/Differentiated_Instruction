@@ -280,6 +280,29 @@ function updateStageToDatabase(stage) {
         });
 }
 
+/**
+ * 將 Canva 分享連結轉換成可嵌入的預覽連結
+ */
+function buildCanvaEmbedLink(link) {
+    try {
+        const url = new URL(link);
+        if (!url.hostname.includes('canva.com')) return null;
+
+        const pathParts = url.pathname.split('/').filter(Boolean);
+        const designIndex = pathParts.indexOf('design');
+        if (designIndex !== -1 && pathParts[designIndex + 1]) {
+            const designId = pathParts[designIndex + 1].split('?')[0];
+            return `https://www.canva.com/design/${designId}/view?embed`;
+        }
+
+        const base = link.split('?')[0];
+        return `${base}${base.includes('?') ? '&' : '?'}embed`;
+    } catch (err) {
+        console.warn('⚠️ Canva 連結解析失敗：', err);
+        return null;
+    }
+}
+
 // ========== 載入任務資料 ==========
 async function loadTaskData(taskId) {
     showLoading(true);
@@ -355,7 +378,20 @@ async function loadTaskData(taskId) {
                 let originalLink = finalLink; // 保留原始連結用於新分頁開啟
                 materialOriginalLink = originalLink;
 
-                // 🔧 檢測是否為 Google Drive 連結
+                // 偵測 Canva 連結：轉成可嵌入預覽
+                if (finalLink.includes('canva.com')) {
+                    const canvaEmbed = buildCanvaEmbedLink(finalLink);
+                    if (canvaEmbed) {
+                        console.log('?? 偵測到 Canva 連結，使用嵌入預覽：', canvaEmbed);
+                        finalLink = canvaEmbed;
+                        materialFrame.setAttribute('allowfullscreen', 'allowfullscreen');
+                        materialFrame.allowFullscreen = true;
+                    } else {
+                        console.warn('?? 無法解析 Canva 連結，改用原連結開啟');
+                    }
+                }
+
+                // ?? 檢測是否為 Google Drive 連結
                 const isGoogleDrive = finalLink.includes('drive.google.com');
                 
                 if (isGoogleDrive) {
@@ -1684,8 +1720,9 @@ function renderMaterialActions(link) {
         return;
     }
 
+    const isCanva = link.includes('canva.com');
     const openBtn = document.createElement('button');
-    openBtn.textContent = '🔗 新分頁開啟教材';
+    openBtn.textContent = isCanva ? '預覽失敗？改用新分頁開啟 Canva' : '?? 新分頁開啟教材';
     openBtn.style.cssText = `
         padding: 10px 16px;
         background: #1d4ed8;
@@ -1702,24 +1739,11 @@ function renderMaterialActions(link) {
     openBtn.onmouseout = () => openBtn.style.transform = 'translateY(0)';
     actions.appendChild(openBtn);
 
-    if (link.includes('canva.com')) {
-        const canvaBtn = document.createElement('button');
-        canvaBtn.textContent = '🎨 開啟 Canva 簡報';
-        canvaBtn.style.cssText = `
-            padding: 10px 16px;
-            background: #8b5cf6;
-            color: #fff;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            box-shadow: 0 6px 14px rgba(139,92,246,0.25);
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-        `;
-        canvaBtn.onclick = () => window.open(link, '_blank');
-        canvaBtn.onmouseover = () => canvaBtn.style.transform = 'translateY(-1px)';
-        canvaBtn.onmouseout = () => canvaBtn.style.transform = 'translateY(0)';
-        actions.appendChild(canvaBtn);
+    if (isCanva) {
+        const hint = document.createElement('div');
+        hint.textContent = '已嘗試直接嵌入 Canva 簡報，如未載入可改用上方按鈕。';
+        hint.style.cssText = 'margin-top: 8px; color: #6b7280; font-size: 13px;';
+        actions.appendChild(hint);
     }
 }
 
@@ -1734,5 +1758,6 @@ function escapeHtml(text) {
     };
     return String(text).replace(/[&<>"']/g, m => map[m]);
 }
+
 
 

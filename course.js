@@ -7,6 +7,9 @@ let currentCourseId = null;
 let currentCourseName = null;
 let currentCourse = null;
 let currentTasks = [];
+let editorTaskId = null;
+let editorChecklistItems = [];
+let editorQuestions = [];
 
 // ==========================================
 // 初始化
@@ -366,6 +369,7 @@ function displayTasks(tasks) {
 let currentTaskContentId = null;
 function openTaskContentEditor(taskId, taskName) {
     currentTaskContentId = taskId;
+    editorTaskId = taskId;
     const modal = document.getElementById('taskEditorModal');
     if (!modal) {
         showToast('內容編輯介面尚未載入', 'warning');
@@ -385,6 +389,9 @@ function openTaskContentEditor(taskId, taskName) {
         c.classList.toggle('active', idx === 0);
         c.style.display = idx === 0 ? 'block' : 'none';
     });
+
+    // 載入既有資料
+    loadTaskContentEditorData(taskId);
 
     openModal('taskEditorModal');
 }
@@ -414,6 +421,281 @@ function switchTaskEditorTab(tabName, clickedButton) {
         content.classList.toggle('active', isActive);
         content.style.display = isActive ? 'block' : 'none';
     });
+}
+
+/**
+ * 取得並渲染任務的參考答案 / 檢核項目 / 題庫
+ */
+async function loadTaskContentEditorData(taskId) {
+    if (!taskId) {
+        showToast('任務 ID 遺失，無法載入內容', 'error');
+        return;
+    }
+
+    try {
+        const params = new URLSearchParams({
+            action: 'getTaskDetailsForEditor',
+            taskId: taskId
+        });
+        const res = await fetch(`${APP_CONFIG.API_URL}?${params.toString()}`);
+        const data = await res.json();
+        if (!data.success) {
+            showToast(data.message || '載入任務內容失敗', 'error');
+            return;
+        }
+
+        // 參考答案
+        document.getElementById('editorReferenceAnswer').value = data.referenceAnswer ? data.referenceAnswer.answerText || '' : '';
+        const imgs = data.referenceAnswer && data.referenceAnswer.answerImages ? data.referenceAnswer.answerImages : [];
+        document.getElementById('editorReferenceImages').value = Array.isArray(imgs) ? imgs.join('\n') : (imgs || '');
+
+        // 檢核項目
+        editorChecklistItems = Array.isArray(data.checklists) ? data.checklists.map((c, idx) => ({
+            checklistId: c.checklistId || c.checklist_id || `tmp_${Date.now()}_${idx}`,
+            itemOrder: c.itemOrder || c.item_order || idx + 1,
+            itemTitle: c.itemTitle || c.item_title || '',
+            itemDescription: c.itemDescription || c.item_description || ''
+        })) : [];
+        renderChecklistEditor();
+
+        // 題庫
+        editorQuestions = Array.isArray(data.questions) ? data.questions.map((q, idx) => ({
+            questionId: q.questionId || q.question_id || `tmp_q_${Date.now()}_${idx}`,
+            questionText: q.questionText || q.question_text || '',
+            optionA: q.optionA || q.option_a || '',
+            optionB: q.optionB || q.option_b || '',
+            optionC: q.optionC || q.option_c || '',
+            optionD: q.optionD || q.option_d || '',
+            correctAnswer: q.correctAnswer || q.correct_answer || 'A'
+        })) : [];
+        renderQuestionsEditor();
+    } catch (err) {
+        console.error(err);
+        showToast('載入任務內容失敗：' + err.message, 'error');
+    }
+}
+
+// ==============================
+// 檢核項目編輯
+// ==============================
+function renderChecklistEditor() {
+    const container = document.getElementById('editorChecklistContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!editorChecklistItems.length) {
+        container.innerHTML = '<div style="color:#94a3b8;">目前沒有檢核項目，點擊下方「新增檢核項目」</div>';
+        return;
+    }
+
+    editorChecklistItems
+        .sort((a, b) => (a.itemOrder || 0) - (b.itemOrder || 0))
+        .forEach((item, idx) => {
+            const card = document.createElement('div');
+            card.className = 'list-item';
+            card.style.padding = '12px';
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div style="font-weight:600; color:#334155;">檢核項目 ${idx + 1}</div>
+                    <button class="btn btn-secondary" style="padding:6px 10px;" onclick="removeChecklistItem('${item.checklistId}')">刪除</button>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label class="form-label">標題</label>
+                    <input type="text" class="form-input" value="${item.itemTitle || ''}" data-id="${item.checklistId}" data-field="itemTitle">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">說明</label>
+                    <textarea class="form-textarea" rows="2" data-id="${item.checklistId}" data-field="itemDescription">${item.itemDescription || ''}</textarea>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+
+    // 綁定變更事件
+    container.querySelectorAll('input[data-id], textarea[data-id]').forEach(el => {
+        el.addEventListener('input', (e) => {
+            const id = e.target.getAttribute('data-id');
+            const field = e.target.getAttribute('data-field');
+            const target = editorChecklistItems.find(c => c.checklistId === id);
+            if (target) {
+                target[field] = e.target.value;
+            }
+        });
+    });
+}
+
+function addChecklistItem() {
+    editorChecklistItems.push({
+        checklistId: `tmp_${Date.now()}`,
+        itemOrder: editorChecklistItems.length + 1,
+        itemTitle: '',
+        itemDescription: ''
+    });
+    renderChecklistEditor();
+}
+
+function removeChecklistItem(id) {
+    editorChecklistItems = editorChecklistItems.filter(c => c.checklistId !== id);
+    renderChecklistEditor();
+}
+
+// ==============================
+// 題庫編輯
+// ==============================
+function renderQuestionsEditor() {
+    const container = document.getElementById('editorQuestionsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!editorQuestions.length) {
+        container.innerHTML = '<div style="color:#94a3b8;">目前沒有題目，點擊下方「新增題目」</div>';
+        return;
+    }
+
+    editorQuestions.forEach((q, idx) => {
+        const card = document.createElement('div');
+        card.className = 'list-item';
+        card.style.padding = '12px';
+        card.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div style="font-weight:600; color:#334155;">題目 ${idx + 1}</div>
+                <button class="btn btn-secondary" style="padding:6px 10px;" onclick="removeQuestionCard('${q.questionId}')">刪除</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label">題目</label>
+                <textarea class="form-textarea" rows="2" data-id="${q.questionId}" data-field="questionText">${q.questionText || ''}</textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">選項 A</label>
+                <input type="text" class="form-input" data-id="${q.questionId}" data-field="optionA" value="${q.optionA || ''}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">選項 B</label>
+                <input type="text" class="form-input" data-id="${q.questionId}" data-field="optionB" value="${q.optionB || ''}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">選項 C</label>
+                <input type="text" class="form-input" data-id="${q.questionId}" data-field="optionC" value="${q.optionC || ''}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">選項 D</label>
+                <input type="text" class="form-input" data-id="${q.questionId}" data-field="optionD" value="${q.optionD || ''}">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">正確答案 (A/B/C/D)</label>
+                <input type="text" class="form-input" data-id="${q.questionId}" data-field="correctAnswer" value="${q.correctAnswer || 'A'}" maxlength="1">
+            </div>
+        `;
+        container.appendChild(card);
+    });
+
+    container.querySelectorAll('input[data-id], textarea[data-id]').forEach(el => {
+        el.addEventListener('input', (e) => {
+            const id = e.target.getAttribute('data-id');
+            const field = e.target.getAttribute('data-field');
+            const target = editorQuestions.find(q => q.questionId === id);
+            if (target) {
+                target[field] = e.target.value;
+            }
+        });
+    });
+}
+
+function addNewQuestionCard() {
+    editorQuestions.push({
+        questionId: `tmp_q_${Date.now()}`,
+        questionText: '',
+        optionA: '',
+        optionB: '',
+        optionC: '',
+        optionD: '',
+        correctAnswer: 'A'
+    });
+    renderQuestionsEditor();
+}
+
+function removeQuestionCard(id) {
+    editorQuestions = editorQuestions.filter(q => q.questionId !== id);
+    renderQuestionsEditor();
+}
+
+/**
+ * 儲存任務內容（參考答案 / 檢核 / 題庫）
+ */
+async function saveAllTaskEditorChanges() {
+    if (!editorTaskId) {
+        showToast('任務 ID 遺失，請重新開啟編輯視窗', 'error');
+        return;
+    }
+
+    try {
+        showToast('儲存中...', 'info');
+
+        // 參考答案
+        const refAnswer = document.getElementById('editorReferenceAnswer').value.trim();
+        const refImagesRaw = document.getElementById('editorReferenceImages').value.trim();
+        const refImages = refImagesRaw ? refImagesRaw.split(/\\r?\\n/).filter(Boolean) : [];
+
+        await fetch(APP_CONFIG.API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'saveTaskReferenceAnswer',
+                taskId: editorTaskId,
+                answerText: refAnswer,
+                answerImages: refImages
+            })
+        });
+
+        // 檢核項目
+        const checklistPayload = editorChecklistItems.map((c, idx) => ({
+            checklistId: c.checklistId,
+            itemOrder: idx + 1,
+            itemTitle: c.itemTitle || '',
+            itemDescription: c.itemDescription || ''
+        }));
+
+        await fetch(APP_CONFIG.API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'saveTaskChecklist',
+                taskId: editorTaskId,
+                checklists: checklistPayload
+            })
+        });
+
+        // 題庫
+        const questionsPayload = editorQuestions.map((q) => ({
+            questionId: q.questionId,
+            questionText: q.questionText || '',
+            optionA: q.optionA || '',
+            optionB: q.optionB || '',
+            optionC: q.optionC || '',
+            optionD: q.optionD || '',
+            correctAnswer: (q.correctAnswer || 'A').toUpperCase()
+        }));
+
+        await fetch(APP_CONFIG.API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'saveTaskQuestions',
+                taskId: editorTaskId,
+                questions: questionsPayload
+            })
+        });
+
+        showToast('已儲存任務內容', 'success');
+        closeModal('taskEditorModal');
+        // 重新載入任務列表以反映可能的更新
+        if (currentCourseId) {
+            loadCourseTasks(currentCourseId);
+        }
+    } catch (err) {
+        console.error(err);
+        showToast('儲存失敗：' + err.message, 'error');
+    }
 }
 
 // ==========================================
